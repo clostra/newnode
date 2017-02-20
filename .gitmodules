@@ -1,0 +1,6 @@
+[submodule "scout"]
+	path = scout
+	url = ../scout
+[submodule "libutp"]
+	path = libutp
+	url = ../libutp
