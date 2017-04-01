@@ -4,3 +4,6 @@
 [submodule "libutp"]
 	path = libutp
 	url = ../libutp
+[submodule "libbtdht"]
+	path = libbtdht
+	url = ../libbtdht
