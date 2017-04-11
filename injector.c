@@ -120,8 +120,8 @@ void process_line(socket_buffers *sb, char *line)
     printf("'%s'\n", line);
     char *url = line;
     char *data = fetch_url(url);
+    STAILQ_INSERT_TAIL(sb->write_buffers, write_buffer_alloc(data, strlen(data)), next);
     dht_put(hash(url), hash(data));
-    STAILQ_INSERT_TAIL(sb->write_buffers, write_buffer_alloc(data, strlen(data)), next); 
 }
 
 uint64 callback_on_read(utp_callback_arguments *a)
@@ -167,14 +167,6 @@ uint64 callback_on_accept(utp_callback_arguments *a)
     return 0;
 }
 
-uint64 callback_on_error(utp_callback_arguments *a)
-{
-    fprintf(stderr, "Error: %s\n", utp_error_code_names[a->error_code]);
-    socket_buffers_free(utp_get_userdata(a->socket));
-    utp_close(a->socket);
-    return 0;
-}
-
 uint64 callback_on_state_change(utp_callback_arguments *a)
 {
     debug("state %d: %s\n", a->state, utp_state_names[a->state]);
@@ -192,6 +184,8 @@ uint64 callback_on_state_change(utp_callback_arguments *a)
 
     case UTP_STATE_DESTROYING: {
         debug("UTP socket is being destroyed; exiting\n");
+
+        socket_buffers_free(utp_get_userdata(a->socket));
 
         utp_socket_stats *stats = utp_get_stats(a->socket);
         if (stats) {
@@ -230,8 +224,8 @@ void usage(char *name)
 
 int main(int argc, char *argv[])
 {
-    char *port = NULL;
     char *address = "0.0.0.0";
+    char *port = NULL;
 
     for (;;) {
         int c = getopt(argc, argv, "hp:s:n");
@@ -261,7 +255,6 @@ int main(int argc, char *argv[])
     utp_set_callback(ctx, UTP_ON_ACCEPT, &callback_on_accept);
     utp_set_callback(ctx, UTP_ON_STATE_CHANGE, &callback_on_state_change);
     utp_set_callback(ctx, UTP_ON_READ, &callback_on_read);
-    utp_set_callback(ctx, UTP_ON_ERROR, &callback_on_error);
 
     return network_loop(ctx);
 }
