@@ -138,13 +138,9 @@ void process_line(socket_buffers *sb, char *line)
     __block size_t progress = 0;
     fetch_url(url, ^bool (uint8_t *data, size_t length, size_t total_length) {
         if (!progress) {
-            union {
-                uint8_t prefix[4];
-                uint32_t iprefix;
-            } prefix;
-            prefix.iprefix = (uint32_t)total_length;
-            uint8_t *p = memdup(&prefix, sizeof(prefix));
-            STAILQ_INSERT_TAIL(&sb->write_buffers, write_buffer_alloc(p, sizeof(prefix)), next);
+            uint32_t iprefix = (uint32_t)total_length;
+            uint8_t *p = memdup(&iprefix, sizeof(iprefix));
+            STAILQ_INSERT_TAIL(&sb->write_buffers, write_buffer_alloc(p, sizeof(iprefix)), next);
         }
         crypto_generichash_update(&hash_state.content_state, data, length);
         data = memdup(data, length);
