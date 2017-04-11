@@ -30,7 +30,7 @@ uint64 callback_on_firewall(utp_callback_arguments *a)
 
 uint64 callback_sendto(utp_callback_arguments *a)
 {
-    int fd = (intptr_t)utp_context_get_userdata(a->context);
+    network *n = (network*)utp_context_get_userdata(a->context);
     struct sockaddr_in *sin = (struct sockaddr_in *)a->address;
 
     debug("sendto: %zd byte packet to %s:%d%s\n", a->len, inet_ntoa(sin->sin_addr), ntohs(sin->sin_port),
@@ -40,7 +40,7 @@ uint64 callback_sendto(utp_callback_arguments *a)
         hexdump(a->buf, a->len);
     }
 
-    sendto(fd, a->buf, a->len, 0, a->address, a->address_len);
+    sendto(n->fd, a->buf, a->len, 0, a->address, a->address_len);
     return 0;
 }
 
@@ -63,11 +63,13 @@ void handler(int number)
     exit_code++;
 }
 
-utp_context* network_setup(char *address, char *port)
+network* network_setup(char *address, char *port)
 {
     struct sigaction sigIntHandler = {.sa_handler = handler, .sa_flags = 0};
     sigemptyset(&sigIntHandler.sa_mask);
     sigaction(SIGINT, &sigIntHandler, NULL);
+
+    signal(SIGPIPE, SIG_IGN);
 
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
@@ -81,19 +83,21 @@ utp_context* network_setup(char *address, char *port)
         die("getaddrinfo: %s\n", gai_strerror(error));
     }
 
-    int fd = socket(((struct sockaddr*)res->ai_addr)->sa_family, SOCK_DGRAM, IPPROTO_UDP);
-    if (fd < 0) {
+    network *n = alloc(network);
+
+    n->fd = socket(((struct sockaddr*)res->ai_addr)->sa_family, SOCK_DGRAM, IPPROTO_UDP);
+    if (n->fd < 0) {
         pdie("socket");
     }
 
 #ifdef __linux__
     int on = 1;
-    if (setsockopt(fd, SOL_IP, IP_RECVERR, &on, sizeof(on)) != 0) {
+    if (setsockopt(n->fd, SOL_IP, IP_RECVERR, &on, sizeof(on)) != 0) {
         pdie("setsockopt");
     }
 #endif
 
-    if (bind(fd, res->ai_addr, res->ai_addrlen) != 0) {
+    if (bind(n->fd, res->ai_addr, res->ai_addrlen) != 0) {
         pdie("bind");
     }
 
@@ -101,7 +105,7 @@ utp_context* network_setup(char *address, char *port)
 
     struct sockaddr_storage sin;
     socklen_t len = sizeof(sin);
-    if (getsockname(fd, (struct sockaddr *)&sin, &len) != 0) {
+    if (getsockname(n->fd, (struct sockaddr *)&sin, &len) != 0) {
         pdie("getsockname");
     }
     char host[NI_MAXHOST];
@@ -109,38 +113,37 @@ utp_context* network_setup(char *address, char *port)
     getnameinfo((struct sockaddr *)&sin, sin.ss_len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST);
     printf("listening on %s:%s\n", host, serv);
 
-    utp_context *ctx = utp_init(2);
-    debug("UTP context %p\n", ctx);
+    n->dht = dht_setup(n->fd);
 
-    utp_context_set_userdata(ctx, (void*)(intptr_t)fd);
+    n->utp = utp_init(2);
 
-    utp_set_callback(ctx, UTP_LOG, &callback_log);
-    utp_set_callback(ctx, UTP_SENDTO, &callback_sendto);
-    utp_set_callback(ctx, UTP_ON_FIREWALL, &callback_on_firewall);
-    utp_set_callback(ctx, UTP_ON_ERROR, &callback_on_error);
+    utp_context_set_userdata(n->utp, n);
+
+    utp_set_callback(n->utp, UTP_LOG, &callback_log);
+    utp_set_callback(n->utp, UTP_SENDTO, &callback_sendto);
+    utp_set_callback(n->utp, UTP_ON_FIREWALL, &callback_on_firewall);
+    utp_set_callback(n->utp, UTP_ON_ERROR, &callback_on_error);
 
     /*
-    utp_set_callback(ctx, UTP_ON_ACCEPT, &callback_on_accept);
-    utp_set_callback(ctx, UTP_ON_STATE_CHANGE, &callback_on_state_change);
-    utp_set_callback(ctx, UTP_ON_READ, &callback_on_read);
+    utp_set_callback(n->utp, UTP_ON_ACCEPT, &callback_on_accept);
+    utp_set_callback(n->utp, UTP_ON_STATE_CHANGE, &callback_on_state_change);
+    utp_set_callback(n->utp, UTP_ON_READ, &callback_on_read);
     */
 
     if (o_debug >= 2) {
-        utp_context_set_option(ctx, UTP_LOG_NORMAL, 1);
-        utp_context_set_option(ctx, UTP_LOG_MTU, 1);
-        utp_context_set_option(ctx, UTP_LOG_DEBUG, 1);
+        utp_context_set_option(n->utp, UTP_LOG_NORMAL, 1);
+        utp_context_set_option(n->utp, UTP_LOG_MTU, 1);
+        utp_context_set_option(n->utp, UTP_LOG_DEBUG, 1);
     }
 
-    return ctx;
+    return n;
 }
 
-void network_poll(utp_context *ctx)
+void network_poll(network *n)
 {
-    int fd = (intptr_t)utp_context_get_userdata(ctx);
-
     struct pollfd p[1];
 
-    p[0].fd = fd;
+    p[0].fd = n->fd;
     p[0].events = POLLIN;
 
     int ret = poll(p, lenof(p), 500);
@@ -158,7 +161,9 @@ void network_poll(utp_context *ctx)
 
 #ifdef __linux__
         if ((p[0].revents & POLLERR) == POLLERR) {
-            icmp_handler(ctx);
+            icmp_handler(n->utp);
+            dht_handle_icmp(handleICMP
+            // XXX: does dht support icmp?
         }
 #endif
 
@@ -167,10 +172,10 @@ void network_poll(utp_context *ctx)
                 struct sockaddr_storage src_addr;
                 socklen_t addrlen = sizeof(src_addr);
                 unsigned char socket_data[4096];
-                ssize_t len = recvfrom(fd, socket_data, sizeof(socket_data), MSG_DONTWAIT, (struct sockaddr *)&src_addr, &addrlen);
+                ssize_t len = recvfrom(n->fd, socket_data, sizeof(socket_data), MSG_DONTWAIT, (struct sockaddr *)&src_addr, &addrlen);
                 if (len < 0) {
                     if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        utp_issue_deferred_acks(ctx);
+                        utp_issue_deferred_acks(n->utp);
                         break;
                     }
                     pdie("recv");
@@ -184,23 +189,26 @@ void network_poll(utp_context *ctx)
                     hexdump(socket_data, len);
                 }
 
-                if (!utp_process_udp(ctx, socket_data, len, (struct sockaddr *)&src_addr, addrlen)) {
-                    debug("UDP packet not handled by UTP.  Ignoring.\n");
+                if (utp_process_udp(n->utp, socket_data, len, (struct sockaddr *)&src_addr, addrlen)) {
+                    continue;
+                }
+                if (dht_process_udp(n->dht, socket_data, len, (struct sockaddr *)&src_addr, addrlen)) {
+                    continue;
                 }
             }
         }
     }
 
-    utp_check_timeouts(ctx);
+    utp_check_timeouts(n->utp);
 }
 
-int network_loop(utp_context *ctx)
+int network_loop(network *n)
 {
     while (!quit_flag) {
-        network_poll(ctx);
+        network_poll(n);
     }
 
-    utp_context_stats *stats = utp_get_context_stats(ctx);
+    utp_context_stats *stats = utp_get_context_stats(n->utp);
 
     if (stats) {
         debug("           Bucket size:    <23    <373    <723    <1400    >1400\n");
@@ -212,8 +220,10 @@ int network_loop(utp_context *ctx)
         debug("utp_get_context_stats() failed?\n");
     }
 
-    debug("Destorying context\n");
-    utp_destroy(ctx);
+    debug("Destroying network context\n");
+    utp_destroy(n->utp);
+    dht_destroy(n->dht);
+    close(n->fd);
 
     return exit_code;
 }

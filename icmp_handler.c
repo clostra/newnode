@@ -5,10 +5,11 @@
 
 #include "log.h"
 #include "utp.h"
+#include "dht.h"
 
 
 #ifdef __linux__
-void icmp_handler(utp_context *ctx)
+void icmp_handler(network *n)
 {
     for (;;) {
         unsigned char vec_buf[4096]
@@ -34,6 +35,8 @@ void icmp_handler(utp_context *ctx)
             }
             pdie("recvmsg");
         }
+
+        dht_handle_icmp(n->dht, &msg, (struct sockaddr *)&remote, sizeof(remote));
 
         for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
             if (cmsg->cmsg_type != IP_RECVERR) {
@@ -110,10 +113,10 @@ void icmp_handler(utp_context *ctx)
 
             if (e->ee_type == 3 && e->ee_code == 4) {
                 debug("ICMP type 3, code 4: Fragmentation error, discovered MTU %d\n", e->ee_info);
-                utp_process_icmp_fragmentation(ctx, vec_buf, len, (struct sockaddr *)&remote, sizeof(remote), e->ee_info);
+                utp_process_icmp_fragmentation(n->utp, vec_buf, len, (struct sockaddr *)&remote, sizeof(remote), e->ee_info);
             } else {
                 debug("ICMP type %d, code %d\n", e->ee_type, e->ee_code);
-                utp_process_icmp_error(ctx, vec_buf, len, (struct sockaddr *)&remote, sizeof(remote));
+                utp_process_icmp_error(n->utp, vec_buf, len, (struct sockaddr *)&remote, sizeof(remote));
             }
         }
     }
