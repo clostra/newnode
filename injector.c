@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
 #include <sys/queue.h>
+
+#include <sodium.h>
 
 #include "log.h"
 #include "utp.h"
@@ -13,13 +16,13 @@
 typedef struct {
     size_t total;
     size_t len;
-    char buf[];
+    uint8_t buf[];
 } buffer;
 
 struct write_buffer {
     size_t len;
-    char *buf;
-    char *p;
+    uint8_t *buf;
+    uint8_t *p;
     STAILQ_ENTRY(write_buffer) next;
 };
 typedef struct write_buffer write_buffer;
@@ -28,9 +31,11 @@ typedef STAILQ_HEAD(buffer_stailq, write_buffer) buffer_stailq;
 typedef struct {
     buffer *read_buffer;
     buffer_stailq *write_buffers;
+    // XXX: temp
+    bool writing;
 } socket_buffers;
 
-write_buffer* write_buffer_alloc(char *data, size_t len)
+write_buffer* write_buffer_alloc(uint8_t *data, size_t len)
 {
     write_buffer *b = alloc(write_buffer);
     b->len = len;
@@ -52,6 +57,8 @@ socket_buffers* socket_buffers_alloc()
     sb->read_buffer = calloc(1, sizeof(buffer) + total);
     sb->read_buffer->total = total;
     sb->read_buffer->len = 0;
+    // XXX: temp
+    sb->writing = false;
     STAILQ_INIT(sb->write_buffers);
     return sb;
 }
@@ -99,29 +106,71 @@ void write_data(utp_socket *s)
     */
 }
 
-char* fetch_url(const char *url)
+typedef bool (^http_stream_callback)(uint8_t *data, size_t length, size_t total_length);
+
+void fetch_url(const char *url, http_stream_callback stream)
 {
-    return "TODO: wget url";
+    if (!stream((uint8_t*)"TODO", 4, 8)) {
+        return;
+    }
+    if (!stream((uint8_t*)"TODO", 4, 8)) {
+        return;
+    }
 }
 
-char* hash(const char *data)
-{
-    return "TODO: hash(data)";
-}
-
-void dht_put(const char *key, const char *value)
+void dht_put(const uint8_t *key, const uint8_t *value)
 {
     // TODO
     //dht->Put(g_public_key, g_secret_key, key, value);
+}
+
+void* memdup(const void *m, size_t length)
+{
+    void *r = malloc(length);
+    memcpy(r, m, length);
+    return r;
 }
 
 void process_line(socket_buffers *sb, char *line)
 {
     printf("'%s'\n", line);
     char *url = line;
-    char *data = fetch_url(url);
-    STAILQ_INSERT_TAIL(sb->write_buffers, write_buffer_alloc(data, strlen(data)), next);
-    dht_put(hash(url), hash(data));
+
+    // XXX: currently we don't handle a backlog of requests, so multiple responses will interleave
+    assert(!sb->writing);
+    sb->writing = true;
+
+    __block struct {
+        uint8_t url_hash[crypto_generichash_BYTES];
+        crypto_generichash_state content_state;
+    } hash_state;
+
+    crypto_generichash(hash_state.url_hash, sizeof(hash_state.url_hash), (const uint8_t*)url, strlen(url), NULL, 0);
+    crypto_generichash_init(&hash_state.content_state, NULL, 0, crypto_generichash_BYTES);
+
+    __block size_t progress = 0;
+    fetch_url(url, ^bool (uint8_t *data, size_t length, size_t total_length) {
+        if (!progress) {
+            union {
+                uint8_t prefix[4];
+                uint32_t iprefix;
+            } prefix;
+            prefix.iprefix = (uint32_t)total_length;
+            uint8_t *p = memdup(&prefix, sizeof(prefix));
+            STAILQ_INSERT_TAIL(sb->write_buffers, write_buffer_alloc(p, sizeof(prefix)), next);
+        }
+        crypto_generichash_update(&hash_state.content_state, data, length);
+        data = memdup(data, length);
+        STAILQ_INSERT_TAIL(sb->write_buffers, write_buffer_alloc(data, length), next);
+        progress += length;
+        if (progress == total_length) {
+            uint8_t content_hash[crypto_generichash_BYTES];
+            crypto_generichash_final(&hash_state.content_state, content_hash, sizeof(content_hash));
+            dht_put(hash_state.url_hash, content_hash);
+            sb->writing = false;
+        }
+        return true;
+    });
 }
 
 uint64 callback_on_read(utp_callback_arguments *a)
@@ -138,9 +187,9 @@ uint64 callback_on_read(utp_callback_arguments *a)
         b->len += copy;
         left -= copy;
 
-        char *line_start = b->buf;
+        uint8_t *line_start = b->buf;
         while (line_start < b->buf + b->total) {
-            char *line_end = (char*)memchr((void*)line_start, '\n', b->len - (line_start - b->buf));
+            uint8_t *line_end = (uint8_t*)memchr((void*)line_start, '\n', b->len - (line_start - b->buf));
             if (!line_end) {
                 if (b->len == b->total) {
                     debug("Line length exceeded %llu\n", b->total);
@@ -150,7 +199,7 @@ uint64 callback_on_read(utp_callback_arguments *a)
                 break;
             }
             *line_end = 0;
-            process_line(sb, line_start);
+            process_line(sb, (char*)line_start);
             line_start = line_end + 1;
         }
         b->len -= (line_start - b->buf);
