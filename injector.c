@@ -282,11 +282,11 @@ int main(int argc, char *argv[])
         usage(argv[0]);
     }
 
-    utp_context *ctx = network_setup(address, port);
+    network *n = network_setup(address, port);
 
-    utp_set_callback(ctx, UTP_ON_ACCEPT, &callback_on_accept);
-    utp_set_callback(ctx, UTP_ON_STATE_CHANGE, &callback_on_state_change);
-    utp_set_callback(ctx, UTP_ON_READ, &callback_on_read);
+    utp_set_callback(n->utp, UTP_ON_ACCEPT, &callback_on_accept);
+    utp_set_callback(n->utp, UTP_ON_STATE_CHANGE, &callback_on_state_change);
+    utp_set_callback(n->utp, UTP_ON_READ, &callback_on_read);
 
-    return network_loop(ctx);
+    return network_loop(n);
 }
