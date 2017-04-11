@@ -50,6 +50,12 @@ uint64 callback_log(utp_callback_arguments *a)
     return 0;
 }
 
+uint64 callback_on_error(utp_callback_arguments *a)
+{
+    fprintf(stderr, "Error: %s\n", utp_error_code_names[a->error_code]);
+    return 0;
+}
+
 void handler(int number)
 {
     debug("caught signal\n");
@@ -111,12 +117,12 @@ utp_context* network_setup(char *address, char *port)
     utp_set_callback(ctx, UTP_LOG, &callback_log);
     utp_set_callback(ctx, UTP_SENDTO, &callback_sendto);
     utp_set_callback(ctx, UTP_ON_FIREWALL, &callback_on_firewall);
+    utp_set_callback(ctx, UTP_ON_ERROR, &callback_on_error);
 
     /*
     utp_set_callback(ctx, UTP_ON_ACCEPT, &callback_on_accept);
     utp_set_callback(ctx, UTP_ON_STATE_CHANGE, &callback_on_state_change);
     utp_set_callback(ctx, UTP_ON_READ, &callback_on_read);
-    utp_set_callback(ctx, UTP_ON_ERROR, &callback_on_error);
     */
 
     if (o_debug >= 2) {
