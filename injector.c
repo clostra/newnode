@@ -30,7 +30,7 @@ typedef STAILQ_HEAD(buffer_stailq, write_buffer) buffer_stailq;
 
 typedef struct {
     buffer *read_buffer;
-    buffer_stailq *write_buffers;
+    buffer_stailq write_buffers;
     // XXX: temp
     bool writing;
 } socket_buffers;
@@ -59,51 +59,38 @@ socket_buffers* socket_buffers_alloc()
     sb->read_buffer->len = 0;
     // XXX: temp
     sb->writing = false;
-    STAILQ_INIT(sb->write_buffers);
+    STAILQ_INIT(&sb->write_buffers);
     return sb;
 }
 
 void socket_buffers_free(socket_buffers *sb)
 {
     free(sb->read_buffer);
-    write_buffer *n1 = STAILQ_FIRST(sb->write_buffers);
+    write_buffer *n1 = STAILQ_FIRST(&sb->write_buffers);
     while (n1) {
         write_buffer *n2 = STAILQ_NEXT(n1, next);
         write_buffer_free(n1);
         n1 = n2;
     }
-    STAILQ_INIT(sb->write_buffers);
     free(sb);
 }
 
 void write_data(utp_socket *s)
 {
     socket_buffers *sb = utp_get_userdata(s);
-    // TODO: drain sb->write_buffers
-    /*
-    while (p < buf + buf_len) {
-        size_t sent = utp_write(s, p, buf + buf_len - p);
-        if (sent == 0) {
-            debug("socket no longer writable\n");
-            return;
-        }
-
-        p += sent;
-
-        if (p == buf + buf_len) {
-            debug("wrote %zd bytes; buffer now empty\n", sent);
-            p = buf;
-            buf_len = 0;
-        } else {
-            debug("wrote %zd bytes; %d bytes left in buffer\n", sent, buf + buf_len - p);
-        }
+    while (!STAILQ_EMPTY(&sb->write_buffers)) {
+         write_buffer *b = STAILQ_FIRST(&sb->write_buffers);
+         size_t sent = utp_write(s, b->p, b->buf + b->len - b->p);
+         if (!sent) {
+             debug("socket no longer writable\n");
+             return;
+         }
+         b->p += sent;
+         if (b->p == b->buf + b->len) {
+             STAILQ_REMOVE_HEAD(&sb->write_buffers, next);
+             write_buffer_free(b);
+         }
     }
-
-    if (buf_len == 0 && eof_flag) {
-        debug("Buffer empty, and previously found EOF.  Closing socket\n");
-        utp_close(s);
-    }
-    */
 }
 
 typedef bool (^http_stream_callback)(uint8_t *data, size_t length, size_t total_length);
@@ -157,11 +144,11 @@ void process_line(socket_buffers *sb, char *line)
             } prefix;
             prefix.iprefix = (uint32_t)total_length;
             uint8_t *p = memdup(&prefix, sizeof(prefix));
-            STAILQ_INSERT_TAIL(sb->write_buffers, write_buffer_alloc(p, sizeof(prefix)), next);
+            STAILQ_INSERT_TAIL(&sb->write_buffers, write_buffer_alloc(p, sizeof(prefix)), next);
         }
         crypto_generichash_update(&hash_state.content_state, data, length);
         data = memdup(data, length);
-        STAILQ_INSERT_TAIL(sb->write_buffers, write_buffer_alloc(data, length), next);
+        STAILQ_INSERT_TAIL(&sb->write_buffers, write_buffer_alloc(data, length), next);
         progress += length;
         if (progress == total_length) {
             uint8_t content_hash[crypto_generichash_BYTES];
