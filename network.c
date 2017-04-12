@@ -200,6 +200,7 @@ void network_poll(network *n)
     }
 
     utp_check_timeouts(n->utp);
+    dht_tick(n->dht);
 }
 
 int network_loop(network *n)

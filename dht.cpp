@@ -135,25 +135,13 @@ dht* dht_setup(int fd)
 
     d->idht->Enable(true, 8000);
 
-    // the DHT timer calls the tick function on the DHT to keep it alive
-    // XXX: TODO
-    /*
-    m_dht_timer.expires_from_now(std::chrono::seconds(1));
-    m_dht_timer.async_wait(std::bind(&dht_session::on_dht_timer, this, _1));
-    */
-
     return d;
 }
 
-// XXX: TODO
-/*
-void dht_session::on_dht_timer(error_code const& ec)
+void dht_tick(dht *d)
 {
-    dht->Tick();
-    dht_timer.expires_from_now(std::chrono::seconds(1));
-    dht_timer.async_wait(std::bind(&dht_session::on_dht_timer, this, _1));
+    d->idht->Tick();
 }
-*/
 
 bool dht_process_udp(dht *d, const byte *buffer, size_t len, const struct sockaddr *to, socklen_t tolen)
 {
@@ -171,7 +159,9 @@ void add_nodes_cb(void *ctx, const byte *info_hash, const byte *peers, uint num_
 {
     add_nodes_callblock cb = (add_nodes_callblock)ctx;
     cb(peers, num_peers);
-    Block_release(cb);
+    if (!peers) {
+        Block_release(cb);
+    }
 }
 
 void dht_announce(dht *d, const byte *info_hash, add_nodes_callblock cb)
