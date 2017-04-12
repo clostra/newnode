@@ -174,6 +174,12 @@ void add_nodes_cb(void *ctx, const byte *info_hash, const byte *peers, uint num_
     Block_release(cb);
 }
 
+void dht_announce(dht *d, const byte *info_hash, add_nodes_callblock cb)
+{
+    cb = Block_copy(cb);
+    d->idht->AnnounceInfoHash(info_hash, add_nodes_cb, NULL, NULL, cb, 0);
+}
+
 void dht_get_peers(dht *d, const byte *info_hash, add_nodes_callblock cb)
 {
     cb = Block_copy(cb);

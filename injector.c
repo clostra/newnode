@@ -288,5 +288,11 @@ int main(int argc, char *argv[])
     utp_set_callback(n->utp, UTP_ON_STATE_CHANGE, &callback_on_state_change);
     utp_set_callback(n->utp, UTP_ON_READ, &callback_on_read);
 
+    const byte injector_swarm[20] = "\xf0\x1c\xe5\xfc\xaa\xec\xe2Vt:\xe3\x90j\x17M\xe2\x15\xf5j\xb3";
+    // TODO: periodically re-announce
+    dht_announce(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
+        printf("announce complete\n");
+    });
+
     return network_loop(n);
 }
