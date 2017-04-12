@@ -4,7 +4,8 @@ cd ..
 
 cd libbtdht
 bjam toolset=clang cxxflags="-std=c++14"
-cp bin/clang-darwin-4.2.1/debug/link-static/libbtdht.a .
+# XXX: how do you specify the output dir for bjam?
+cp `find bin -name libbtdht.a` .
 cd ..
 
 FLAGS="-g -O3 -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow \
