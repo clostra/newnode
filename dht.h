@@ -7,6 +7,12 @@ extern "C" {
 
 #include <Block.h>
 
+#ifdef __linux__
+#   include <wchar.h>
+#endif // __linux__
+
+#include <utypes.h> // byte
+
 typedef struct dht dht;
 
 typedef void (^add_nodes_callblock)(const byte *peers, uint num_peers);

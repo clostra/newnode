@@ -1,18 +1,25 @@
+#include <signal.h>
+
 #ifdef __linux__
 #include <linux/errqueue.h>
 #include <netinet/ip_icmp.h>
+#include <string.h>
 #endif
+
+#include <errno.h>
+#include <stdio.h>
 
 #include "log.h"
 #include "utp.h"
 #include "dht.h"
+#include "network.h"
 
 
 #ifdef __linux__
 void icmp_handler(network *n)
 {
     for (;;) {
-        unsigned char vec_buf[4096]
+        unsigned char vec_buf[4096];
         unsigned char ancillary_buf[4096];
         struct iovec iov = { vec_buf, sizeof(vec_buf) };
         struct sockaddr_in remote;
@@ -27,7 +34,7 @@ void icmp_handler(network *n)
         msg.msg_control = ancillary_buf;
         msg.msg_controllen = sizeof(ancillary_buf);
 
-        ssize_t len = recvmsg(fd, &msg, MSG_ERRQUEUE | MSG_DONTWAIT);
+        ssize_t len = recvmsg(n->fd, &msg, MSG_ERRQUEUE | MSG_DONTWAIT);
 
         if (len < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -36,7 +43,7 @@ void icmp_handler(network *n)
             pdie("recvmsg");
         }
 
-        dht_handle_icmp(n->dht, &msg, (struct sockaddr *)&remote, sizeof(remote));
+        //dht_handle_icmp(n->dht, &msg, (struct sockaddr *)&remote, sizeof(remote));
 
         for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
             if (cmsg->cmsg_type != IP_RECVERR) {
