@@ -2,6 +2,15 @@ cd libutp
 make
 cd ..
 
+cd libbtdht/btutils
+# XXX: how do you specify the output dir for bjam?
+bjam toolset=clang cxxflags="-std=c++14"
+cp `find bin -name libbtutils.a` .
+cd ..
+bjam toolset=clang cxxflags="-std=c++14"
+cp `find bin -name libbtdht.a` .
+cd ..
+
 cd libbtdht
 bjam toolset=clang cxxflags="-std=c++14"
 # XXX: how do you specify the output dir for bjam?
