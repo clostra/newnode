@@ -13,11 +13,9 @@
 #include <poll.h>
 #include <netdb.h>
 #include <signal.h>
-#include <utp_types.h>
 
 #include "network.h"
 #include "log.h"
-#include "dht.h"
 #include "icmp_handler.h"
 
 int exit_code;
