@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+#include <Block.h>
+
 typedef struct dht dht;
 
 typedef void (^add_nodes_callblock)(const byte *peers, uint num_peers);
