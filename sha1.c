@@ -226,7 +226,7 @@ void SHA1Final(unsigned char digest[20], SHA1_CTX *context)
 }
 
 #ifndef __APPLE__
-void SHA1(unsigned char *hash_out, unsigned char const *str, int len)
+void SHA1(unsigned char *hash_out, unsigned char const *str, unsigned int len)
 {
     SHA1_CTX ctx;
     SHA1Init(&ctx);

@@ -43,7 +43,7 @@ void icmp_handler(network *n)
             pdie("recvmsg");
         }
 
-        dht_process_icmp(n->dht, &msg, sizeof(msg), (struct sockaddr *)&remote, sizeof(remote));
+        dht_process_icmp(n->dht, (const byte*) &msg, sizeof(msg), (struct sockaddr *)&remote, sizeof(remote));
 
         for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
             if (cmsg->cmsg_type != IP_RECVERR) {
