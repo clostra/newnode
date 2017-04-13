@@ -11,6 +11,7 @@
 #include <udp_utils.h>
 
 #include "dht.h"
+#include "sha1.h"
 
 
 struct udp_socket : UDPSocketInterface
@@ -80,13 +81,11 @@ void ed25519_sign(uint8_t *signature, const uint8_t *message, size_t message_len
     crypto_sign_detached(signature, NULL, message, message_len, key);
 }
 
-// XXX: TODO: other platforms
-#import <CommonCrypto/CommonDigest.h>
 sha1_hash sha1(const byte* buf, int len)
 {
-    uint8_t digest[CC_SHA1_DIGEST_LENGTH];
-    CC_SHA1(buf, len, digest);
-    return sha1_hash(buf);
+    uint8_t digest[20];
+    SHA1(digest, buf, len);
+    return sha1_hash(digest);
 }
 
 struct dht {
@@ -174,6 +173,41 @@ void dht_get_peers(dht *d, const byte *info_hash, add_nodes_callblock cb)
 {
     cb = Block_copy(cb);
     d->idht->AnnounceInfoHash(info_hash, add_nodes_cb, NULL, NULL, cb, IDht::announce_only_get);
+}
+
+typedef int (^put_callblock)(std::vector<char>& buffer, int64& seq, SockAddr src);
+
+typedef struct {
+    put_callblock put_cb;
+    put_complete_callblock put_complete_cb;
+} put_context;
+
+int put_cb(void *ctx, std::vector<char>& buffer, int64& seq, SockAddr src)
+{
+    put_context *p = (put_context*)ctx;
+    int r = p->put_cb(buffer, seq, src);
+    Block_release(p->put_cb);
+    return r;
+}
+
+void put_complete_cb(void *ctx)
+{
+    put_context *p = (put_context*)ctx;
+    p->put_complete_cb();
+    Block_release(p->put_complete_cb);
+    free(p);
+}
+
+void dht_put(dht *d, const byte *pkey, const byte *skey, const char *v, int64 seq, put_complete_callblock cb)
+{
+    put_context *p = (put_context *)malloc(sizeof(put_context));
+    p->put_cb = ^int (std::vector<char>& buffer, int64& found_seq, SockAddr src) {
+        buffer.assign(v, v + strlen(v));
+        return 0;
+    };
+    p->put_cb = Block_copy(p->put_cb);
+    p->put_complete_cb = Block_copy(cb);
+    d->idht->Put(pkey, skey, put_cb, put_complete_cb, NULL, p, 0, seq);
 }
 
 void dht_destroy(dht *d)

@@ -105,10 +105,14 @@ void fetch_url(const char *url, http_stream_callback stream)
     }
 }
 
-void dht_put(const uint8_t *key, const uint8_t *value)
+void dht_put_value(const uint8_t *key, const uint8_t *value)
 {
     // TODO
-    //dht->Put(g_public_key, g_secret_key, key, value);
+    /*
+    dht_put(n->dht, g_public_key, g_secret_key, value_str, 0, ^{
+        printf("put complete\n");
+    });
+    */
 }
 
 void* memdup(const void *m, size_t length)
@@ -149,7 +153,7 @@ void process_line(socket_buffers *sb, char *line)
         if (progress == total_length) {
             uint8_t content_hash[crypto_generichash_BYTES];
             crypto_generichash_final(&hash_state.content_state, content_hash, sizeof(content_hash));
-            dht_put(hash_state.url_hash, content_hash);
+            dht_put_value(hash_state.url_hash, content_hash);
             sb->writing = false;
         }
         return true;

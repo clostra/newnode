@@ -22,7 +22,7 @@ if [ $? -eq 0 ]; then
 fi
 
 clang $CPPFLAGS -c dht.cpp -I ./libbtdht/src -I ./libbtdht/btutils/src 
-clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c dht.o \
+clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c sha1.c dht.o \
   -I ./libutp libutp/libutp.a \
   ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
   `pkg-config --cflags libsodium` `pkg-config --libs libsodium` \
