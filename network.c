@@ -110,12 +110,10 @@ network* network_setup(char *address, char *port)
         pdie("getsockname");
     }
 
-#ifndef __linux__
     char host[NI_MAXHOST];
     char serv[NI_MAXSERV];
-    getnameinfo((struct sockaddr *)&sin, sin.ss_len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST);
+    getnameinfo((struct sockaddr *)&sin, len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST);
     printf("listening on %s:%s\n", host, serv);
-#endif
 
     n->dht = dht_setup(n->fd);
 
@@ -185,12 +183,11 @@ void network_poll(network *n)
                     pdie("recv");
                 }
 
-#ifndef __linux__
                 char host[NI_MAXHOST];
                 char serv[NI_MAXSERV];
-                getnameinfo((struct sockaddr *)&src_addr, src_addr.ss_len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST);
+                getnameinfo((struct sockaddr *)&src_addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST);
                 debug("Received %zd byte UDP packet from %s:%\n", len, host, serv);
-#endif
+
                 if (o_debug >= 3) {
                     hexdump(socket_data, len);
                 }
