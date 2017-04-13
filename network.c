@@ -164,8 +164,6 @@ void network_poll(network *n)
 #ifdef __linux__
         if ((p[0].revents & POLLERR) == POLLERR) {
             icmp_handler(n);
-            //dht_handle_icmp(handleICMP
-            // XXX: does dht support icmp?
         }
 #endif
 
