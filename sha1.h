@@ -32,7 +32,6 @@ void SHA1Update(SHA1_CTX *context, const unsigned char *data, uint32_t len);
 
 void SHA1Final(unsigned char digest[20], SHA1_CTX *context);
 
-// TODO: Why use different implementations on different platforms?
 #ifdef __APPLE__
 #define SHA1(digest, buf, len) CC_SHA1(buf, len, digest)
 #else

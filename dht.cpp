@@ -9,8 +9,6 @@
 
 #include <bencoding.h>
 #include <udp_utils.h>
-#include <stdio.h>
-#include <smart_ptr.h>
 
 #include "dht.h"
 #include "sha1.h"
