@@ -1,6 +1,10 @@
 #ifndef __NETWORK_H__
 #define __NETWORK_H__
 
+#include <event2/event.h>
+#include <event2/event_struct.h>
+#include <event2/dns.h>
+
 #include "utp.h"
 #include "dht.h"
 
@@ -10,8 +14,15 @@
 #define alloc(type) calloc(1, sizeof(type))
 
 
+typedef struct event_base event_base;
+typedef struct evdns_base evdns_base;
+typedef struct event event;
+
 typedef struct {
     int fd;
+    event_base *evbase;
+    evdns_base *evdns;
+    event udp_event;
     utp_context *utp;
     dht *dht;
 } network;

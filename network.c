@@ -14,12 +14,14 @@
 #include <netdb.h>
 #include <signal.h>
 
+#include <event2/thread.h>
+#include <event2/event-config.h>
+
 #include "network.h"
+#include "timer.h"
 #include "log.h"
 #include "icmp_handler.h"
 
-int exit_code;
-int quit_flag;
 
 uint64 callback_on_firewall(utp_callback_arguments *a)
 {
@@ -55,19 +57,49 @@ uint64 callback_on_error(utp_callback_arguments *a)
     return 0;
 }
 
-void handler(int number)
+void udp_read(evutil_socket_t fd, short events, void *arg)
 {
-    debug("caught signal\n");
-    quit_flag = 1;
-    exit_code++;
+    network *n = (network*)arg;
+
+#ifdef __linux__
+    // ugg, libevent doesn't tell us about POLLERR
+    // https://github.com/libevent/libevent/issues/495
+    icmp_handler(n);
+#endif
+
+    for (;;) {
+        struct sockaddr_storage src_addr;
+        socklen_t addrlen = sizeof(src_addr);
+        unsigned char buf[4096];
+        ssize_t len = recvfrom(n->fd, buf, sizeof(buf), MSG_DONTWAIT, (struct sockaddr *)&src_addr, &addrlen);
+        if (len < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                utp_issue_deferred_acks(n->utp);
+                break;
+            }
+            pdie("recv");
+        }
+
+        char host[NI_MAXHOST];
+        char serv[NI_MAXSERV];
+        getnameinfo((struct sockaddr *)&src_addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST);
+        debug("Received %zd byte UDP packet from %s:%s\n", len, host, serv);
+
+        if (o_debug >= 3) {
+            hexdump(buf, len);
+        }
+
+        if (utp_process_udp(n->utp, buf, len, (struct sockaddr *)&src_addr, addrlen)) {
+            continue;
+        }
+        if (dht_process_udp(n->dht, buf, len, (struct sockaddr *)&src_addr, addrlen)) {
+            continue;
+        }
+    }
 }
 
 network* network_setup(char *address, char *port)
 {
-    struct sigaction sigIntHandler = {.sa_handler = handler, .sa_flags = 0};
-    sigemptyset(&sigIntHandler.sa_mask);
-    sigaction(SIGINT, &sigIntHandler, NULL);
-
     signal(SIGPIPE, SIG_IGN);
 
     struct addrinfo hints;
@@ -136,77 +168,55 @@ network* network_setup(char *address, char *port)
         utp_context_set_option(n->utp, UTP_LOG_DEBUG, 1);
     }
 
-    return n;
-}
-
-void network_poll(network *n)
-{
-    struct pollfd p[1];
-
-    p[0].fd = n->fd;
-    p[0].events = POLLIN;
-
-    int ret = poll(p, lenof(p), 500);
-    if (ret < 0) {
-        if (errno == EINTR) {
-            debug("poll() returned EINTR\n");
-        } else {
-            pdie("poll");
-        }
-    } else if (ret == 0) {
-        if (o_debug >= 3) {
-            debug("poll() timeout\n");
-        }
-    } else {
-
-#ifdef __linux__
-        if ((p[0].revents & POLLERR) == POLLERR) {
-            icmp_handler(n);
-        }
+#ifdef EVTHREAD_USE_PTHREADS_IMPLEMENTED
+    evthread_use_pthreads();
+#elif defined(EVTHREAD_USE_WINDOWS_THREADS_IMPLEMENTED)
+    evthread_use_windows_threads();
 #endif
 
-        if ((p[0].revents & POLLIN) == POLLIN) {
-            for (;;) {
-                struct sockaddr_storage src_addr;
-                socklen_t addrlen = sizeof(src_addr);
-                unsigned char socket_data[4096];
-                ssize_t len = recvfrom(n->fd, socket_data, sizeof(socket_data), MSG_DONTWAIT, (struct sockaddr *)&src_addr, &addrlen);
-                if (len < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        utp_issue_deferred_acks(n->utp);
-                        break;
-                    }
-                    pdie("recv");
-                }
-
-                char host[NI_MAXHOST];
-                char serv[NI_MAXSERV];
-                getnameinfo((struct sockaddr *)&src_addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST);
-                debug("Received %zd byte UDP packet from %s:%\n", len, host, serv);
-
-                if (o_debug >= 3) {
-                    hexdump(socket_data, len);
-                }
-
-                if (utp_process_udp(n->utp, socket_data, len, (struct sockaddr *)&src_addr, addrlen)) {
-                    continue;
-                }
-                if (dht_process_udp(n->dht, socket_data, len, (struct sockaddr *)&src_addr, addrlen)) {
-                    continue;
-                }
-            }
-        }
+    n->evbase = event_base_new();
+    if (!n->evbase) {
+        fprintf(stderr, "event_base_new failed\n");
+        return NULL;
     }
 
-    utp_check_timeouts(n->utp);
-    dht_tick(n->dht);
+#ifdef _DEBUG
+    event_enable_debug_mode();
+#endif
+
+    n->evdns = evdns_base_new(n->evbase, EVDNS_BASE_INITIALIZE_NAMESERVERS);
+    if (!n->evdns) {
+        fprintf(stderr, "evdns_base_new failed\n");
+        return NULL;
+    }
+
+    debug("libevent method: %s\n", event_base_get_method(n->evbase));
+
+    if (evthread_make_base_notifiable(n->evbase)) {
+        fprintf(stderr, "evthread_make_base_notifiable failed\n");
+        return NULL;
+    }
+
+    evutil_make_socket_closeonexec(n->fd);
+    evutil_make_socket_nonblocking(n->fd);
+
+    event_assign(&n->udp_event, n->evbase, n->fd, EV_READ|EV_PERSIST, udp_read, n);
+    if (event_add(&n->udp_event, NULL) < 0) {
+        fprintf(stderr, "event_add udp_read failed\n");
+        return NULL;
+    }
+
+    timer_repeating(n, 500, ^{
+        utp_check_timeouts(n->utp);
+        dht_tick(n->dht);
+    });
+
+    return n;
 }
 
 int network_loop(network *n)
 {
-    while (!quit_flag) {
-        network_poll(n);
-    }
+    event_base_dispatch(n->evbase);
 
     utp_context_stats *stats = utp_get_context_stats(n->utp);
 
@@ -225,5 +235,5 @@ int network_loop(network *n)
     dht_destroy(n->dht);
     close(n->fd);
 
-    return exit_code;
+    return 0;
 }
