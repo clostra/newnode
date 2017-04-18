@@ -26,7 +26,9 @@ void timer_cancel(timer *t)
     timer_free(t);
 }
 
-timer* timer_create(network *n, uint64_t timeout_ms, short events, callback cb)
+// NOTE: Had to add the dcdn_ prefix because `timer_create` is taken by posix:
+// http://man7.org/linux/man-pages/man2/timer_create.2.html
+timer* dcdn_timer_create(network *n, uint64_t timeout_ms, short events, callback cb)
 {
     struct timeval timeout;
     timeout.tv_sec = timeout_ms / 1000;
@@ -43,10 +45,10 @@ timer* timer_create(network *n, uint64_t timeout_ms, short events, callback cb)
 
 timer* timer_start(network *n, uint64_t timeout_ms, callback cb)
 {
-    return timer_create(n, timeout_ms, 0, cb);
+    return dcdn_timer_create(n, timeout_ms, 0, cb);
 }
 
 timer* timer_repeating(network *n, uint64_t timeout_ms, callback cb)
 {
-    return timer_create(n, timeout_ms, EV_PERSIST, cb);
+    return dcdn_timer_create(n, timeout_ms, EV_PERSIST, cb);
 }
