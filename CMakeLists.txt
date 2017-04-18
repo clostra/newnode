@@ -30,10 +30,20 @@ externalproject_add(libbtdht
     CONFIGURE_COMMAND ""
     PREFIX "libbtdht")
 
+externalproject_add(libevent
+    URL https://github.com/libevent/libevent/releases/download/release-2.1.8-stable/libevent-2.1.8-stable.tar.gz
+    BUILD_IN_SOURCE 1
+    BUILD_COMMAND ${MAKE}
+    UPDATE_COMMAND ""
+    INSTALL_COMMAND ""
+    CONFIGURE_COMMAND ./configure
+    PREFIX "libevent")
+
 ################################################################################
 set(UTP_DIR "${CMAKE_BINARY_DIR}/libutp/src/libutp")
 set(DHT_DIR "${CMAKE_BINARY_DIR}/libbtdht/src/libbtdht")
 set(UTIL_DIR "${DHT_DIR}/btutils")
+set(EVT_DIR "${CMAKE_BINARY_DIR}/libevent/src/libevent")
 set(CMAKE_C_COMPILER clang)
 set(CMAKE_CXX_COMPILER clang++)
 
@@ -50,6 +60,7 @@ include_directories(
     "${UTP_DIR}"
     "${DHT_DIR}/src"
     "${UTIL_DIR}/src"
+    "${EVT_DIR}/include"
     "${CMAKE_SOURCE_DIR}")
 
 file(GLOB sources
@@ -64,6 +75,9 @@ add_dependencies(dcdn libutp libbtdht)
 target_link_libraries(dcdn
     ${UTP_DIR}/libutp.a
     ${DHT_DIR}/obj-unicode-debug-O0/libutdht.so
+    ${EVT_DIR}/.libs/libevent.a
+    ${EVT_DIR}/.libs/libevent_pthreads.a
+    pthread
     BlocksRuntime
     sodium)
 
