@@ -4,9 +4,10 @@
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
-#include <sys/queue.h>
 
 #include <sodium.h>
+
+#include <event2/buffer.h>
 
 #include "log.h"
 #include "utp.h"
@@ -20,36 +21,14 @@ typedef struct {
     uint8_t buf[];
 } buffer;
 
-struct write_buffer {
-    size_t len;
-    uint8_t *buf;
-    uint8_t *p;
-    STAILQ_ENTRY(write_buffer) next;
-};
-typedef struct write_buffer write_buffer;
-typedef STAILQ_HEAD(buffer_stailq, write_buffer) buffer_stailq;
+typedef struct evbuffer evbuffer;
 
 typedef struct {
     buffer *read_buffer;
-    buffer_stailq write_buffers;
+    evbuffer *write_buffer;
     // XXX: temp
     bool writing;
 } socket_buffers;
-
-write_buffer* write_buffer_alloc(uint8_t *data, size_t len)
-{
-    write_buffer *b = alloc(write_buffer);
-    b->len = len;
-    b->buf = data;
-    b->p = b->buf;
-    return b;
-}
-
-void write_buffer_free(write_buffer *wb)
-{
-    free(wb->buf);
-    free(wb);
-}
 
 socket_buffers* socket_buffers_alloc()
 {
@@ -60,18 +39,15 @@ socket_buffers* socket_buffers_alloc()
     sb->read_buffer->len = 0;
     // XXX: temp
     sb->writing = false;
-    STAILQ_INIT(&sb->write_buffers);
+    sb->write_buffer = evbuffer_new();
     return sb;
 }
 
 void socket_buffers_free(socket_buffers *sb)
 {
     free(sb->read_buffer);
-    write_buffer *n1 = STAILQ_FIRST(&sb->write_buffers);
-    while (n1) {
-        write_buffer *n2 = STAILQ_NEXT(n1, next);
-        write_buffer_free(n1);
-        n1 = n2;
+    if (sb->write_buffer) {
+        evbuffer_free(sb->write_buffer);
     }
     free(sb);
 }
@@ -79,18 +55,13 @@ void socket_buffers_free(socket_buffers *sb)
 void write_data(utp_socket *s)
 {
     socket_buffers *sb = utp_get_userdata(s);
-    while (!STAILQ_EMPTY(&sb->write_buffers)) {
-         write_buffer *b = STAILQ_FIRST(&sb->write_buffers);
-         size_t sent = utp_write(s, b->p, b->buf + b->len - b->p);
-         if (!sent) {
-             debug("socket no longer writable\n");
-             return;
-         }
-         b->p += sent;
-         if (b->p == b->buf + b->len) {
-             STAILQ_REMOVE_HEAD(&sb->write_buffers, next);
-             write_buffer_free(b);
-         }
+    while (evbuffer_get_length(sb->write_buffer)) {
+        // the libutp interface for write is Very Broken
+        ssize_t len = MIN(1500, evbuffer_get_length(sb->write_buffer));
+        unsigned char *buf = evbuffer_pullup(sb->write_buffer, len);
+        ssize_t r = utp_write(s, buf, len);
+        assert(r == len);
+        evbuffer_drain(sb->write_buffer, len);
     }
 }
 
@@ -144,12 +115,10 @@ void process_line(socket_buffers *sb, char *line)
     fetch_url(url, ^bool (uint8_t *data, size_t length, size_t total_length) {
         if (!progress) {
             uint32_t iprefix = (uint32_t)total_length;
-            uint8_t *p = memdup(&iprefix, sizeof(iprefix));
-            STAILQ_INSERT_TAIL(&sb->write_buffers, write_buffer_alloc(p, sizeof(iprefix)), next);
+            evbuffer_add(sb->write_buffer, &iprefix, sizeof(iprefix));
         }
         crypto_generichash_update(&hash_state.content_state, data, length);
-        data = memdup(data, length);
-        STAILQ_INSERT_TAIL(&sb->write_buffers, write_buffer_alloc(data, length), next);
+        evbuffer_add(sb->write_buffer, data, length);
         progress += length;
         if (progress == total_length) {
             uint8_t content_hash[crypto_generichash_BYTES];
