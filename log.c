@@ -6,7 +6,7 @@
 
 int o_debug = 0;
 
-void die(char *fmt, ...)
+void die(const char *fmt, ...)
 {
     va_list ap;
     fflush(stdout);
@@ -16,7 +16,7 @@ void die(char *fmt, ...)
     exit(1);
 }
 
-void debug(char *fmt, ...)
+void debug(const char *fmt, ...)
 {
     va_list ap;
     if (o_debug) {
@@ -29,7 +29,7 @@ void debug(char *fmt, ...)
     }
 }
 
-void pdie(char *err)
+void pdie(const char *err)
 {
     debug("errno %d\n", errno);
     fflush(stdout);
