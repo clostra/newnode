@@ -53,8 +53,8 @@ set(CMAKE_CXX_COMPILER clang++)
 ################################################################################
 project (dcdn)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fblocks")
-set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -Wall -fblocks -std=c++14")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fblocks -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -Wall -fblocks -std=c++14 -Werror")
 
 include_directories(
     "${UTP_DIR}"
@@ -70,7 +70,7 @@ file(GLOB sources
 
 add_executable(dcdn ${sources})
 
-add_dependencies(dcdn libutp libbtdht)
+add_dependencies(dcdn libutp libbtdht libevent)
 
 target_link_libraries(dcdn
     ${UTP_DIR}/libutp.a
