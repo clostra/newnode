@@ -24,6 +24,10 @@ CPPFLAGS="$FLAGS -std=c++14"
 
 echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
 
+if [ "$(expr substr $(uname -s) 1 5)" = "Linux" ]; then
+    CFLAGS="$CFLAGS -lstdc++ -lm -lBlocksRuntime"
+fi
+
 clang $CPPFLAGS -c dht.cpp -I ./libbtdht/src -I ./libbtdht/btutils/src
 clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c sha1.c timer.c dht.o \
   -I ./libutp libutp/libutp.a \
