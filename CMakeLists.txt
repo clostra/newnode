@@ -4,16 +4,8 @@ set(CMAKE_BUILD_TYPE Debug)
 include(ExternalProject)
 ################################################################################
 
-if(NOT UTP_REPO)
-    set(UTP_REPO "https://github.com/clostra/libutp")
-endif()
-
-if(NOT DHT_REPO)
-    set(DHT_REPO "https://github.com/clostra/libbtdht")
-endif()
-
 externalproject_add(libutp
-    GIT_REPOSITORY ${UTP_REPO}
+    URL "${CMAKE_SOURCE_DIR}/libutp"
     BUILD_COMMAND ${MAKE}
     BUILD_IN_SOURCE 1
     UPDATE_COMMAND ""
@@ -22,7 +14,7 @@ externalproject_add(libutp
     PREFIX "libutp")
 
 externalproject_add(libbtdht
-    GIT_REPOSITORY ${DHT_REPO}
+    URL "${CMAKE_SOURCE_DIR}/libbtdht"
     BUILD_COMMAND make -f makefile.gcc product
     BUILD_IN_SOURCE 1
     UPDATE_COMMAND ""
