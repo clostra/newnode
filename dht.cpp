@@ -10,8 +10,10 @@
 #include <bencoding.h>
 #include <udp_utils.h>
 
+extern "C" {
 #include "dht.h"
 #include "sha1.h"
+}
 
 
 struct udp_socket : UDPSocketInterface
