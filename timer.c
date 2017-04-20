@@ -33,12 +33,12 @@ timer* timer_new(network *n, uint64_t timeout_ms, short events, callback cb)
     timeout.tv_usec = (timeout_ms % 1000) * 1000;
     timer *t = alloc(timer);
     t->cb = Block_copy(cb);
-    if (!event_assign(&t->event, n->evbase, -1, events, evtimer_callback, t)) {
-        evtimer_add(&t->event, &timeout);
-        return t;
+    if (event_assign(&t->event, n->evbase, -1, events, evtimer_callback, t)) {
+        timer_free(t);
+        return NULL;
     }
-    timer_free(t);
-    return NULL;
+    evtimer_add(&t->event, &timeout);
+    return t;
 }
 
 timer* timer_start(network *n, uint64_t timeout_ms, callback cb)
