@@ -4,16 +4,8 @@ set(CMAKE_BUILD_TYPE Debug)
 include(ExternalProject)
 ################################################################################
 
-if(NOT UTP_REPO)
-    set(UTP_REPO "https://github.com/clostra/libutp")
-endif()
-
-if(NOT DHT_REPO)
-    set(DHT_REPO "https://github.com/clostra/libbtdht")
-endif()
-
 externalproject_add(libutp
-    GIT_REPOSITORY ${UTP_REPO}
+    URL "${CMAKE_SOURCE_DIR}/libutp"
     BUILD_COMMAND ${MAKE}
     BUILD_IN_SOURCE 1
     UPDATE_COMMAND ""
@@ -22,7 +14,7 @@ externalproject_add(libutp
     PREFIX "libutp")
 
 externalproject_add(libbtdht
-    GIT_REPOSITORY ${DHT_REPO}
+    URL "${CMAKE_SOURCE_DIR}/libbtdht"
     BUILD_COMMAND make -f makefile.gcc product
     BUILD_IN_SOURCE 1
     UPDATE_COMMAND ""
@@ -53,8 +45,8 @@ set(CMAKE_CXX_COMPILER clang++)
 ################################################################################
 project (dcdn)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fblocks")
-set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -Wall -fblocks -std=c++14")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fblocks -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -Wall -fblocks -std=c++14 -Werror")
 
 include_directories(
     "${UTP_DIR}"
@@ -70,7 +62,7 @@ file(GLOB sources
 
 add_executable(dcdn ${sources})
 
-add_dependencies(dcdn libutp libbtdht)
+add_dependencies(dcdn libutp libbtdht libevent)
 
 target_link_libraries(dcdn
     ${UTP_DIR}/libutp.a
