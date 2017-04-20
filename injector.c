@@ -11,6 +11,7 @@
 
 #include "log.h"
 #include "utp.h"
+#include "timer.h"
 #include "network.h"
 #include "constants.h"
 
@@ -262,11 +263,12 @@ int main(int argc, char *argv[])
     utp_set_callback(n->utp, UTP_ON_STATE_CHANGE, &callback_on_state_change);
     utp_set_callback(n->utp, UTP_ON_READ, &callback_on_read);
 
-    // TODO: periodically re-announce
-    dht_announce(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
-        if (!peers) {
-            printf("announce complete\n");
-        }
+    timer_repeating(n, 6 * 60 * 60 * 1000, ^{
+        dht_announce(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
+            if (!peers) {
+                printf("announce complete\n");
+            }
+        });
     });
 
     return network_loop(n);
