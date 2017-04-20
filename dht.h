@@ -1,9 +1,6 @@
 #ifndef __DHT_API_H__
 #define __DHT_API_H__
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #include <Block.h>
 
@@ -20,9 +17,5 @@ void dht_announce(dht *d, const byte *info_hash, add_nodes_callblock cb);
 void dht_get_peers(dht *d, const byte *info_hash, add_nodes_callblock cb);
 void dht_put(dht *d, const byte *pkey, const byte *skey, const char *v, int64 seq, put_complete_callblock cb);
 void dht_destroy(dht *d);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif // __DHT_API_H__

@@ -13,10 +13,6 @@
 
 #include "stdint.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 
 typedef struct {
     uint32_t state[5];
@@ -36,10 +32,6 @@ void SHA1Final(unsigned char digest[20], SHA1_CTX *context);
 #define SHA1(digest, buf, len) CC_SHA1(buf, len, digest)
 #else
 void SHA1(unsigned char *hash_out, const unsigned char *str, unsigned int len);
-#endif
-
-#ifdef __cplusplus
-}
 #endif
 
 #endif // __SHA1_H__
