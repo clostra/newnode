@@ -21,15 +21,16 @@
 #include "timer.h"
 #include "log.h"
 #include "icmp_handler.h"
+#include "utp_bufferevent.h"
 
 
-uint64 callback_on_firewall(utp_callback_arguments *a)
+uint64 utp_on_firewall(utp_callback_arguments *a)
 {
     debug("Firewall allowing inbound connection\n");
     return 0;
 }
 
-uint64 callback_sendto(utp_callback_arguments *a)
+uint64 utp_callback_sendto(utp_callback_arguments *a)
 {
     network *n = (network*)utp_context_get_userdata(a->context);
     struct sockaddr_in *sin = (struct sockaddr_in *)a->address;
@@ -45,13 +46,13 @@ uint64 callback_sendto(utp_callback_arguments *a)
     return 0;
 }
 
-uint64 callback_log(utp_callback_arguments *a)
+uint64 utp_callback_log(utp_callback_arguments *a)
 {
     fprintf(stderr, "log: %s\n", a->buf);
     return 0;
 }
 
-uint64 callback_on_error(utp_callback_arguments *a)
+uint64 utp_on_error(utp_callback_arguments *a)
 {
     fprintf(stderr, "Error: %s\n", utp_error_code_names[a->error_code]);
     return 0;
@@ -145,22 +146,18 @@ network* network_setup(char *address, char *port)
     getnameinfo((struct sockaddr *)&sin, len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST);
     printf("listening on %s:%s\n", host, serv);
 
-    n->dht = dht_setup(n->fd);
+    n->dht = dht_setup(0);//n->fd);
 
     n->utp = utp_init(2);
 
     utp_context_set_userdata(n->utp, n);
 
-    utp_set_callback(n->utp, UTP_LOG, &callback_log);
-    utp_set_callback(n->utp, UTP_SENDTO, &callback_sendto);
-    utp_set_callback(n->utp, UTP_ON_FIREWALL, &callback_on_firewall);
-    utp_set_callback(n->utp, UTP_ON_ERROR, &callback_on_error);
-
-    /*
-    utp_set_callback(n->utp, UTP_ON_ACCEPT, &callback_on_accept);
-    utp_set_callback(n->utp, UTP_ON_STATE_CHANGE, &callback_on_state_change);
-    utp_set_callback(n->utp, UTP_ON_READ, &callback_on_read);
-    */
+    utp_set_callback(n->utp, UTP_LOG, &utp_callback_log);
+    utp_set_callback(n->utp, UTP_SENDTO, &utp_callback_sendto);
+    utp_set_callback(n->utp, UTP_ON_FIREWALL, &utp_on_firewall);
+    utp_set_callback(n->utp, UTP_ON_ERROR, &utp_on_error);
+    utp_set_callback(n->utp, UTP_ON_STATE_CHANGE, &utp_on_state_change);
+    utp_set_callback(n->utp, UTP_ON_READ, &utp_on_read);
 
     if (o_debug >= 2) {
         utp_context_set_option(n->utp, UTP_LOG_NORMAL, 1);
@@ -187,6 +184,12 @@ network* network_setup(char *address, char *port)
     n->evdns = evdns_base_new(n->evbase, EVDNS_BASE_INITIALIZE_NAMESERVERS);
     if (!n->evdns) {
         fprintf(stderr, "evdns_base_new failed\n");
+        return NULL;
+    }
+
+    n->http = evhttp_new(n->evbase);
+    if (!n->http) {
+        fprintf(stderr, "evhttp_new failed\n");
         return NULL;
     }
 

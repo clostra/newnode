@@ -4,6 +4,7 @@
 #include <event2/event.h>
 #include <event2/event_struct.h>
 #include <event2/dns.h>
+#include <event2/http.h>
 
 #include "utp.h"
 #include "dht.h"
@@ -16,12 +17,14 @@
 
 typedef struct event_base event_base;
 typedef struct evdns_base evdns_base;
+typedef struct evhttp evhttp;
 typedef struct event event;
 
 typedef struct {
     int fd;
     event_base *evbase;
     evdns_base *evdns;
+    evhttp *http;
     event udp_event;
     utp_context *utp;
     dht *dht;
