@@ -4,67 +4,23 @@
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/socket.h>
 
 #include <sodium.h>
 
 #include <event2/buffer.h>
+#include <event2/bufferevent.h>
 
 #include "log.h"
 #include "utp.h"
 #include "timer.h"
 #include "network.h"
 #include "constants.h"
+#include "utp_bufferevent.h"
 
 
-typedef struct {
-    size_t total;
-    size_t len;
-    uint8_t buf[];
-} buffer;
-
+typedef struct bufferevent bufferevent;
 typedef struct evbuffer evbuffer;
-
-typedef struct {
-    buffer *read_buffer;
-    evbuffer *write_buffer;
-    // XXX: temp
-    bool writing;
-} socket_buffers;
-
-socket_buffers* socket_buffers_alloc()
-{
-    socket_buffers *sb = alloc(socket_buffers);
-    size_t total = 4096;
-    sb->read_buffer = calloc(1, sizeof(buffer) + total);
-    sb->read_buffer->total = total;
-    sb->read_buffer->len = 0;
-    // XXX: temp
-    sb->writing = false;
-    sb->write_buffer = evbuffer_new();
-    return sb;
-}
-
-void socket_buffers_free(socket_buffers *sb)
-{
-    free(sb->read_buffer);
-    if (sb->write_buffer) {
-        evbuffer_free(sb->write_buffer);
-    }
-    free(sb);
-}
-
-void write_data(utp_socket *s)
-{
-    socket_buffers *sb = utp_get_userdata(s);
-    while (evbuffer_get_length(sb->write_buffer)) {
-        // the libutp interface for write is Very Broken
-        ssize_t len = MIN(1500, evbuffer_get_length(sb->write_buffer));
-        unsigned char *buf = evbuffer_pullup(sb->write_buffer, len);
-        ssize_t r = utp_write(s, buf, len);
-        assert(r == len);
-        evbuffer_drain(sb->write_buffer, len);
-    }
-}
 
 typedef bool (^http_stream_callback)(uint8_t *data, size_t length, size_t total_length);
 
@@ -95,14 +51,11 @@ void* memdup(const void *m, size_t length)
     return r;
 }
 
-void process_line(socket_buffers *sb, char *line)
+void process_line(bufferevent *bev, const char *line)
 {
-    printf("'%s'\n", line);
-    char *url = line;
+    const char *url = line;
 
     // XXX: currently we don't handle a backlog of requests, so multiple responses will interleave
-    assert(!sb->writing);
-    sb->writing = true;
 
     __block struct {
         uint8_t url_hash[crypto_generichash_BYTES];
@@ -116,102 +69,60 @@ void process_line(socket_buffers *sb, char *line)
     fetch_url(url, ^bool (uint8_t *data, size_t length, size_t total_length) {
         if (!progress) {
             uint32_t iprefix = (uint32_t)total_length;
-            evbuffer_add(sb->write_buffer, &iprefix, sizeof(iprefix));
+            bufferevent_write(bev, &iprefix, sizeof(iprefix));
         }
         crypto_generichash_update(&hash_state.content_state, data, length);
-        evbuffer_add(sb->write_buffer, data, length);
+        bufferevent_write(bev, data, length);
         progress += length;
         if (progress == total_length) {
             uint8_t content_hash[crypto_generichash_BYTES];
             crypto_generichash_final(&hash_state.content_state, content_hash, sizeof(content_hash));
             dht_put_value(hash_state.url_hash, content_hash);
-            sb->writing = false;
         }
         return true;
     });
 }
 
-uint64 callback_on_read(utp_callback_arguments *a)
+
+void http_request_cb(struct evhttp_request *req, void *arg)
 {
-    socket_buffers *sb = utp_get_userdata(a->socket);
-    buffer *b = sb->read_buffer;
-
-    ssize_t left = a->len;
-    while (left > 0) {
-        ssize_t remaining = b->total - b->len;
-        ssize_t copy = MIN(left, remaining);
-        memcpy(b->buf + b->len, a->buf + (a->len - left), copy);
-
-        b->len += copy;
-        left -= copy;
-
-        uint8_t *line_start = b->buf;
-        while (line_start < b->buf + b->total) {
-            uint8_t *line_end = (uint8_t*)memchr((void*)line_start, '\n', b->len - (line_start - b->buf));
-            if (!line_end) {
-                if (b->len == b->total) {
-                    debug("Line length exceeded %llu\n", b->total);
-                    utp_close(a->socket);
-                    return 0;
-                }
-                break;
-            }
-            *line_end = 0;
-            process_line(sb, (char*)line_start);
-            line_start = line_end + 1;
-        }
-        b->len -= (line_start - b->buf);
-        memmove(b->buf, line_start, b->len);
-    }
-    utp_read_drained(a->socket);
-    return 0;
+    const char *uri = evhttp_request_get_uri(req);
+    debug("uri: %s\n", uri);
+    process_line(NULL/*TODO*/, uri);
 }
 
-uint64 callback_on_accept(utp_callback_arguments *a)
+void bev_read_cb(struct bufferevent *bev, void *ctx)
 {
-    utp_set_userdata(a->socket, socket_buffers_alloc());
+    debug("bev_read_cb %p %x\n", ctx);
+    evbuffer *input = bufferevent_get_input(bev);
+    unsigned char *buf = evbuffer_pullup(input, evbuffer_get_length(input));
+    debug("%s\n", buf);
+    process_line(bev, (const char *)buf);
+}
+
+uint64 utp_on_accept(utp_callback_arguments *a)
+{
     debug("Accepted inbound socket %p\n", a->socket);
-    return 0;
-}
+    network *n = (network*)utp_context_get_userdata(a->context);
+    int fd = utp_socket_create_fd_interface(n->evbase, a->socket);
+    evutil_make_socket_closeonexec(fd);
+    evutil_make_socket_nonblocking(fd);
 
-uint64 callback_on_state_change(utp_callback_arguments *a)
-{
-    debug("state %d: %s\n", a->state, utp_state_names[a->state]);
-
-    switch (a->state) {
-    case UTP_STATE_CONNECT:
-    case UTP_STATE_WRITABLE:
-        write_data(a->socket);
-        break;
-
-    case UTP_STATE_EOF:
-        debug("Received EOF from socket; closing\n");
-        utp_close(a->socket);
-        break;
-
-    case UTP_STATE_DESTROYING: {
-        debug("UTP socket is being destroyed; exiting\n");
-
-        socket_buffers_free(utp_get_userdata(a->socket));
-
-        utp_socket_stats *stats = utp_get_stats(a->socket);
-        if (stats) {
-            debug("Socket Statistics:\n");
-            debug("    Bytes sent:          %d\n", stats->nbytes_xmit);
-            debug("    Bytes received:      %d\n", stats->nbytes_recv);
-            debug("    Packets received:    %d\n", stats->nrecv);
-            debug("    Packets sent:        %d\n", stats->nxmit);
-            debug("    Duplicate receives:  %d\n", stats->nduprecv);
-            debug("    Retransmits:         %d\n", stats->rexmit);
-            debug("    Fast Retransmits:    %d\n", stats->fastrexmit);
-            debug("    Best guess at MTU:   %d\n", stats->mtu_guess);
-        } else {
-            debug("No socket statistics available\n");
-        }
-
-        break;
+    struct sockaddr_storage sa;
+    socklen_t salen = sizeof(sa);
+    if (getsockname(fd, (struct sockaddr *)&sa, &salen)) {
+        debug("getsockname failed %d %s\n", errno, strerror(errno));
+        close(fd);
+        return 0;
     }
+
+    bufferevent *bev = bufferevent_socket_new(n->evbase, fd, BEV_OPT_CLOSE_ON_FREE);
+    if (!bev) {
+        close(fd);
+        return 0;
     }
+    bufferevent_setcb(bev, bev_read_cb, NULL, NULL, NULL);
+    bufferevent_enable(bev, EV_READ);
 
     return 0;
 }
@@ -259,9 +170,7 @@ int main(int argc, char *argv[])
 
     network *n = network_setup(address, port);
 
-    utp_set_callback(n->utp, UTP_ON_ACCEPT, &callback_on_accept);
-    utp_set_callback(n->utp, UTP_ON_STATE_CHANGE, &callback_on_state_change);
-    utp_set_callback(n->utp, UTP_ON_READ, &callback_on_read);
+    utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
 
     timer_repeating(n, 6 * 60 * 60 * 1000, ^{
         dht_announce(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
@@ -270,6 +179,8 @@ int main(int argc, char *argv[])
             }
         });
     });
+
+    evhttp_set_gencb(n->http, http_request_cb, n);
 
     return network_loop(n);
 }
