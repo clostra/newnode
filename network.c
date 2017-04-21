@@ -81,10 +81,12 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
             pdie("recv");
         }
 
-        char host[NI_MAXHOST];
-        char serv[NI_MAXSERV];
-        getnameinfo((struct sockaddr *)&src_addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST);
-        debug("Received %zd byte UDP packet from %s:%s\n", len, host, serv);
+        if (o_debug) {
+            char host[NI_MAXHOST];
+            char serv[NI_MAXSERV];
+            getnameinfo((struct sockaddr *)&src_addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+            debug("Received %zd byte UDP packet from %s:%s\n", len, host, serv);
+        }
 
         if (o_debug >= 3) {
             hexdump(buf, len);
@@ -143,7 +145,11 @@ network* network_setup(char *address, char *port)
 
     char host[NI_MAXHOST];
     char serv[NI_MAXSERV];
-    getnameinfo((struct sockaddr *)&sin, len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST);
+    error = getnameinfo((struct sockaddr *)&sin, len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+    if (error) {
+        die("getnameinfo: %s\n", gai_strerror(error));
+    }
+
     printf("listening on %s:%s\n", host, serv);
 
     n->dht = dht_setup(n->fd);
