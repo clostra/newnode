@@ -21,13 +21,13 @@ typedef struct evhttp evhttp;
 typedef struct event event;
 
 typedef struct {
-    int fd;
     event_base *evbase;
     evdns_base *evdns;
-    evhttp *http;
+    int fd;
     event udp_event;
     utp_context *utp;
     dht *dht;
+    evhttp *http;
 } network;
 
 network* network_setup(char *address, char *port);

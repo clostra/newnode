@@ -146,7 +146,7 @@ network* network_setup(char *address, char *port)
     getnameinfo((struct sockaddr *)&sin, len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST);
     printf("listening on %s:%s\n", host, serv);
 
-    n->dht = dht_setup(0);//n->fd);
+    n->dht = dht_setup(n->fd);
 
     n->utp = utp_init(2);
 

@@ -51,7 +51,7 @@ void* memdup(const void *m, size_t length)
     return r;
 }
 
-void process_line(bufferevent *bev, const char *line)
+void process_line(network *n, bufferevent *bev, const char *line)
 {
     const char *url = line;
 
@@ -83,47 +83,23 @@ void process_line(bufferevent *bev, const char *line)
     });
 }
 
-
 void http_request_cb(struct evhttp_request *req, void *arg)
 {
+    network *n = (network*)arg;
     const char *uri = evhttp_request_get_uri(req);
     debug("uri: %s\n", uri);
-    process_line(NULL/*TODO*/, uri);
-}
-
-void bev_read_cb(struct bufferevent *bev, void *ctx)
-{
-    debug("bev_read_cb %p %x\n", ctx);
-    evbuffer *input = bufferevent_get_input(bev);
-    unsigned char *buf = evbuffer_pullup(input, evbuffer_get_length(input));
-    debug("%s\n", buf);
-    process_line(bev, (const char *)buf);
 }
 
 uint64 utp_on_accept(utp_callback_arguments *a)
 {
     debug("Accepted inbound socket %p\n", a->socket);
     network *n = (network*)utp_context_get_userdata(a->context);
-    int fd = utp_socket_create_fd_interface(n->evbase, a->socket);
-    evutil_make_socket_closeonexec(fd);
-    evutil_make_socket_nonblocking(fd);
-
-    struct sockaddr_storage sa;
-    socklen_t salen = sizeof(sa);
-    if (getsockname(fd, (struct sockaddr *)&sa, &salen)) {
-        debug("getsockname failed %d %s\n", errno, strerror(errno));
-        close(fd);
-        return 0;
-    }
-
-    bufferevent *bev = bufferevent_socket_new(n->evbase, fd, BEV_OPT_CLOSE_ON_FREE);
-    if (!bev) {
-        close(fd);
-        return 0;
-    }
-    bufferevent_setcb(bev, bev_read_cb, NULL, NULL, NULL);
-    bufferevent_enable(bev, EV_READ);
-
+    struct sockaddr_in dest = {
+        .sin_family = AF_INET,
+        .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+        .sin_port = htons(8005)
+    };
+    utp_connect_tcp(n->evbase, a->socket, (const struct sockaddr *)&dest, sizeof(dest));
     return 0;
 }
 
@@ -181,6 +157,7 @@ int main(int argc, char *argv[])
     });
 
     evhttp_set_gencb(n->http, http_request_cb, n);
+    evhttp_bind_socket_with_handle(n->http, "0.0.0.0", 8005);
 
     return network_loop(n);
 }
