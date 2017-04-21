@@ -31,8 +31,14 @@ handle_connection(utp_socket *s)
 #include <assert.h>
 #include <string.h>
 
+#include <event2/http.h>
+#include <event2/buffer.h>
+
 #include "proxy.h"
+
+extern "C" {
 #include "log.h"
+}
 
 using std::unique_ptr;
 using std::move;
@@ -40,52 +46,96 @@ using std::make_unique;
 using std::string;
 using std::queue;
 
-// XXX: temp
-struct connection;
-void send(connection*, const void*, size_t) { assert(0 && "TODO"); }
-
-
 struct proxy;
 
-struct proxy_client {
-    proxy* p = nullptr;
-    connection* con = nullptr;
-};
-
-struct active_request {
-    // How many bytes of the `bytes_remaining` variable we have yet to receive.
-    unsigned int header_bytes_missing = sizeof(bytes_remaining);
-    // This is only valid iff header_bytes_missing == 0, indicates how many
-    // bytes of the payload are still missing.
-    uint32_t bytes_remaining = 0;
-    proxy_client* c;
-    string request;
-
-    active_request(proxy_client* c, string rq) :
-        c(c), request(move(rq)) {}
-};
-
-struct pending_request {
-    proxy_client* c = nullptr;
-    string request;
-};
-
 struct proxy_injector {
-    connection* con = nullptr;
-    queue<active_request> active_requests;
+    bufferevent *bev;
+    evhttp_connection *http_con;
+    queue<evhttp_request*> active_requests;
 };
 
 struct proxy {
-    std::set<unique_ptr<proxy_client>> clients;
-    std::set<unique_ptr<proxy_injector>> injectors;
+    struct event_base *base = nullptr;
+    struct evhttp *http = nullptr;
 
-    queue<pending_request> pending_requests;
+    std::set<unique_ptr<proxy_injector>> injectors;
 };
 
-static void forward_request(proxy_injector* i, proxy_client* c, const char* request)
+static void handle_injector_response(struct evhttp_request *req, void *ctx)
 {
-    send(i->con, request, strlen(request));
-    i->active_requests.emplace(c, string(request));
+    if (!req) {
+        int errcode = EVUTIL_SOCKET_ERROR();
+
+        debug("handle_injector_response: socket error = %s (%d)\n",
+            evutil_socket_error_to_string(errcode),
+            errcode);
+
+        return;
+    }
+
+    debug("handle_injector_response %p\n", req);
+
+    proxy_injector *i = (proxy_injector*) ctx;
+    auto &rs = i->active_requests;
+
+    assert(!rs.empty());
+
+    auto *req_out = rs.front();
+    rs.pop();
+
+    assert(req_out);
+
+    struct evbuffer* evb_out = evbuffer_new();
+
+    auto *evb_in = evhttp_request_get_input_buffer(req);
+
+    int response_code = evhttp_request_get_response_code(req);
+    const char *response_code_line = evhttp_request_get_response_code_line(req);
+
+    {
+        int nread;
+	    while ((nread = evbuffer_remove_buffer(evb_in,
+	    	    evb_out, evbuffer_get_length(evb_in))) > 0) { }
+    }
+
+    evhttp_send_reply(req_out, response_code, response_code_line, evb_out);
+    evbuffer_free(evb_out);
+}
+
+static void forward_request(proxy_injector* i, evhttp_request* req_in)
+{
+    printf("forward_request\n");
+
+    evhttp_request *req_out = evhttp_request_new(handle_injector_response, i);
+
+    if (req_out == NULL) {
+        die("evhttp_request_new() failed\n");
+        return;
+    }
+
+    i->active_requests.push(req_in);
+
+    evhttp_cmd_type type = evhttp_request_get_command(req_in);
+    const char *uri = evhttp_request_get_uri(req_in);
+
+    struct evkeyvalq *hdr_out = evhttp_request_get_output_headers(req_out);
+
+    {
+        struct evkeyvalq *hdr_in = evhttp_request_get_input_headers(req_in);
+
+        const char *host_hdr = evhttp_find_header(hdr_in, "Host");
+        if (host_hdr) {
+            evhttp_add_header(hdr_out, "Host", host_hdr);
+        }
+    }
+
+    evhttp_add_header(hdr_out, "Connection", "keep-alive");
+
+    int r = evhttp_make_request(i->http_con, req_out, type, uri);
+
+    if (r != 0) {
+        die("evhttp_make_request() failed\n");
+    }
 }
 
 static proxy_injector* pick_random_injector(proxy* p)
@@ -97,11 +147,9 @@ static proxy_injector* pick_random_injector(proxy* p)
     return i->get();
 }
 
-void handle_request(proxy_client* c, const char* request)
+void handle_client_request(struct evhttp_request *req, void *arg)
 {
-    proxy* p = c->p;
-
-    // XXX: Check validity of the request.
+    proxy *p = (proxy*) arg;
 
     // XXX: Ignore or respond with error if too many requests per client.
 
@@ -110,77 +158,94 @@ void handle_request(proxy_client* c, const char* request)
     auto* proxy_injector = pick_random_injector(p);
 
     if (!proxy_injector) {
-        p->pending_requests.push({c, string(request)});
+        evhttp_send_reply(req, 502 /* Bad Gateway */, "Proxy has no injectors", NULL);
         return;
     }
 
-    forward_request(proxy_injector, c, request);
+    forward_request(proxy_injector, req);
 }
 
-bool on_recv_from_injector(proxy_injector* i, const uint8_t* data, size_t size)
+static int start_taking_requests(proxy *p)
 {
-    auto& rs = i->active_requests;
+    const char *address = "0.0.0.0";
+    uint16_t port = 5678;
 
-    if (rs.empty()) {
-        debug("An injector sent us a response, but there is no request");
-        return false;
+    /* Create a new evhttp object to handle requests. */
+    struct evhttp *http = evhttp_new(p->base);
+
+    if (!http) {
+        die("couldn't create evhttp. Exiting.\n");
+        return -1;
     }
 
-    auto* r = &rs.front();
+    p->http = http;
 
-    while (size) {
-        if (r->header_bytes_missing != 0) {
-            size_t take = std::min<size_t>(r->header_bytes_missing, size);
-            size_t s = sizeof(r->bytes_remaining) - r->header_bytes_missing;
-            uint8_t* d = reinterpret_cast<uint8_t*>(r->bytes_remaining) + s;
+    evhttp_set_gencb(http, handle_client_request, p);
 
-            // XXX: Endianness, but ATM the injector doesn't do it neither.
-            for (size_t i = 0; i < take; ++i) {
-                *d++ = *data++;
-            }
+    /* Now we tell the evhttp what port to listen on */
+    struct evhttp_bound_socket *handle
+        = evhttp_bind_socket_with_handle(http, address, port);
 
-            size -= take;
-            r->header_bytes_missing -= take;
+    if (!handle) {
+        die("couldn't bind to port %d. Exiting.\n", (int)port);
+        return 1;
+    }
 
-            if (r->header_bytes_missing != 0) return true;
+    {
+        /* Extract and display the address we're listening on. */
+        struct sockaddr_storage ss;
+        evutil_socket_t fd;
+        ev_socklen_t socklen = sizeof(ss);
+        char addrbuf[128];
+        void *inaddr;
+        const char *addr;
+        int got_port = -1;
+        fd = evhttp_bound_socket_get_fd(handle);
+        memset(&ss, 0, sizeof(ss));
+        if (getsockname(fd, (struct sockaddr *)&ss, &socklen)) {
+            perror("getsockname() failed");
+            return 1;
         }
-
-        size_t take = std::min<size_t>(size, r->bytes_remaining);
-
-        if (take) {
-            size -= take;
-            r->bytes_remaining -= take;
-
-            send(r->c->con, data, take);
-
-            data += take;
+        if (ss.ss_family == AF_INET) {
+            got_port = ntohs(((struct sockaddr_in*)&ss)->sin_port);
+            inaddr = &((struct sockaddr_in*)&ss)->sin_addr;
+        } else if (ss.ss_family == AF_INET6) {
+            got_port = ntohs(((struct sockaddr_in6*)&ss)->sin6_port);
+            inaddr = &((struct sockaddr_in6*)&ss)->sin6_addr;
+        } else {
+            fprintf(stderr, "Weird address family %d\n",
+                ss.ss_family);
+            return 1;
         }
-
-        if (r->bytes_remaining == 0) {
-            rs.pop();
-            r = &rs.front();
+        addr = evutil_inet_ntop(ss.ss_family, inaddr, addrbuf,
+            sizeof(addrbuf));
+        if (addr) {
+            char uri_root[512];
+            printf("Listening on %s:%d\n", addr, got_port);
+            evutil_snprintf(uri_root, sizeof(uri_root),
+                "http://%s:%d",addr,got_port);
+        } else {
+            fprintf(stderr, "evutil_inet_ntop failed\n");
+            return 1;
         }
     }
 
-    return true;
-}
-
-void on_recv_from_client(proxy_client* c, const char* data, size_t size)
-{
-    // XXX: Ignore or respond with error if too many requests in total.
-
-    //auto read_line_ctx = create_read_line_ctx(data, size);
-
-    //for (auto line = read_line(&read_line_ctx)) {
-    //    handle_request(c, line);
-    //}
+    return 0;
 }
 
 extern "C" {
-    proxy* proxy_create()
+    proxy* proxy_create(struct event_base *base)
     {
-        auto* r = new proxy();
-        return r;
+        auto* p = new proxy();
+
+        p->base = base;
+
+        if (start_taking_requests(p) != 0) {
+            delete p;
+            return nullptr;
+        }
+
+        return p;
     }
     
     void proxy_destroy(proxy* p)
@@ -188,19 +253,14 @@ extern "C" {
         delete p;
     }
     
-    proxy_injector* proxy_add_injector(proxy* p, utp_socket* s)
+    void proxy_add_injector(proxy* p, struct bufferevent* bev, struct evhttp_connection *http_con)
     {
+        debug("proxy_add_injector\n");
         auto c = make_unique<proxy_injector>();
-        auto cp = c.get();
-        p->injectors.insert(move(c));
-        return cp;
-    }
 
-    proxy_client* proxy_add_client(proxy* p, utp_socket* s)
-    {
-        auto c = make_unique<proxy_client>();
-        auto cp = c.get();
-        p->clients.insert(move(c));
-        return cp;
+        c->bev = bev;
+        c->http_con = http_con;
+
+        p->injectors.insert(move(c));
     }
 } // extern "C"
