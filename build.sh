@@ -14,7 +14,7 @@ bjam toolset=clang cxxflags="-std=c++14"
 cp `find bin -name libbtdht.a` .
 cd ..
 
-FLAGS="-g -O3 -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
+FLAGS="-g -O0 -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
   -fPIC -fblocks -fdata-sections -ffunction-sections \
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
   -std=gnu11 -D__FAVOR_BSD -D_BSD_SOURCE"
