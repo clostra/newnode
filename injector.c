@@ -67,13 +67,21 @@ int get_port_for_scheme(const char *scheme)
     return port;
 }
 
+void overwrite_header(struct evhttp_request *to, const char *key, const char *value)
+{
+    evkeyvalq *out = evhttp_request_get_output_headers(to);
+    while (evhttp_find_header(out, key)) {
+        evhttp_remove_header(out, key);
+    }
+    evhttp_add_header(out, key, value);
+}
+
 void copy_header(struct evhttp_request *from, struct evhttp_request *to, const char *key)
 {
     evkeyvalq *in = evhttp_request_get_input_headers(from);
-    evkeyvalq *out = evhttp_request_get_output_headers(to);
     const char *value = evhttp_find_header(in, key);
     if (value) {
-        evhttp_add_header(out, key, value);
+        overwrite_header(to, key, value);
     }
 }
 
@@ -86,9 +94,8 @@ typedef struct {
 void chunked_cb(struct evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("chunked_cb %p\n", p);
-    // XXX: currently we don't handle a backlog of requests, so multiple responses will interleave
     evbuffer *input = evhttp_request_get_input_buffer(req);
+    debug("chunked_cb %p %zu bytes\n", p, evbuffer_get_length(input));
 
     struct evbuffer_ptr ptr;
     struct evbuffer_iovec v;
@@ -100,7 +107,9 @@ void chunked_cb(struct evhttp_request *req, void *arg)
         }
     }
 
-    evhttp_send_reply_chunk(p->server_req, input);
+    if (evhttp_request_get_connection(p->server_req)) {
+        evhttp_send_reply_chunk(p->server_req, input);
+    }
 }
 
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const char *uri);
@@ -109,7 +118,7 @@ evhttp_connection *make_connection(network *n, const evhttp_uri *uri);
 int header_cb(struct evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("header_cb %p %d\n", p, evhttp_request_get_response_code(req));
+    debug("header_cb %p %d %s\n", p, evhttp_request_get_response_code(req), evhttp_request_get_response_code_line(req));
 
     int code = evhttp_request_get_response_code(req);
     switch(evhttp_request_get_response_code(req)) {
@@ -119,6 +128,7 @@ int header_cb(struct evhttp_request *req, void *arg)
         if (new_location) {
             const evhttp_uri *new_uri = evhttp_uri_parse(new_location);
             if (new_uri) {
+                debug("rediect to %s\n", new_location);
                 const char *scheme = evhttp_uri_get_scheme(new_uri);
                 evhttp_connection *evcon = evhttp_request_get_connection(req);
                 if (scheme) {
@@ -144,9 +154,11 @@ int header_cb(struct evhttp_request *req, void *arg)
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
         copy_header(req, p->server_req, response_header_whitelist[i]);
     }
-    evhttp_send_reply_start(p->server_req, code, evhttp_request_get_response_code_line(req));
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
-    evhttp_request_set_chunked_cb(req, chunked_cb);
+    if (evhttp_request_get_connection(p->server_req)) {
+        evhttp_send_reply_start(p->server_req, code, evhttp_request_get_response_code_line(req));
+        evhttp_request_set_chunked_cb(req, chunked_cb);
+    }
 
     return 0;
 }
@@ -157,10 +169,10 @@ void error_cb(enum evhttp_request_error error, void *arg)
     fprintf(stderr, "error_cb %p %d\n", p, error);
 }
 
-void request_cb(struct evhttp_request *req, void *arg)
+void request_done_cb(struct evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("request_cb %p\n", p);
+    debug("request_done_cb %p\n", p);
     if (p->server_req) {
         if (req) {
             uint8_t content_hash[crypto_generichash_BYTES];
@@ -172,7 +184,9 @@ void request_cb(struct evhttp_request *req, void *arg)
 
             dht_put_value(url_hash, content_hash);
         }
-        evhttp_send_reply_end(p->server_req);
+        if (evhttp_request_get_connection(p->server_req)) {
+            evhttp_send_reply_end(p->server_req);
+        }
         p->server_req = NULL;
     }
 
@@ -184,13 +198,17 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     proxy_request *p = alloc(proxy_request);
     p->n = n;
     p->server_req = server_req;
-    evhttp_request *client_req = evhttp_request_new(request_cb, p);
-    const char *host = evhttp_uri_get_host(evhttp_request_get_evhttp_uri(server_req));
-    evhttp_add_header(evhttp_request_get_output_headers(client_req), "Host", host);
-    const char *request_header_whitelist[] = {"Referer", "Host"};
+    evhttp_request *client_req = evhttp_request_new(request_done_cb, p);
+    const char *request_header_whitelist[] = {"Referer"};
     for (size_t i = 0; i < lenof(request_header_whitelist); i++) {
         copy_header(p->server_req, client_req, request_header_whitelist[i]);
     }
+
+    char *address;
+    ev_uint16_t port;
+    evhttp_connection_get_peer(evcon, &address, &port);
+    overwrite_header(client_req, "Host", address);
+
     evhttp_request_set_header_cb(client_req, header_cb);
     evhttp_request_set_error_cb(client_req, error_cb);
     evhttp_make_request(evcon, client_req, EVHTTP_REQ_GET, uri);
