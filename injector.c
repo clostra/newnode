@@ -95,7 +95,6 @@ void chunked_cb(struct evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     evbuffer *input = evhttp_request_get_input_buffer(req);
-    debug("chunked_cb %p %zu bytes\n", p, evbuffer_get_length(input));
 
     struct evbuffer_ptr ptr;
     struct evbuffer_iovec v;
@@ -215,7 +214,6 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     char request_uri[2048];
     const char *q = evhttp_uri_get_query(uri);
     snprintf(request_uri, sizeof(request_uri), "%s%s%s", evhttp_uri_get_path(uri), q?"?":"", q?q:"");
-    printf("request_uri: %s\n", request_uri);
     evhttp_make_request(evcon, client_req, EVHTTP_REQ_GET, request_uri);
 }
 
