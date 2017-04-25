@@ -85,7 +85,7 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
             char host[NI_MAXHOST];
             char serv[NI_MAXSERV];
             getnameinfo((struct sockaddr *)&src_addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-            debug("Received %zd byte UDP packet from %s:%s\n", len, host, serv);
+            //debug("Received %zd byte UDP packet from %s:%s\n", len, host, serv);
         }
 
         if (o_debug >= 3) {
