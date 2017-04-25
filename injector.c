@@ -112,7 +112,7 @@ void chunked_cb(struct evhttp_request *req, void *arg)
     }
 }
 
-void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const char *uri);
+void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri);
 evhttp_connection *make_connection(network *n, const evhttp_uri *uri);
 
 int header_cb(struct evhttp_request *req, void *arg)
@@ -128,14 +128,14 @@ int header_cb(struct evhttp_request *req, void *arg)
         if (new_location) {
             const evhttp_uri *new_uri = evhttp_uri_parse(new_location);
             if (new_uri) {
-                debug("rediect to %s\n", new_location);
+                debug("redirect to %s\n", new_location);
                 const char *scheme = evhttp_uri_get_scheme(new_uri);
                 evhttp_connection *evcon = evhttp_request_get_connection(req);
                 if (scheme) {
                     // XXX: make a new connection for absolute uris. we could reuse the existing one in some cases
                     evcon = make_connection(p->n, new_uri);
                 }
-                submit_request(p->n, p->server_req, evcon, new_location);
+                submit_request(p->n, p->server_req, evcon, new_uri);
                 // we made a new proxy_request, so disconnect the original request
                 p->server_req = NULL;
             }
@@ -193,7 +193,7 @@ void request_done_cb(struct evhttp_request *req, void *arg)
     free(p);
 }
 
-void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const char *uri)
+void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri)
 {
     proxy_request *p = alloc(proxy_request);
     p->n = n;
@@ -211,7 +211,12 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
 
     evhttp_request_set_header_cb(client_req, header_cb);
     evhttp_request_set_error_cb(client_req, error_cb);
-    evhttp_make_request(evcon, client_req, EVHTTP_REQ_GET, uri);
+
+    char request_uri[2048];
+    const char *q = evhttp_uri_get_query(uri);
+    snprintf(request_uri, sizeof(request_uri), "%s%s%s", evhttp_uri_get_path(uri), q?"?":"", q?q:"");
+    printf("request_uri: %s\n", request_uri);
+    evhttp_make_request(evcon, client_req, EVHTTP_REQ_GET, request_uri);
 }
 
 evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
@@ -233,12 +238,13 @@ void http_request_cb(struct evhttp_request *req, void *arg)
 {
     network *n = (network*)arg;
     debug("request received: %s\n", evhttp_request_get_uri(req));
-    evhttp_connection *evcon = make_connection(n, evhttp_request_get_evhttp_uri(req));
+    const evhttp_uri *uri = evhttp_request_get_evhttp_uri(req);
+    evhttp_connection *evcon = make_connection(n, uri);
     if (!evcon) {
         evhttp_send_error(req, 502, "Bad Gateway");
         return;
     }
-    submit_request(n, req, evcon, evhttp_request_get_uri(req));
+    submit_request(n, req, evcon, uri);
 }
 
 uint64 utp_on_accept(utp_callback_arguments *a)
