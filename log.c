@@ -4,7 +4,7 @@
 #include <errno.h>
 
 
-int o_debug = 1;
+int o_debug = 0;
 
 void die(const char *fmt, ...)
 {

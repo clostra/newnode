@@ -55,10 +55,12 @@ struct proxy_injector {
 };
 
 struct proxy {
-    struct event_base *base = nullptr;
+    ::network *network = nullptr;
     struct evhttp *http = nullptr;
 
     std::set<unique_ptr<proxy_injector>> injectors;
+
+    proxy(::network *n) : network(n) {}
 };
 
 static void handle_injector_response(struct evhttp_request *req, void *ctx)
@@ -171,7 +173,7 @@ static int start_taking_requests(proxy *p)
     uint16_t port = 5678;
 
     /* Create a new evhttp object to handle requests. */
-    struct evhttp *http = evhttp_new(p->base);
+    struct evhttp *http = evhttp_new(p->network->evbase);
 
     if (!http) {
         die("couldn't create evhttp. Exiting.\n");
@@ -221,7 +223,7 @@ static int start_taking_requests(proxy *p)
             sizeof(addrbuf));
         if (addr) {
             char uri_root[512];
-            printf("Listening on %s:%d\n", addr, got_port);
+            printf("Listening on TCP:%s:%d\n", addr, got_port);
             evutil_snprintf(uri_root, sizeof(uri_root),
                 "http://%s:%d",addr,got_port);
         } else {
@@ -234,11 +236,9 @@ static int start_taking_requests(proxy *p)
 }
 
 extern "C" {
-    proxy* proxy_create(struct event_base *base)
+    proxy* proxy_create(network *n)
     {
-        auto* p = new proxy();
-
-        p->base = base;
+        auto* p = new proxy(n);
 
         if (start_taking_requests(p) != 0) {
             delete p;
