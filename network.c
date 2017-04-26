@@ -101,6 +101,16 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
     }
 }
 
+void libevent_log_cb(int severity, const char *msg)
+{
+    debug("[libevent] %d %s\n", severity, msg);
+}
+
+void evdns_log_cb(int severity, const char *msg)
+{
+    debug("[evdns] %d %s\n", severity, msg);
+}
+
 network* network_setup(char *address, char *port)
 {
     signal(SIGPIPE, SIG_IGN);
@@ -171,11 +181,11 @@ network* network_setup(char *address, char *port)
         utp_context_set_option(n->utp, UTP_LOG_DEBUG, 1);
     }
 
-#ifdef EVTHREAD_USE_PTHREADS_IMPLEMENTED
-    evthread_use_pthreads();
-#elif defined(EVTHREAD_USE_WINDOWS_THREADS_IMPLEMENTED)
-    evthread_use_windows_threads();
-#endif
+    event_enable_debug_mode();
+    event_enable_debug_logging(EVENT_DBG_ALL);
+
+    event_set_log_callback(libevent_log_cb);
+    evdns_set_log_fn(evdns_log_cb);
 
     n->evbase = event_base_new();
     if (!n->evbase) {
@@ -183,8 +193,10 @@ network* network_setup(char *address, char *port)
         return NULL;
     }
 
-#ifdef _DEBUG
-    event_enable_debug_mode();
+#ifdef EVTHREAD_USE_PTHREADS_IMPLEMENTED
+    evthread_use_pthreads();
+#elif defined(EVTHREAD_USE_WINDOWS_THREADS_IMPLEMENTED)
+    evthread_use_windows_threads();
 #endif
 
     n->evdns = evdns_base_new(n->evbase, EVDNS_BASE_INITIALIZE_NAMESERVERS);
