@@ -160,7 +160,7 @@ network* network_setup(char *address, char *port)
         die("getnameinfo: %s\n", gai_strerror(error));
     }
 
-    printf("listening on %s:%s\n", host, serv);
+    printf("listening on UDP:%s:%s\n", host, serv);
 
     n->dht = dht_setup(n->fd);
 
