@@ -26,11 +26,8 @@ void connect_to_injector(struct event_base *base, proxy *p)
 
     const char *host = evhttp_uri_get_host(http_uri);
 
-    struct bufferevent *bev
-        = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-
     struct evhttp_connection *evcon
-        = evhttp_connection_base_bufferevent_new(base, NULL, bev, host, port);
+        = evhttp_connection_base_new(base, NULL, host, port);
 
     proxy_add_injector(p, evcon);
 
