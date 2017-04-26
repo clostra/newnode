@@ -273,11 +273,12 @@ static void on_injectors_found(proxy *proxy, const byte *peers, uint num_peers) 
 
         std::stringstream ss;
 
-        ss << p.ip[0] << '.' << p.ip[1] << '.'
-           << p.ip[2] << '.' << p.ip[3];
+        ss << uint16_t(p.ip[0]) << '.' << uint16_t(p.ip[1]) << '.'
+           << uint16_t(p.ip[2]) << '.' << uint16_t(p.ip[3]);
 
         uint16_t port = ntohs(*((uint16_t*) p.port));
 
+        printf("    %s:%d\n", ss.str().c_str(), int(port));
         connect_to_injector(proxy, ss.str(), port);
     }
 }
