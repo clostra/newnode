@@ -95,6 +95,7 @@ void chunked_cb(struct evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     evbuffer *input = evhttp_request_get_input_buffer(req);
+    //debug("p:%p chunked_cb length:%zu\n", p, evbuffer_get_length(input));
 
     struct evbuffer_ptr ptr;
     struct evbuffer_iovec v;
@@ -117,7 +118,7 @@ evhttp_connection *make_connection(network *n, const evhttp_uri *uri);
 int header_cb(struct evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("header_cb %p %d %s\n", p, evhttp_request_get_response_code(req), evhttp_request_get_response_code_line(req));
+    debug("p:%p header_cb %d %s\n", p, evhttp_request_get_response_code(req), evhttp_request_get_response_code_line(req));
 
     int code = evhttp_request_get_response_code(req);
     switch(evhttp_request_get_response_code(req)) {
@@ -165,14 +166,15 @@ int header_cb(struct evhttp_request *req, void *arg)
 void error_cb(enum evhttp_request_error error, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    fprintf(stderr, "error_cb %p %d\n", p, error);
+    fprintf(stderr, "p:%p error_cb %d\n", p, error);
 }
 
 void request_done_cb(struct evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("request_done_cb %p\n", p);
+    debug("p:%p request_done_cb\n", p);
     if (p->server_req) {
+        debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(req));
         if (req) {
             uint8_t content_hash[crypto_generichash_BYTES];
             crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
@@ -215,6 +217,7 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     const char *q = evhttp_uri_get_query(uri);
     snprintf(request_uri, sizeof(request_uri), "%s%s%s", evhttp_uri_get_path(uri), q?"?":"", q?q:"");
     evhttp_make_request(evcon, client_req, EVHTTP_REQ_GET, request_uri);
+    debug("p:%p con:%p request submitted: %s\n", p, evhttp_request_get_connection(client_req), evhttp_request_get_uri(client_req));
 }
 
 evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
@@ -229,13 +232,16 @@ evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
         port = get_port_for_scheme(scheme);
     }
     debug("connecting to %s %d\n", host, port);
-    return evhttp_connection_base_new(n->evbase, n->evdns, host, port);
+    evhttp_connection *evcon = evhttp_connection_base_new(n->evbase, n->evdns, host, port);
+    // XXX: disable IPv6, since evdns waits for *both* and the v6 request often times out
+    evhttp_connection_set_family(evcon, AF_INET);
+    return evcon;
 }
 
 void http_request_cb(struct evhttp_request *req, void *arg)
 {
     network *n = (network*)arg;
-    debug("request received: %s\n", evhttp_request_get_uri(req));
+    debug("con:%p request received: %s\n", evhttp_request_get_connection(req), evhttp_request_get_uri(req));
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(req);
     evhttp_connection *evcon = make_connection(n, uri);
     if (!evcon) {
