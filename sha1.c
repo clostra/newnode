@@ -226,12 +226,12 @@ void SHA1Final(unsigned char digest[20], SHA1_CTX *context)
 }
 
 #ifndef __APPLE__
-void SHA1(unsigned char *hash_out, unsigned char const *str, unsigned int len)
+void SHA1(unsigned char *hash_out, const void *str, unsigned int len)
 {
     SHA1_CTX ctx;
     SHA1Init(&ctx);
     for (unsigned int ii = 0; ii < len; ii += 1) {
-        SHA1Update(&ctx, str + ii, 1);
+        SHA1Update(&ctx, (const unsigned char*) str + ii, 1);
     }
     SHA1Final(hash_out, &ctx);
 }

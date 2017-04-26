@@ -100,3 +100,27 @@ target_link_libraries(proxy
     sodium)
 
 ################################################################################
+project (injector)
+
+set(CMAKE_C_FLAGS "${C_FLAGS}")
+set(CMAKE_CXX_FLAGS "${CXX_FLAGS}")
+
+include_directories(${COMMON_INCLUDE})
+
+file(GLOB sources "${CMAKE_SOURCE_DIR}/injector.c")
+
+add_executable(injector ${sources})
+
+add_dependencies(injector dcdn)
+
+target_link_libraries(injector
+    dcdn
+    ${UTP_DIR}/libutp.a
+    ${DHT_DIR}/obj-unicode-debug-O0/libutdht.so
+    ${EVT_DIR}/.libs/libevent.a
+    ${EVT_DIR}/.libs/libevent_pthreads.a
+    pthread
+    BlocksRuntime
+    sodium)
+
+################################################################################
