@@ -225,13 +225,18 @@ void SHA1Final(unsigned char digest[20], SHA1_CTX *context)
     memset(&finalcount, '\0', sizeof(finalcount));
 }
 
-#ifndef __APPLE__
-void SHA1(unsigned char *hash_out, const void *str, unsigned int len)
+#ifdef __APPLE__
+void SHA1(unsigned char *hash_out, const unsigned char *data, unsigned int len)
+{
+    CC_SHA1(data, len, hash_out);
+}
+#else
+void SHA1(unsigned char *hash_out, const unsigned char *data, unsigned int len)
 {
     SHA1_CTX ctx;
     SHA1Init(&ctx);
     for (unsigned int ii = 0; ii < len; ii += 1) {
-        SHA1Update(&ctx, (const unsigned char*) str + ii, 1);
+        SHA1Update(&ctx, data + ii, 1);
     }
     SHA1Final(hash_out, &ctx);
 }
