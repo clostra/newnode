@@ -7,10 +7,6 @@
    100% Public Domain
 */
 
-#ifdef __APPLE__
-#import <CommonCrypto/CommonDigest.h>
-#endif
-
 #include "stdint.h"
 
 
