@@ -30,14 +30,18 @@ handle_connection(utp_socket *s)
 #include <algorithm> // std::min
 #include <assert.h>
 #include <string.h>
+#include <sstream>
 
 #include <event2/http.h>
 #include <event2/buffer.h>
+#include <event2/bufferevent.h>
 
 #include "proxy.h"
 
 extern "C" {
 #include "log.h"
+#include "constants.h"
+#include "timer.h"
 }
 
 using std::unique_ptr;
@@ -48,8 +52,12 @@ using std::queue;
 
 struct proxy;
 
+// XXX
+extern "C" {
+    void proxy_add_injector(proxy* p, struct evhttp_connection *http_con);
+}
+
 struct proxy_injector {
-    bufferevent *bev;
     evhttp_connection *http_con;
     queue<evhttp_request*> active_requests;
 };
@@ -57,10 +65,16 @@ struct proxy_injector {
 struct proxy {
     ::network *network = nullptr;
     struct evhttp *http = nullptr;
+    timer *injector_search_timer = nullptr;
 
     std::set<unique_ptr<proxy_injector>> injectors;
 
     proxy(::network *n) : network(n) {}
+
+    ~proxy() {
+        if (injector_search_timer)
+            timer_cancel(injector_search_timer);
+    }
 };
 
 static void handle_injector_response(struct evhttp_request *req, void *ctx)
@@ -235,6 +249,59 @@ static int start_taking_requests(proxy *p)
     return 0;
 }
 
+static void connect_to_injector(proxy *p, const string& addr, uint16_t port) {
+    auto evbase = p->network->evbase;
+
+    struct bufferevent *bev
+        = bufferevent_socket_new(evbase, -1, BEV_OPT_CLOSE_ON_FREE);
+
+    struct evhttp_connection *evcon
+        = evhttp_connection_base_bufferevent_new(evbase, NULL, bev, addr.c_str(), port);
+
+    proxy_add_injector(p, evcon);
+}
+
+static void on_injectors_found(proxy *proxy, const byte *peers, uint num_peers) {
+    printf("Found %d injectors\n", num_peers);
+
+    struct raw_peer {
+        byte ip[4];
+        byte port[2];
+    };
+
+    for (uint i = 0; i < num_peers; ++i) {
+        raw_peer p = *((raw_peer*) peers + i * sizeof(raw_peer));
+
+        std::stringstream ss;
+
+        ss << p.ip[0] << '.' << p.ip[1] << '.'
+           << p.ip[2] << '.' << p.ip[3];
+
+        uint16_t port = ntohs(*((uint16_t*) p.port));
+
+        connect_to_injector(proxy, ss.str(), port);
+    }
+}
+
+static void start_injector_search(proxy *p)
+{
+    dht_get_peers(p->network->dht, injector_swarm,
+            ^(const byte *peers, uint num_peers) {
+                // TODO: Ensure safety after p is destroyed.
+                on_injectors_found(p, peers, num_peers);
+            });
+
+    const unsigned int minute = 60 * 1000;
+
+    const unsigned int retry_timeout = p->injectors.empty()
+                                     ? minute
+                                     : 25 * minute;
+
+    p->injector_search_timer = timer_start(p->network,
+            retry_timeout,
+            ^{ start_injector_search(p); });
+}
+
 extern "C" {
     proxy* proxy_create(network *n)
     {
@@ -245,6 +312,8 @@ extern "C" {
             return nullptr;
         }
 
+        start_injector_search(p);
+
         return p;
     }
     
@@ -253,12 +322,11 @@ extern "C" {
         delete p;
     }
     
-    void proxy_add_injector(proxy* p, struct bufferevent* bev, struct evhttp_connection *http_con)
+    void proxy_add_injector(proxy* p, struct evhttp_connection *http_con)
     {
         debug("proxy_add_injector\n");
         auto c = make_unique<proxy_injector>();
 
-        c->bev = bev;
         c->http_con = http_con;
 
         p->injectors.insert(move(c));

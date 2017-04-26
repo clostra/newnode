@@ -20,6 +20,7 @@ void connect_to_injector(struct event_base *base, proxy *p)
     struct evhttp_uri *http_uri = evhttp_uri_parse(url);
 
     if (http_uri == NULL) {
+        evhttp_uri_free(http_uri);
         die("malformed url");
     }
 
@@ -31,7 +32,9 @@ void connect_to_injector(struct event_base *base, proxy *p)
     struct evhttp_connection *evcon
         = evhttp_connection_base_bufferevent_new(base, NULL, bev, host, port);
 
-    proxy_add_injector(p, bev, evcon);
+    proxy_add_injector(p, evcon);
+
+    evhttp_uri_free(http_uri);
 }
 
 int main(int argc, char *argv[])
