@@ -79,6 +79,8 @@ struct proxy {
 
 static void handle_injector_response(struct evhttp_request *req, void *ctx)
 {
+    // TODO: Remove the injector on ERR_CONNECTION_REFUSED or if !req.
+
     if (!req) {
         int errcode = EVUTIL_SOCKET_ERROR();
 
@@ -252,11 +254,8 @@ static int start_taking_requests(proxy *p)
 static void connect_to_injector(proxy *p, const string& addr, uint16_t port) {
     auto evbase = p->network->evbase;
 
-    struct bufferevent *bev
-        = bufferevent_socket_new(evbase, -1, BEV_OPT_CLOSE_ON_FREE);
-
     struct evhttp_connection *evcon
-        = evhttp_connection_base_bufferevent_new(evbase, NULL, bev, addr.c_str(), port);
+        = evhttp_connection_base_new(evbase, NULL, addr.c_str(), port);
 
     proxy_add_injector(p, evcon);
 }
