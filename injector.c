@@ -40,7 +40,7 @@ void inject_url(network *n, const char *url, const uint8_t *content_hash)
     __block struct {
         uint8_t url_hash[20];
     } hash_state;
-    SHA1(hash_state.url_hash, url, strlen(url));
+    SHA1(hash_state.url_hash, (const unsigned char *)url, strlen(url));
 
     // TODO: stop after 24hr
     timer_callback cb = ^{
