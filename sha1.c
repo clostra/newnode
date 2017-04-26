@@ -21,6 +21,10 @@ A million repetitions of "a"
 #include <string.h>
 #include <stdint.h>
 
+#ifdef __APPLE__
+#import <CommonCrypto/CommonDigest.h>
+#endif
+
 #include "sha1.h"
 
 #define rol(value, bits) (((value) << (bits)) | ((value) >> (32 - (bits))))
