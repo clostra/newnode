@@ -12,6 +12,7 @@
 #include <event2/bufferevent.h>
 
 #include "log.h"
+#include "sha1.h"
 #include "utp.h"
 #include "timer.h"
 #include "network.h"
@@ -27,7 +28,7 @@ typedef struct evhttp_request evhttp_request;
 typedef struct evhttp_connection evhttp_connection;
 
 
-void dht_put_value(const uint8_t *key, const uint8_t *value)
+void inject_url(network *n, const char *url, const uint8_t *content_hash)
 {
     // TODO
     /*
@@ -35,6 +36,22 @@ void dht_put_value(const uint8_t *key, const uint8_t *value)
         printf("put complete\n");
     });
     */
+
+    __block struct {
+        uint8_t url_hash[20];
+    } hash_state;
+    SHA1(hash_state.url_hash, url, strlen(url));
+
+    // TODO: stop after 24hr
+    timer_callback cb = ^{
+        dht_announce(n->dht, hash_state.url_hash, ^(const byte *peers, uint num_peers) {
+            if (!peers) {
+                printf("announce complete\n");
+            }
+        });
+    };
+    cb();
+    timer_repeating(n, 25 * 60 * 1000, cb);
 }
 
 int get_port_for_scheme(const char *scheme)
@@ -174,16 +191,12 @@ void request_done_cb(struct evhttp_request *req, void *arg)
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p request_done_cb\n", p);
     if (p->server_req) {
-        debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(req));
         if (req) {
+            debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(req));
             uint8_t content_hash[crypto_generichash_BYTES];
             crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
 
-            uint8_t url_hash[crypto_generichash_BYTES];
-            const char *uri = evhttp_request_get_uri(p->server_req);
-            crypto_generichash(url_hash, sizeof(url_hash), (const uint8_t*)uri, strlen(uri), NULL, 0);
-
-            dht_put_value(url_hash, content_hash);
+            inject_url(p->n, evhttp_request_get_uri(p->server_req), content_hash);
         }
         if (evhttp_request_get_connection(p->server_req)) {
             evhttp_send_reply_end(p->server_req);
@@ -309,13 +322,15 @@ int main(int argc, char *argv[])
 
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
 
-    timer_repeating(n, 6 * 60 * 60 * 1000, ^{
+    timer_callback cb = ^{
         dht_announce(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
             if (!peers) {
                 printf("announce complete\n");
             }
         });
-    });
+    };
+    cb();
+    timer_repeating(n, 25 * 60 * 1000, cb);
 
     evhttp_set_gencb(n->http, http_request_cb, n);
     evhttp_bind_socket_with_handle(n->http, "0.0.0.0", 8005);

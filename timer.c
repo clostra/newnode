@@ -26,7 +26,7 @@ void timer_cancel(timer *t)
     timer_free(t);
 }
 
-timer* timer_new(network *n, uint64_t timeout_ms, short events, callback cb)
+timer* timer_new(network *n, uint64_t timeout_ms, short events, timer_callback cb)
 {
     struct timeval timeout;
     timeout.tv_sec = timeout_ms / 1000;
@@ -41,12 +41,12 @@ timer* timer_new(network *n, uint64_t timeout_ms, short events, callback cb)
     return t;
 }
 
-timer* timer_start(network *n, uint64_t timeout_ms, callback cb)
+timer* timer_start(network *n, uint64_t timeout_ms, timer_callback cb)
 {
     return timer_new(n, timeout_ms, 0, cb);
 }
 
-timer* timer_repeating(network *n, uint64_t timeout_ms, callback cb)
+timer* timer_repeating(network *n, uint64_t timeout_ms, timer_callback cb)
 {
     return timer_new(n, timeout_ms, EV_PERSIST, cb);
 }
