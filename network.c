@@ -181,6 +181,12 @@ network* network_setup(char *address, char *port)
         utp_context_set_option(n->utp, UTP_LOG_DEBUG, 1);
     }
 
+#ifdef EVTHREAD_USE_PTHREADS_IMPLEMENTED
+    evthread_use_pthreads();
+#elif defined(EVTHREAD_USE_WINDOWS_THREADS_IMPLEMENTED)
+    evthread_use_windows_threads();
+#endif
+
     event_enable_debug_mode();
     event_enable_debug_logging(EVENT_DBG_ALL);
 
@@ -192,12 +198,6 @@ network* network_setup(char *address, char *port)
         fprintf(stderr, "event_base_new failed\n");
         return NULL;
     }
-
-#ifdef EVTHREAD_USE_PTHREADS_IMPLEMENTED
-    evthread_use_pthreads();
-#elif defined(EVTHREAD_USE_WINDOWS_THREADS_IMPLEMENTED)
-    evthread_use_windows_threads();
-#endif
 
     n->evdns = evdns_base_new(n->evbase, EVDNS_BASE_INITIALIZE_NAMESERVERS);
     if (!n->evdns) {
