@@ -16,7 +16,7 @@ typedef struct proxy_client proxy_client;
 proxy* proxy_create(network*);
 void proxy_destroy(proxy*);
 
-void proxy_add_injector(proxy*, struct bufferevent*, struct evhttp_connection*);
+void proxy_add_injector(proxy*, struct evhttp_connection*);
 
 #ifdef __cplusplus
 } // extern "C"
