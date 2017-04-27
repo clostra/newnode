@@ -4,3 +4,9 @@
 [submodule "libbtdht"]
 	path = libbtdht
 	url = ../libbtdht
+[submodule "Libevent"]
+	path = Libevent
+	url = ../Libevent
+[submodule "libsodium"]
+	path = libsodium
+	url = ../libsodium
