@@ -109,7 +109,6 @@ static void handle_injector_response(struct evhttp_request *res, void *ctx)
             evutil_socket_error_to_string(errcode),
             errcode);
 
-        evhttp_request_free(req);
         return;
     }
 
