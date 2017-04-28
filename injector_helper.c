@@ -33,6 +33,7 @@ handle_connection(utp_socket *s)
 #include <event2/util.h>
 #include <event2/keyvalq_struct.h>
 #include <event2/bufferevent.h>
+#include <event2/listener.h>
 
 #include <sys/queue.h>
 
@@ -42,30 +43,53 @@ handle_connection(utp_socket *s)
 #include "network.h"
 
 typedef struct proxy proxy;
-typedef struct proxy_injector proxy_injector;
+typedef struct injector injector;
 typedef struct proxy_client proxy_client;
 
-void proxy_add_injector(proxy* p, struct evhttp_connection *http_con);
+#define TCP_TO_UTP_REDIRECT_PORT 9000
 
-struct proxy_injector {
-    STAILQ_ENTRY(proxy_injector) tailq;
+typedef struct {
+    uint8_t ip[4];
+    uint16_t port;
+} endpoint;
 
-    struct evhttp_connection *http_con;
+struct injector {
+    STAILQ_ENTRY(injector) tailq;
+
+    endpoint ep;
 };
+
+injector* create_injector(endpoint ep)
+{
+    injector* c = alloc(injector);
+    c->ep = ep;
+    return c;
+}
+
+void destroy_injector(injector *i)
+{
+    free(i);
+}
 
 struct proxy {
     network *net;
     struct evhttp *http;
     timer *injector_search_timer;
 
-    STAILQ_HEAD(, proxy_injector) injectors;
+    STAILQ_HEAD(, injector) injectors;
 };
 
-static proxy_injector* pick_random_injector(proxy* p)
+void proxy_add_injector(proxy* p, endpoint ep)
+{
+    injector* c = create_injector(ep);
+    STAILQ_INSERT_TAIL(&p->injectors, c, tailq);
+}
+
+static injector* pick_random_injector(proxy* p)
 {
     // XXX: This would be a faster if p->injectors was an array.
     size_t cnt = 0;
-    struct proxy_injector* inj;
+    struct injector* inj;
     STAILQ_FOREACH(inj, &p->injectors, tailq) { cnt += 1; }
     size_t n = rand() % cnt;
     STAILQ_FOREACH(inj, &p->injectors, tailq) { if (n-- == 0) return inj; }
@@ -95,11 +119,19 @@ static void handle_injector_response(struct evhttp_request *res, void *ctx)
     const char *response_code_line = evhttp_request_get_response_code_line(res);
 
     int nread;
-	while ((nread = evbuffer_remove_buffer(evb_in,
-		    evb_out, evbuffer_get_length(evb_in))) > 0) { }
+    while ((nread = evbuffer_remove_buffer(evb_in,
+            evb_out, evbuffer_get_length(evb_in))) > 0) { }
 
     evhttp_send_reply(req, response_code, response_code_line, evb_out);
     evbuffer_free(evb_out);
+}
+
+struct evhttp_connection* make_http_connection(struct event_base *evbase, endpoint ep)
+{
+    char addr[32];
+    sprintf(addr, "%d.%d.%d.%d", ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3]);
+    struct evhttp_connection *http_con = evhttp_connection_base_new(evbase, NULL, addr, ep.port);
+    return http_con;
 }
 
 void handle_client_request(struct evhttp_request *req_in, void *arg)
@@ -108,9 +140,7 @@ void handle_client_request(struct evhttp_request *req_in, void *arg)
 
     // XXX: Ignore or respond with error if too many requests per client.
 
-    // Proxy doesn't try to connect to injectors, instead, it is expected that
-    // the client will provide them through the `proxy_add_injector` function.
-    proxy_injector* inj = pick_random_injector(p);
+    injector* inj = pick_random_injector(p);
 
     if (!inj) {
         evhttp_send_reply(req_in, 502 /* Bad Gateway */, "Proxy has no injectors", NULL);
@@ -140,7 +170,9 @@ void handle_client_request(struct evhttp_request *req_in, void *arg)
 
     evhttp_add_header(hdr_out, "Connection", "close");
 
-    int result = evhttp_make_request(inj->http_con, req_out, type, uri);
+    struct evhttp_connection *http_con = make_http_connection(p->net->evbase, inj->ep);
+
+    int result = evhttp_make_request(http_con, req_out, type, uri);
 
     if (result != 0) {
         die("evhttp_make_request() failed\n");
@@ -218,24 +250,10 @@ static int start_taking_requests(proxy *p)
 static void on_injectors_found(proxy *proxy, const byte *peers, uint num_peers) {
     printf("Found %d injectors\n", num_peers);
 
-    typedef struct { byte ip[4]; byte port[2]; } raw_peer;
-
     for (uint i = 0; i < num_peers; ++i) {
-        raw_peer p = *((raw_peer*) peers + i * sizeof(raw_peer));
-
-        char addr[32];
-
-        sprintf(addr, "%d.%d.%d.%d", p.ip[0], p.ip[1], p.ip[2], p.ip[3]);
-
-        uint16_t port = ntohs(*((uint16_t*) p.port));
-
-        printf("    %s:%d\n", addr, (int)port);
-
-        // Connect to injector
-        struct evhttp_connection *evcon
-            = evhttp_connection_base_new(proxy->net->evbase, NULL, addr, port);
-
-        proxy_add_injector(proxy, evcon);
+        endpoint ep = *((endpoint*) peers + i * sizeof(endpoint));
+        ep.port = ntohs(ep.port);
+        proxy_add_injector(proxy, ep);
     }
 }
 
@@ -264,8 +282,8 @@ void proxy_destroy(proxy* p)
         timer_cancel(p->injector_search_timer);
 
     while (!STAILQ_EMPTY(&p->injectors)) {
-        proxy_injector *i = STAILQ_FIRST(&p->injectors);
-        free(i);
+        injector *i = STAILQ_FIRST(&p->injectors);
+        destroy_injector(i);
         STAILQ_REMOVE_HEAD(&p->injectors, tailq);
     }
 
@@ -292,34 +310,18 @@ proxy* proxy_create(network *n)
     return p;
 }
 
-void proxy_add_injector(proxy* p, struct evhttp_connection *http_con)
-{
-    proxy_injector* c = alloc(proxy_injector);
-    c->http_con = http_con;
-    STAILQ_INSERT_TAIL(&p->injectors, c, tailq);
-}
-
 static
-void connect_to_test_injector(struct event_base *base, proxy *p)
+void add_test_injector(proxy *p)
 {
-    const char *url = "http://rubblers.com";
-    uint16_t port = 80;
+    endpoint test_ep;
 
-    struct evhttp_uri *http_uri = evhttp_uri_parse(url);
+    test_ep.ip[0] = 46;
+    test_ep.ip[1] = 101;
+    test_ep.ip[2] = 176;
+    test_ep.ip[3] = 77;
+    test_ep.port = 80;
 
-    if (http_uri == NULL) {
-        evhttp_uri_free(http_uri);
-        die("malformed url");
-    }
-
-    const char *host = evhttp_uri_get_host(http_uri);
-
-    struct evhttp_connection *evcon
-        = evhttp_connection_base_new(base, NULL, host, port);
-
-    proxy_add_injector(p, evcon);
-
-    evhttp_uri_free(http_uri);
+    proxy_add_injector(p, test_ep);
 }
 
 int main(int argc, char *argv[])
@@ -333,7 +335,7 @@ int main(int argc, char *argv[])
 
     assert(p);
 
-    connect_to_test_injector(n->evbase, p);
+    add_test_injector(p);
 
     // TODO
     //utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
