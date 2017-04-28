@@ -43,3 +43,10 @@ clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c sha1.c timer
   `pkg-config --cflags libsodium` `pkg-config --libs libsodium` \
   `pkg-config --cflags libevent` \
   -lc++ $LRT $LM $LB
+clang $CFLAGS -o injector_helper injector_helper.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c dht.o \
+  -I ./libutp libutp/libutp.a \
+  -I ./Libevent/include ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a \
+  ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
+  `pkg-config --cflags libsodium` `pkg-config --libs libsodium` \
+  `pkg-config --cflags libevent` \
+  -lc++ $LRT $LM $LB
