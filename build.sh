@@ -16,10 +16,10 @@ cd ..
 echo "Building libbtdht..."
 cd libbtdht/btutils
 # XXX: how do you specify the output dir for bjam?
-bjam toolset=clang #cxxflags="-std=c++14"
+bjam toolset=clang cxxflags="-std=c++1y"
 cp `find bin -name libbtutils.a` .
 cd ..
-bjam toolset=clang #cxxflags="-std=c++14"
+bjam toolset=clang cxxflags="-std=c++1y"
 cp `find bin -name libbtdht.a` .
 cd ..
 
