@@ -1,21 +1,25 @@
 #!/bin/bash
 set -e
 
+echo "Building libutp..."
 cd libutp
 make
 cd ..
 
+echo "Building Libevent..."
 cd Libevent
 if [ ! -f configure ]; then ./autogen.sh; fi
 if [ ! -f Makefile ]; then ./configure; fi
 make
 cd ..
+
+echo "Building libbtdht..."
 cd libbtdht/btutils
 # XXX: how do you specify the output dir for bjam?
-bjam toolset=clang cxxflags="-std=c++14"
+bjam toolset=clang #cxxflags="-std=c++14"
 cp `find bin -name libbtutils.a` .
 cd ..
-bjam toolset=clang cxxflags="-std=c++14"
+bjam toolset=clang #cxxflags="-std=c++14"
 cp `find bin -name libbtdht.a` .
 cd ..
 
