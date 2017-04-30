@@ -114,7 +114,7 @@ that this will change in a future protocol version due to two different
 concerns: DHT scalability and security.  (Watch this space for a new
 version.)
 
-If there's no-one found on the URL swarm who can has a valid unexpired
+If there's no-one found on the URL swarm who has a valid unexpired
 *URL content signature*, the peer SHOULD ask an injector or an injector
 proxy, whichever the peer is connected to, to inject the URL.
 
