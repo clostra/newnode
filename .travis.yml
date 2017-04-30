@@ -4,3 +4,5 @@ before_script:
   - sudo apt-get update -qq
   - sudo apt-get install libboost-dev
   - sudo apt install libsodium-dev
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
