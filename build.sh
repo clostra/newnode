@@ -29,7 +29,7 @@ FLAGS="-g -O0 -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-par
   -std=gnu11 -D__FAVOR_BSD -D_BSD_SOURCE"
 
 CFLAGS="$FLAGS -std=gnu11"
-CPPFLAGS="$FLAGS -std=c++14"
+CPPFLAGS="$FLAGS -std=c++1y"
 
 echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
