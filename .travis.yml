@@ -3,3 +3,4 @@ script: ./build.sh
 before_script:
   - sudo apt-get update -qq
   - sudo apt-get install libboost-dev
+  - sudo apt-get install libsodium-dev
