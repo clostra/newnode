@@ -59,9 +59,9 @@ struct injector {
     endpoint ep;
 };
 
-injector* create_injector(endpoint ep)
+injector *create_injector(endpoint ep)
 {
-    injector* c = alloc(injector);
+    injector *c = alloc(injector);
     c->ep = ep;
     return c;
 }
@@ -79,13 +79,13 @@ struct proxy {
     STAILQ_HEAD(, injector) injectors;
 };
 
-void proxy_add_injector(proxy* p, endpoint ep)
+void proxy_add_injector(proxy *p, endpoint ep)
 {
     injector* c = create_injector(ep);
     STAILQ_INSERT_TAIL(&p->injectors, c, tailq);
 }
 
-static injector* pick_random_injector(proxy* p)
+static injector *pick_random_injector(proxy *p)
 {
     // XXX: This would be a faster if p->injectors was an array.
     size_t cnt = 0;
@@ -112,7 +112,7 @@ static void handle_injector_response(struct evhttp_request *res, void *ctx)
         return;
     }
 
-    struct evbuffer* evb_out = evbuffer_new();
+    struct evbuffer *evb_out = evbuffer_new();
     struct evbuffer *evb_in = evhttp_request_get_input_buffer(res);
     int response_code = evhttp_request_get_response_code(res);
     const char *response_code_line = evhttp_request_get_response_code_line(res);
@@ -125,7 +125,7 @@ static void handle_injector_response(struct evhttp_request *res, void *ctx)
     evbuffer_free(evb_out);
 }
 
-struct evhttp_connection* make_http_connection(struct event_base *evbase, endpoint ep)
+struct evhttp_connection *make_http_connection(struct event_base *evbase, endpoint ep)
 {
     char addr[32];
     sprintf(addr, "%d.%d.%d.%d", ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3]);
@@ -135,11 +135,11 @@ struct evhttp_connection* make_http_connection(struct event_base *evbase, endpoi
 
 void handle_client_request(struct evhttp_request *req_in, void *arg)
 {
-    proxy *p = (proxy*) arg;
+    proxy *p = (proxy *)arg;
 
     // XXX: Ignore or respond with error if too many requests per client.
 
-    injector* inj = pick_random_injector(p);
+    injector *inj = pick_random_injector(p);
 
     if (!inj) {
         evhttp_send_reply(req_in, 502 /* Bad Gateway */, "Proxy has no injectors", NULL);
@@ -220,23 +220,22 @@ static int start_taking_requests(proxy *p)
             return 1;
         }
         if (ss.ss_family == AF_INET) {
-            got_port = ntohs(((struct sockaddr_in*)&ss)->sin_port);
-            inaddr = &((struct sockaddr_in*)&ss)->sin_addr;
+            got_port = ntohs(((struct sockaddr_in *)&ss)->sin_port);
+            inaddr = &((struct sockaddr_in *)&ss)->sin_addr;
         } else if (ss.ss_family == AF_INET6) {
-            got_port = ntohs(((struct sockaddr_in6*)&ss)->sin6_port);
-            inaddr = &((struct sockaddr_in6*)&ss)->sin6_addr;
+            got_port = ntohs(((struct sockaddr_in6 *)&ss)->sin6_port);
+            inaddr = &((struct sockaddr_in6 *)&ss)->sin6_addr;
         } else {
             fprintf(stderr, "Weird address family %d\n",
                 ss.ss_family);
             return 1;
         }
-        addr = evutil_inet_ntop(ss.ss_family, inaddr, addrbuf,
-            sizeof(addrbuf));
+        addr = evutil_inet_ntop(ss.ss_family, inaddr, addrbuf, sizeof(addrbuf));
         if (addr) {
             char uri_root[512];
             printf("Listening on TCP:%s:%d\n", addr, got_port);
             evutil_snprintf(uri_root, sizeof(uri_root),
-                "http://%s:%d",addr,got_port);
+                "http://%s:%d", addr, got_port);
         } else {
             fprintf(stderr, "evutil_inet_ntop failed\n");
             return 1;
@@ -250,7 +249,7 @@ static void on_injectors_found(proxy *proxy, const byte *peers, uint num_peers) 
     printf("Found %d injectors\n", num_peers);
 
     for (uint i = 0; i < num_peers; ++i) {
-        endpoint ep = *((endpoint*) peers + i * sizeof(endpoint));
+        endpoint ep = *((endpoint *)peers + i * sizeof(endpoint));
         ep.port = ntohs(ep.port);
         proxy_add_injector(proxy, ep);
     }
@@ -275,7 +274,7 @@ static void start_injector_search(proxy *p)
             ^{ start_injector_search(p); });
 }
 
-void proxy_destroy(proxy* p)
+void proxy_destroy(proxy *p)
 {
     if (p->injector_search_timer)
         timer_cancel(p->injector_search_timer);
@@ -289,9 +288,9 @@ void proxy_destroy(proxy* p)
     free(p);
 }
 
-proxy* proxy_create(network *n)
+proxy *proxy_create(network *n)
 {
-    proxy* p = alloc(proxy);
+    proxy *p = alloc(proxy);
 
     STAILQ_INIT(&p->injectors);
 
