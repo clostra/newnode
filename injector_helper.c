@@ -47,7 +47,7 @@ typedef struct proxy proxy;
 typedef struct injector injector;
 typedef struct proxy_client proxy_client;
 
-static const bool SEARCH_FOR_INJECTORS = false;
+static const bool TEST_LOCAL_INJECTOR = false;
 
 typedef struct {
     uint8_t ip[4];
@@ -265,6 +265,23 @@ static void on_injectors_found(proxy *proxy, const byte *peers, uint num_peers) 
 
 static void start_injector_search(proxy *p)
 {
+    if (TEST_LOCAL_INJECTOR) {
+        endpoint test_ep;
+
+        //test_ep.ip[0] = 46;
+        //test_ep.ip[1] = 101;
+        //test_ep.ip[2] = 176;
+        //test_ep.ip[3] = 77;
+        //test_ep.port = 80;
+        test_ep.ip[0] = 127;
+        test_ep.ip[1] = 0;
+        test_ep.ip[2] = 0;
+        test_ep.ip[3] = 1;
+        test_ep.port = 7000;
+
+        return proxy_add_injector(p, test_ep);
+    }
+
     dht_get_peers(p->net->dht, injector_swarm,
             ^(const byte *peers, uint num_peers) {
                 // TODO: Ensure safety after p is destroyed.
@@ -311,51 +328,33 @@ proxy *proxy_create(network *n)
         return NULL;
     }
 
-    if (SEARCH_FOR_INJECTORS) {
-        start_injector_search(p);
-    }
+    start_injector_search(p);
 
     return p;
-}
-
-static void add_test_injector(proxy *p)
-{
-    endpoint test_ep;
-
-    //test_ep.ip[0] = 46;
-    //test_ep.ip[1] = 101;
-    //test_ep.ip[2] = 176;
-    //test_ep.ip[3] = 77;
-    //test_ep.port = 80;
-    test_ep.ip[0] = 127;
-    test_ep.ip[1] = 0;
-    test_ep.ip[2] = 0;
-    test_ep.ip[3] = 1;
-    test_ep.port = 7000;
-
-    proxy_add_injector(p, test_ep);
 }
 
 static void
 listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct sockaddr *sa, int socklen, void *user_data)
 {
-    printf("Accepted\n");
+    printf("Helper: Accepted TCP\n");
     proxy* p = user_data;
     struct event_base *base = p->net->evbase;
 
     // Connect to a random uTP injector.
     injector *i = pick_random_injector(p);
 
-    char addr[32];
-    sprintf(addr, "%d.%d.%d.%d", i->ep.ip[0], i->ep.ip[1], i->ep.ip[2], i->ep.ip[3]);
+    {
+        char addr[32];
+        sprintf(addr, "%d.%d.%d.%d", i->ep.ip[0], i->ep.ip[1], i->ep.ip[2], i->ep.ip[3]);
+        printf("Helper: Connecting to UTP:%s:%d\n", addr, (int) i->ep.port);
+    }
 
-    printf("Connecting to UTP:%s:%d\n", addr, (int) i->ep.port);
-
-    struct sockaddr_in dest;
-    dest.sin_family = AF_INET;
-    dest.sin_port = htons(i->ep.port);
-    inet_aton(addr, &dest.sin_addr);
+    struct sockaddr_in dest = {
+        .sin_family = AF_INET,
+        .sin_addr.s_addr = *((uint32_t*)i->ep.ip),
+        .sin_port = htons(i->ep.port),
+    };
 
     tcp_connect_utp(base, p->net->utp, fd, (const struct sockaddr *)&dest, sizeof(dest));
 }
@@ -400,7 +399,6 @@ int main(int argc, char *argv[])
     assert(p);
 
     start_tcp_to_utp_redirect(p);
-    add_test_injector(p);
 
     // TODO
     //utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
