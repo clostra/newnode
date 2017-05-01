@@ -43,10 +43,10 @@ echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || 
 echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LB="-lBlocksRuntime"
 
 if [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
-    CFLAGS="$CFLAGS -lstdc++ -lm -lBlocksRuntime -lpthread"
+    CFLAGS="$CFLAGS -lstdc++ -lpthread"
 fi
 
-echo "Building dht.o lib..."
+echo "Building dht.o..."
 clang $CPPFLAGS -c dht.cpp -I ./libbtdht/src -I ./libbtdht/btutils/src -I ./libsodium/src/libsodium/include
 
 echo "Building injector..."
