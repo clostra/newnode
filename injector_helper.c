@@ -49,7 +49,7 @@ typedef struct proxy_client proxy_client;
 
 static const bool TEST_LOCAL_INJECTOR = false;
 
-#if true
+#if false
 #   define LOG(...) printf(__VA_ARGS__)
 #else
 #   define LOG(...) do {} while(false)
@@ -101,7 +101,7 @@ void proxy_add_injector(proxy *p, endpoint ep)
         return;
     }
 
-    struct injector* i;
+    struct injector *i;
     STAILQ_FOREACH(i, &p->injectors, tailq) {
         if (same_endpoint(i->ep, ep)) {
             LOG("Not adding duplicate endpoint %d.%d.%d.%d:%d\n",
@@ -110,7 +110,7 @@ void proxy_add_injector(proxy *p, endpoint ep)
         }
     }
 
-    injector* c = create_injector(ep);
+    injector *c = create_injector(ep);
     STAILQ_INSERT_TAIL(&p->injectors, c, tailq);
 }
 
@@ -118,7 +118,7 @@ static injector *pick_random_injector(proxy *p)
 {
     // XXX: This would be a faster if p->injectors was an array.
     size_t cnt = 0;
-    struct injector* inj;
+    struct injector *inj;
     STAILQ_FOREACH(inj, &p->injectors, tailq) { cnt += 1; }
     size_t n = rand() % cnt;
     STAILQ_FOREACH(inj, &p->injectors, tailq) { if (n-- == 0) return inj; }
@@ -264,7 +264,7 @@ static int start_taking_requests(proxy *p)
         uint16_t port;
         const char *addr;
         if (fd_info(evhttp_bound_socket_get_fd(handle), &addr, &port) == 0) {
-            LOG("Listening on TCP:%s:%d\n", addr, port);
+            printf("Listening on TCP:%s:%d\n", addr, port);
         }
     }
 
@@ -360,7 +360,7 @@ listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct sockaddr *sa, int socklen, void *user_data)
 {
     LOG("Helper: Accepted TCP\n");
-    proxy* p = user_data;
+    proxy *p = user_data;
     struct event_base *base = p->net->evbase;
 
     // Connect to a random uTP injector.
