@@ -88,9 +88,26 @@ struct proxy {
     STAILQ_HEAD(, injector) injectors;
 };
 
+static bool same_endpoint(endpoint ep1, endpoint ep2) {
+    return memcmp(&ep1, &ep2, sizeof(endpoint)) == 0;
+}
+
 void proxy_add_injector(proxy *p, endpoint ep)
 {
-    // TODO: Don't add duplicate injectors.
+    // I was seeing addresses 0.0.0.0 reported by the DHT which seems bogus.
+    if (!ep.ip[0] && !ep.ip[1] && !ep.ip[2] && !ep.ip[3]) {
+        LOG("Not adding 0.0.0.0:%d\n", ep.port);
+        return;
+    }
+
+    struct injector* i;
+    STAILQ_FOREACH(i, &p->injectors, tailq) {
+        if (same_endpoint(i->ep, ep)) {
+            LOG("Not adding duplicate endpoint %d.%d.%d.%d:%d\n",
+                    ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], ep.port);
+            return;
+        }
+    }
 
     injector* c = create_injector(ep);
     STAILQ_INSERT_TAIL(&p->injectors, c, tailq);
