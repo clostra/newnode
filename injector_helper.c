@@ -41,12 +41,15 @@ handle_connection(utp_socket *s)
 #include "timer.h"
 #include "constants.h"
 #include "network.h"
+#include "utp_bufferevent.h"
 
 typedef struct proxy proxy;
 typedef struct injector injector;
 typedef struct proxy_client proxy_client;
 
 #define TCP_TO_UTP_REDIRECT_PORT 9000
+
+static const bool SEARCH_FOR_INJECTORS = false;
 
 typedef struct {
     uint8_t ip[4];
@@ -81,6 +84,8 @@ struct proxy {
 
 void proxy_add_injector(proxy *p, endpoint ep)
 {
+    // TODO: Don't add duplicate injectors.
+
     injector* c = create_injector(ep);
     STAILQ_INSERT_TAIL(&p->injectors, c, tailq);
 }
@@ -125,14 +130,6 @@ static void handle_injector_response(struct evhttp_request *res, void *ctx)
     evbuffer_free(evb_out);
 }
 
-struct evhttp_connection *make_http_connection(struct event_base *evbase, endpoint ep)
-{
-    char addr[32];
-    sprintf(addr, "%d.%d.%d.%d", ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3]);
-    struct evhttp_connection *http_con = evhttp_connection_base_new(evbase, NULL, addr, ep.port);
-    return http_con;
-}
-
 void handle_client_request(struct evhttp_request *req_in, void *arg)
 {
     proxy *p = (proxy *)arg;
@@ -169,7 +166,8 @@ void handle_client_request(struct evhttp_request *req_in, void *arg)
 
     evhttp_add_header(hdr_out, "Connection", "close");
 
-    struct evhttp_connection *http_con = make_http_connection(p->net->evbase, inj->ep);
+    struct evhttp_connection *http_con
+        = evhttp_connection_base_new(p->net->evbase, NULL, "127.0.0.1", TCP_TO_UTP_REDIRECT_PORT);
 
     int result = evhttp_make_request(http_con, req_out, type, uri);
 
@@ -251,6 +249,11 @@ static void on_injectors_found(proxy *proxy, const byte *peers, uint num_peers) 
     for (uint i = 0; i < num_peers; ++i) {
         endpoint ep = *((endpoint *)peers + i * sizeof(endpoint));
         ep.port = ntohs(ep.port);
+
+        {
+            printf("  %d.%d.%d.%d:%d\n", ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], (int)ep.port);
+        }
+
         proxy_add_injector(proxy, ep);
     }
 }
@@ -303,23 +306,75 @@ proxy *proxy_create(network *n)
         return NULL;
     }
 
-    start_injector_search(p);
+    if (SEARCH_FOR_INJECTORS) {
+        start_injector_search(p);
+    }
 
     return p;
 }
 
-static
-void add_test_injector(proxy *p)
+static void add_test_injector(proxy *p)
 {
     endpoint test_ep;
 
-    test_ep.ip[0] = 46;
-    test_ep.ip[1] = 101;
-    test_ep.ip[2] = 176;
-    test_ep.ip[3] = 77;
-    test_ep.port = 80;
+    //test_ep.ip[0] = 46;
+    //test_ep.ip[1] = 101;
+    //test_ep.ip[2] = 176;
+    //test_ep.ip[3] = 77;
+    //test_ep.port = 80;
+    test_ep.ip[0] = 127;
+    test_ep.ip[1] = 0;
+    test_ep.ip[2] = 0;
+    test_ep.ip[3] = 1;
+    test_ep.port = 7000;
 
     proxy_add_injector(p, test_ep);
+}
+
+static void
+listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
+    struct sockaddr *sa, int socklen, void *user_data)
+{
+    printf("Accepted\n");
+    proxy* p = user_data;
+    struct event_base *base = p->net->evbase;
+
+    // Connect to a random uTP injector.
+    injector *i = pick_random_injector(p);
+
+    char addr[32];
+    sprintf(addr, "%d.%d.%d.%d", i->ep.ip[0], i->ep.ip[1], i->ep.ip[2], i->ep.ip[3]);
+
+    printf("Connecting to UTP:%s:%d\n", addr, (int) i->ep.port);
+
+    struct sockaddr_in dest;
+    dest.sin_family = AF_INET;
+    dest.sin_port = htons(i->ep.port);
+    inet_aton(addr, &dest.sin_addr);
+
+    tcp_connect_utp(base, p->net->utp, fd, (const struct sockaddr *)&dest, sizeof(dest));
+}
+
+static
+int start_tcp_to_utp_redirect(proxy *p)
+{
+    event_base *evbase = p->net->evbase;
+    struct sockaddr_in sin;
+    memset(&sin, 0, sizeof(sin));
+    sin.sin_family = AF_INET;
+    sin.sin_port = htons(TCP_TO_UTP_REDIRECT_PORT);
+
+    struct evconnlistener *listener = evconnlistener_new_bind(evbase, listener_cb, p,
+        LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_FREE, -1,
+        (struct sockaddr*)&sin,
+        sizeof(sin));
+
+    if (!listener) {
+        fprintf(stderr, "Could not create a listener!\n");
+        return 1;
+    }
+
+    return 0;
 }
 
 int main(int argc, char *argv[])
@@ -333,6 +388,7 @@ int main(int argc, char *argv[])
 
     assert(p);
 
+    start_tcp_to_utp_redirect(p);
     add_test_injector(p);
 
     // TODO
