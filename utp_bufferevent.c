@@ -233,3 +233,11 @@ void utp_connect_tcp(event_base *base, utp_socket *s, const struct sockaddr *add
         return;
     }
 }
+
+void tcp_connect_utp(event_base *base, utp_context* utpctx, int fd, const struct sockaddr *address, socklen_t address_len)
+{
+    utp_socket *s = utp_create_socket(utpctx);
+    utp_bufferevent_new(base, s, fd);
+    // XXX Check return value.
+    utp_connect(s, address, address_len);
+}
