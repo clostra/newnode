@@ -83,6 +83,7 @@ struct proxy {
     struct evhttp *http;
     timer *injector_search_timer;
 
+    struct evconnlistener *tcp_out_listener;
     uint16_t tcp_out_port;
 
     STAILQ_HEAD(, injector) injectors;
@@ -319,6 +320,10 @@ void proxy_destroy(proxy *p)
     if (p->injector_search_timer)
         timer_cancel(p->injector_search_timer);
 
+    if (p->tcp_out_listener) {
+        evconnlistener_free(p->tcp_out_listener);
+    }
+
     while (!STAILQ_EMPTY(&p->injectors)) {
         injector *i = STAILQ_FIRST(&p->injectors);
         destroy_injector(i);
@@ -337,6 +342,8 @@ proxy *proxy_create(network *n)
     p->net = n;
     p->http = NULL;
     p->injector_search_timer = NULL;
+    p->tcp_out_listener = NULL;
+    p->tcp_out_port = 0;
 
     if (start_taking_requests(p) != 0) {
         proxy_destroy(p);
@@ -384,17 +391,17 @@ int start_tcp_to_utp_redirect(proxy *p)
     sin.sin_port = htons(0);
 
     // TODO: Free the listener when proxy is destroyed.
-    struct evconnlistener *listener = evconnlistener_new_bind(evbase, listener_cb, p,
+    p->tcp_out_listener = evconnlistener_new_bind(evbase, listener_cb, p,
         LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_FREE, -1,
         (struct sockaddr*)&sin,
         sizeof(sin));
 
-    if (!listener) {
+    if (!p->tcp_out_listener) {
         LOG("Could not create a listener!\n");
         return 1;
     }
 
-    if (fd_info(evconnlistener_get_fd(listener), NULL, &p->tcp_out_port)) {
+    if (fd_info(evconnlistener_get_fd(p->tcp_out_listener), NULL, &p->tcp_out_port)) {
         LOG("Could not get out lister port\n");
         return 1;
     }
