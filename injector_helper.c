@@ -49,6 +49,12 @@ typedef struct proxy_client proxy_client;
 
 static const bool TEST_LOCAL_INJECTOR = false;
 
+#if true
+#   define LOG(...) printf(__VA_ARGS__)
+#else
+#   define LOG(...) do {} while(false)
+#endif
+
 typedef struct {
     uint8_t ip[4];
     uint16_t port;
@@ -198,14 +204,13 @@ static bool fd_info(int fd, const char **addr, uint16_t *port) {
         }
         inaddr = &((struct sockaddr_in6 *)&ss)->sin6_addr;
     } else {
-        fprintf(stderr, "Weird address family %d\n",
-            ss.ss_family);
+        LOG("Weird address family %d\n", ss.ss_family);
         return 1;
     }
     if (addr) {
         *addr = evutil_inet_ntop(ss.ss_family, inaddr, addrbuf, sizeof(addrbuf));
         if (!*addr) {
-            fprintf(stderr, "evutil_inet_ntop failed\n");
+            LOG("evutil_inet_ntop failed\n");
             return 1;
         }
     }
@@ -241,7 +246,7 @@ static int start_taking_requests(proxy *p)
         uint16_t port;
         const char *addr;
         if (fd_info(evhttp_bound_socket_get_fd(handle), &addr, &port) == 0) {
-            printf("Listening on TCP:%s:%d\n", addr, port);
+            LOG("Listening on TCP:%s:%d\n", addr, port);
         }
     }
 
@@ -249,15 +254,13 @@ static int start_taking_requests(proxy *p)
 }
 
 static void on_injectors_found(proxy *proxy, const byte *peers, uint num_peers) {
-    printf("Found %d injectors\n", num_peers);
+    LOG("Found %d injectors\n", num_peers);
 
     for (uint i = 0; i < num_peers; ++i) {
         endpoint ep = *((endpoint *)peers + i * sizeof(endpoint));
         ep.port = ntohs(ep.port);
 
-        {
-            printf("  %d.%d.%d.%d:%d\n", ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], (int)ep.port);
-        }
+        LOG("  %d.%d.%d.%d:%d\n", ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], (int)ep.port);
 
         proxy_add_injector(proxy, ep);
     }
@@ -268,11 +271,6 @@ static void start_injector_search(proxy *p)
     if (TEST_LOCAL_INJECTOR) {
         endpoint test_ep;
 
-        //test_ep.ip[0] = 46;
-        //test_ep.ip[1] = 101;
-        //test_ep.ip[2] = 176;
-        //test_ep.ip[3] = 77;
-        //test_ep.port = 80;
         test_ep.ip[0] = 127;
         test_ep.ip[1] = 0;
         test_ep.ip[2] = 0;
@@ -337,7 +335,7 @@ static void
 listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct sockaddr *sa, int socklen, void *user_data)
 {
-    printf("Helper: Accepted TCP\n");
+    LOG("Helper: Accepted TCP\n");
     proxy* p = user_data;
     struct event_base *base = p->net->evbase;
 
@@ -347,7 +345,7 @@ listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
     {
         char addr[32];
         sprintf(addr, "%d.%d.%d.%d", i->ep.ip[0], i->ep.ip[1], i->ep.ip[2], i->ep.ip[3]);
-        printf("Helper: Connecting to UTP:%s:%d\n", addr, (int) i->ep.port);
+        LOG("Helper: Connecting to UTP:%s:%d\n", addr, (int) i->ep.port);
     }
 
     struct sockaddr_in dest = {
@@ -375,12 +373,12 @@ int start_tcp_to_utp_redirect(proxy *p)
         sizeof(sin));
 
     if (!listener) {
-        fprintf(stderr, "Could not create a listener!\n");
+        LOG("Could not create a listener!\n");
         return 1;
     }
 
     if (fd_info(evconnlistener_get_fd(listener), NULL, &p->tcp_out_port)) {
-        fprintf(stderr, "Could not get out lister port\n");
+        LOG("Could not get out lister port\n");
         return 1;
     }
 
