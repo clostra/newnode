@@ -47,8 +47,6 @@ typedef struct proxy proxy;
 typedef struct injector injector;
 typedef struct proxy_client proxy_client;
 
-#define TCP_TO_UTP_REDIRECT_PORT 9000
-
 static const bool SEARCH_FOR_INJECTORS = false;
 
 typedef struct {
@@ -78,6 +76,8 @@ struct proxy {
     network *net;
     struct evhttp *http;
     timer *injector_search_timer;
+
+    uint16_t tcp_out_port;
 
     STAILQ_HEAD(, injector) injectors;
 };
@@ -167,7 +167,7 @@ void handle_client_request(struct evhttp_request *req_in, void *arg)
     evhttp_add_header(hdr_out, "Connection", "close");
 
     struct evhttp_connection *http_con
-        = evhttp_connection_base_new(p->net->evbase, NULL, "127.0.0.1", TCP_TO_UTP_REDIRECT_PORT);
+        = evhttp_connection_base_new(p->net->evbase, NULL, "127.0.0.1", p->tcp_out_port);
 
     int result = evhttp_make_request(http_con, req_out, type, uri);
 
@@ -176,6 +176,41 @@ void handle_client_request(struct evhttp_request *req_in, void *arg)
     }
 }
 
+// Returns true on error
+static bool fd_info(int fd, const char **addr, uint16_t *port) {
+    struct sockaddr_storage ss;
+    ev_socklen_t socklen = sizeof(ss);
+    char addrbuf[128];
+    void *inaddr;
+    memset(&ss, 0, sizeof(ss));
+    if (getsockname(fd, (struct sockaddr *)&ss, &socklen)) {
+        perror("getsockname() failed");
+        return 1;
+    }
+    if (ss.ss_family == AF_INET) {
+        if (port) {
+            *port = ntohs(((struct sockaddr_in *)&ss)->sin_port);
+        }
+        inaddr = &((struct sockaddr_in *)&ss)->sin_addr;
+    } else if (ss.ss_family == AF_INET6) {
+        if (port) {
+            *port = ntohs(((struct sockaddr_in6 *)&ss)->sin6_port);
+        }
+        inaddr = &((struct sockaddr_in6 *)&ss)->sin6_addr;
+    } else {
+        fprintf(stderr, "Weird address family %d\n",
+            ss.ss_family);
+        return 1;
+    }
+    if (addr) {
+        *addr = evutil_inet_ntop(ss.ss_family, inaddr, addrbuf, sizeof(addrbuf));
+        if (!*addr) {
+            fprintf(stderr, "evutil_inet_ntop failed\n");
+            return 1;
+        }
+    }
+    return 0;
+}
 static int start_taking_requests(proxy *p)
 {
     const char *address = "0.0.0.0";
@@ -203,40 +238,10 @@ static int start_taking_requests(proxy *p)
     }
 
     {
-        /* Extract and display the address we're listening on. */
-        struct sockaddr_storage ss;
-        evutil_socket_t fd;
-        ev_socklen_t socklen = sizeof(ss);
-        char addrbuf[128];
-        void *inaddr;
+        uint16_t port;
         const char *addr;
-        int got_port = -1;
-        fd = evhttp_bound_socket_get_fd(handle);
-        memset(&ss, 0, sizeof(ss));
-        if (getsockname(fd, (struct sockaddr *)&ss, &socklen)) {
-            perror("getsockname() failed");
-            return 1;
-        }
-        if (ss.ss_family == AF_INET) {
-            got_port = ntohs(((struct sockaddr_in *)&ss)->sin_port);
-            inaddr = &((struct sockaddr_in *)&ss)->sin_addr;
-        } else if (ss.ss_family == AF_INET6) {
-            got_port = ntohs(((struct sockaddr_in6 *)&ss)->sin6_port);
-            inaddr = &((struct sockaddr_in6 *)&ss)->sin6_addr;
-        } else {
-            fprintf(stderr, "Weird address family %d\n",
-                ss.ss_family);
-            return 1;
-        }
-        addr = evutil_inet_ntop(ss.ss_family, inaddr, addrbuf, sizeof(addrbuf));
-        if (addr) {
-            char uri_root[512];
-            printf("Listening on TCP:%s:%d\n", addr, got_port);
-            evutil_snprintf(uri_root, sizeof(uri_root),
-                "http://%s:%d", addr, got_port);
-        } else {
-            fprintf(stderr, "evutil_inet_ntop failed\n");
-            return 1;
+        if (fd_info(evhttp_bound_socket_get_fd(handle), &addr, &port) == 0) {
+            printf("Listening on TCP:%s:%d\n", addr, port);
         }
     }
 
@@ -362,8 +367,9 @@ int start_tcp_to_utp_redirect(proxy *p)
     struct sockaddr_in sin;
     memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
-    sin.sin_port = htons(TCP_TO_UTP_REDIRECT_PORT);
+    sin.sin_port = htons(0);
 
+    // TODO: Free the listener when proxy is destroyed.
     struct evconnlistener *listener = evconnlistener_new_bind(evbase, listener_cb, p,
         LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_FREE, -1,
         (struct sockaddr*)&sin,
@@ -371,6 +377,11 @@ int start_tcp_to_utp_redirect(proxy *p)
 
     if (!listener) {
         fprintf(stderr, "Could not create a listener!\n");
+        return 1;
+    }
+
+    if (fd_info(evconnlistener_get_fd(listener), NULL, &p->tcp_out_port)) {
+        fprintf(stderr, "Could not get out lister port\n");
         return 1;
     }
 
