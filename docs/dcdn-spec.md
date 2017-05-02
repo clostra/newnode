@@ -160,7 +160,7 @@ X-Sign authenticates the entire file, but does not authenticate any parts.
 
 When an injector first injects the object, it starts sending it before
 it has seen the whole thing, and so the signature cannot be sent at the
-beginning where headers normally go.  The server SHOULD send the X-Sign
+beginning where headers normally go.  The injector SHOULD send the X-Sign
 header (footer?) with a last empty chunk then.  The client MAY issue a
 HEAD request for the same URL right after the GET to obtain the X-Sign
 header in that way.  The injector MUST retain X-Sign mapping so that it
