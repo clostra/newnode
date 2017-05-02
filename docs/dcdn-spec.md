@@ -62,7 +62,7 @@ as follows.
 #### Connect to an Injector
 
 When a peer starts, it SHOULD try to connect to an injector.  To do so,
-it SHOULD finds injectors using the following methods:
+it SHOULD find injectors using the following methods:
 1. read the injector swarm (using the `announce_only_get` flag),
 2. use hardcoded IPs and ports,
 3. use IPs and ports cached from previous runs, and
@@ -173,6 +173,12 @@ and is one of the reasons to move away from HTTP.
 The direction of change that appears most desirable for the future is
 probably some subset of BitTorrent v2, for the unlimited granularity of
 verification.
+
+Non-normative note: Technically, the only thing necessary for the injector
+to inject the file is to transmit the X-Sign. The client can at that point
+fetch the file through an untrusted injector proxy. However, given that to
+produce the X-Sign the injector needs the whole might, it makes sense that
+it also sends the first copy that the client can later seed to other peers.
 
 ## Policy Settings
 
