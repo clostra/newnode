@@ -140,13 +140,19 @@ static void proxy_add_injector(proxy *p, endpoint ep)
     STAILQ_INSERT_TAIL(&p->injectors, c, tailq);
 }
 
+static size_t count_injectors(proxy *p)
+{
+    size_t cnt = 0;
+    struct injector *inj;
+    STAILQ_FOREACH(inj, &p->injectors, tailq) { cnt += 1; }
+    return cnt;
+}
+
 static injector *pick_random_injector(proxy *p)
 {
     // XXX: This would be a faster if p->injectors was an array.
-    size_t cnt = 0;
+    size_t cnt = count_injectors(p);
     struct injector *inj;
-
-    STAILQ_FOREACH(inj, &p->injectors, tailq) { cnt += 1; }
 
     if (cnt) {
         size_t n = rand() % cnt;
@@ -191,9 +197,7 @@ void handle_client_request(struct evhttp_request *req_in, void *arg)
 
     // XXX: Ignore or respond with error if too many requests per client.
 
-    injector *inj = pick_random_injector(p);
-
-    if (!inj) {
+    if (count_injectors(p) == 0) {
         evhttp_send_reply(req_in, 502 /* Bad Gateway */, "Proxy has no injectors", NULL);
         return;
     }
