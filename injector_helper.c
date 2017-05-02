@@ -83,6 +83,10 @@ struct proxy {
     struct evhttp *http;
     timer *injector_search_timer;
 
+    // Timer for announcing ourselves in "injector_proxy_swarm". Is set to NULL
+    // when we're not announcing (iff we know zero injectors).
+    timer *announce_timer;
+
     struct evconnlistener *tcp_out_listener;
     uint16_t tcp_out_port;
 
@@ -93,7 +97,24 @@ static bool same_endpoint(endpoint ep1, endpoint ep2) {
     return memcmp(&ep1, &ep2, sizeof(endpoint)) == 0;
 }
 
-void proxy_add_injector(proxy *p, endpoint ep)
+static void start_announcing_self_in_dht(proxy *p)
+{
+    if (p->announce_timer) return;
+
+    timer_callback do_announce = ^{
+        dht_announce(p->net->dht, injector_proxy_swarm, ^(const byte *peers, uint num_peers) {
+            if (!peers) {
+                LOG("announce to injector_proxy_swarm complete\n");
+            }
+        });
+    };
+
+    unsigned int one_hour = 60 * 60 * 1000;
+    do_announce();
+    p->announce_timer = timer_start(p->net, one_hour, do_announce);
+}
+
+static void proxy_add_injector(proxy *p, endpoint ep)
 {
     // I was seeing addresses 0.0.0.0 reported by the DHT which seems bogus.
     if (!ep.ip[0] && !ep.ip[1] && !ep.ip[2] && !ep.ip[3]) {
@@ -101,6 +122,7 @@ void proxy_add_injector(proxy *p, endpoint ep)
         return;
     }
 
+    // Ignore duplicates
     struct injector *i;
     STAILQ_FOREACH(i, &p->injectors, tailq) {
         if (same_endpoint(i->ep, ep)) {
@@ -109,6 +131,10 @@ void proxy_add_injector(proxy *p, endpoint ep)
             return;
         }
     }
+
+    // TODO: Don't add if too many injectors.
+    // TODO: Stop announcing once injector count drops to zero.
+    start_announcing_self_in_dht(p);
 
     injector *c = create_injector(ep);
     STAILQ_INSERT_TAIL(&p->injectors, c, tailq);
@@ -132,7 +158,7 @@ static injector *pick_random_injector(proxy *p)
 
 static void handle_injector_response(struct evhttp_request *res, void *ctx)
 {
-    // TODO: Remove the injector on ERR_CONNECTION_REFUSED or if !res.
+    // TODO: Remove (or blacklist) the injector on ERR_CONNECTION_REFUSED or if !res.
 
     struct evhttp_request *req = ctx;
 
@@ -239,6 +265,7 @@ static bool fd_info(int fd, const char **addr, uint16_t *port) {
     }
     return 0;
 }
+
 static int start_taking_requests(proxy *p)
 {
     const char *address = "0.0.0.0";
@@ -325,6 +352,9 @@ void proxy_destroy(proxy *p)
     if (p->injector_search_timer)
         timer_cancel(p->injector_search_timer);
 
+    if (p->announce_timer)
+        timer_cancel(p->announce_timer);
+
     if (p->tcp_out_listener) {
         evconnlistener_free(p->tcp_out_listener);
     }
@@ -347,6 +377,7 @@ proxy *proxy_create(network *n)
     p->net = n;
     p->http = NULL;
     p->injector_search_timer = NULL;
+    p->announce_timer = NULL;
     p->tcp_out_listener = NULL;
     p->tcp_out_port = 0;
 
