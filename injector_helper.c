@@ -119,9 +119,14 @@ static injector *pick_random_injector(proxy *p)
     // XXX: This would be a faster if p->injectors was an array.
     size_t cnt = 0;
     struct injector *inj;
+
     STAILQ_FOREACH(inj, &p->injectors, tailq) { cnt += 1; }
-    size_t n = rand() % cnt;
-    STAILQ_FOREACH(inj, &p->injectors, tailq) { if (n-- == 0) return inj; }
+
+    if (cnt) {
+        size_t n = rand() % cnt;
+        STAILQ_FOREACH(inj, &p->injectors, tailq) { if (n-- == 0) return inj; }
+    }
+
     return NULL;
 }
 
@@ -388,9 +393,8 @@ int start_tcp_to_utp_redirect(proxy *p)
     struct sockaddr_in sin;
     memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
-    sin.sin_port = htons(0);
+    sin.sin_port = htons(p->tcp_out_port);
 
-    // TODO: Free the listener when proxy is destroyed.
     p->tcp_out_listener = evconnlistener_new_bind(evbase, listener_cb, p,
         LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_FREE, -1,
         (struct sockaddr*)&sin,
