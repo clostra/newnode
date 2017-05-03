@@ -50,7 +50,7 @@ echo "Building dht.o..."
 clang $CPPFLAGS -c dht.cpp -I ./libbtdht/src -I ./libbtdht/btutils/src -I ./libsodium/src/libsodium/include
 
 echo "Building injector..."
-clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c dht.o \
+clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c http_util.c dht.o \
   -I ./libutp libutp/libutp.a \
   -I ./Libevent/include ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a \
   -I ./libsodium/src/libsodium/include ./libsodium/src/libsodium/.libs/libsodium.a \
@@ -59,7 +59,7 @@ clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c sha1.c timer
   $LRT $LM $LB
 
 echo "Building injector_helper..."
-clang $CFLAGS -o injector_helper injector_helper.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c dht.o \
+clang $CFLAGS -o injector_helper injector_helper.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c http_util.c dht.o \
   -I ./libutp libutp/libutp.a \
   -I ./Libevent/include ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a \
   -I ./libsodium/src/libsodium/include ./libsodium/src/libsodium/.libs/libsodium.a \
