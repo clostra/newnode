@@ -119,7 +119,7 @@ static void proxy_add_injector(proxy *p, endpoint ep)
 {
     // I was seeing addresses 0.0.0.0 reported by the DHT which seems bogus.
     if (!ep.ip[0] && !ep.ip[1] && !ep.ip[2] && !ep.ip[3]) {
-        LOG("Not adding 0.0.0.0:%d\n", ep.port);
+        //LOG("Not adding 0.0.0.0:%d\n", ep.port);
         return;
     }
 
@@ -127,11 +127,14 @@ static void proxy_add_injector(proxy *p, endpoint ep)
     struct injector *i;
     STAILQ_FOREACH(i, &p->injectors, tailq) {
         if (same_endpoint(i->ep, ep)) {
-            LOG("Not adding duplicate endpoint %d.%d.%d.%d:%d\n",
-                    ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], ep.port);
+            //LOG("Not adding duplicate endpoint %d.%d.%d.%d:%d\n",
+            //        ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], ep.port);
             return;
         }
     }
+
+    LOG("Added injector %d.%d.%d.%d:%d\n",
+            ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], ep.port);
 
     // TODO: Don't add if too many injectors.
     // TODO: Stop announcing once injector count drops to zero.
@@ -317,13 +320,11 @@ static int start_taking_requests(proxy *p)
 }
 
 static void on_injectors_found(proxy *proxy, const byte *peers, uint num_peers) {
-    LOG("Found %d injectors\n", num_peers);
-
     for (uint i = 0; i < num_peers; ++i) {
         endpoint ep = *((endpoint *)peers + i * sizeof(endpoint));
         ep.port = ntohs(ep.port);
 
-        LOG("  %d.%d.%d.%d:%d\n", ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], (int)ep.port);
+        //LOG("%d.%d.%d.%d:%d\n", ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], (int)ep.port);
 
         proxy_add_injector(proxy, ep);
     }
