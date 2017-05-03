@@ -408,7 +408,7 @@ static void
 listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct sockaddr *sa, int socklen, void *user_data)
 {
-    LOG("Helper: Accepted TCP\n");
+    LOG("Proxy: Accepted TCP\n");
     proxy *p = user_data;
     struct event_base *base = p->net->evbase;
 
@@ -418,7 +418,7 @@ listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
     {
         char addr[32];
         sprintf(addr, "%d.%d.%d.%d", i->ep.ip[0], i->ep.ip[1], i->ep.ip[2], i->ep.ip[3]);
-        LOG("Helper: Connecting to UTP:%s:%d\n", addr, (int) i->ep.port);
+        LOG("Proxy: Connecting to UTP:%s:%d\n", addr, (int) i->ep.port);
     }
 
     struct sockaddr_in dest = {
