@@ -42,6 +42,7 @@ handle_connection(utp_socket *s)
 #include "constants.h"
 #include "network.h"
 #include "utp_bufferevent.h"
+#include "http_util.h"
 
 typedef struct proxy proxy;
 typedef struct injector injector;
@@ -165,6 +166,7 @@ static injector *pick_random_injector(proxy *p)
 static void handle_injector_response(struct evhttp_request *res, void *ctx)
 {
     // TODO: Remove (or blacklist) the injector on ERR_CONNECTION_REFUSED or if !res.
+    // TODO: Retry request with another injector (if any left).
 
     struct evhttp_request *req = ctx;
 
@@ -175,6 +177,8 @@ static void handle_injector_response(struct evhttp_request *res, void *ctx)
             evutil_socket_error_to_string(errcode),
             errcode);
 
+        evhttp_send_reply(req, 502 /* Bad Gateway */,
+                "Error while waiting for injector response", NULL);
         return;
     }
 
@@ -182,6 +186,11 @@ static void handle_injector_response(struct evhttp_request *res, void *ctx)
     struct evbuffer *evb_in = evhttp_request_get_input_buffer(res);
     int response_code = evhttp_request_get_response_code(res);
     const char *response_code_line = evhttp_request_get_response_code_line(res);
+
+    const char *response_header_whitelist[] = {"Content-Length", "Content-Type"};
+    for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
+        copy_header(res, req, response_header_whitelist[i]);
+    }
 
     int nread;
     while ((nread = evbuffer_remove_buffer(evb_in,

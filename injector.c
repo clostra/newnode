@@ -18,6 +18,7 @@
 #include "network.h"
 #include "constants.h"
 #include "utp_bufferevent.h"
+#include "http_util.h"
 
 
 typedef struct evbuffer evbuffer;
@@ -82,24 +83,6 @@ int get_port_for_scheme(const char *scheme)
     }
     freeaddrinfo(res);
     return port;
-}
-
-void overwrite_header(struct evhttp_request *to, const char *key, const char *value)
-{
-    evkeyvalq *out = evhttp_request_get_output_headers(to);
-    while (evhttp_find_header(out, key)) {
-        evhttp_remove_header(out, key);
-    }
-    evhttp_add_header(out, key, value);
-}
-
-void copy_header(struct evhttp_request *from, struct evhttp_request *to, const char *key)
-{
-    evkeyvalq *in = evhttp_request_get_input_headers(from);
-    const char *value = evhttp_find_header(in, key);
-    if (value) {
-        overwrite_header(to, key, value);
-    }
 }
 
 typedef struct {
