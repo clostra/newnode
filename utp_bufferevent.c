@@ -185,6 +185,8 @@ void ubev_event_cb(struct bufferevent *bev, short events, void *ctx)
         // reading isn't possible, but there may still be input data
         bufferevent_disable(u->bev, EV_READ);
         if (!bufferevent_get_enabled(u->bev) && !evbuffer_get_length(bufferevent_get_input(u->bev))) {
+            utp_close(u->utp);
+            u->utp = NULL;
             ubev_bev_close(u);
             return;
         }
