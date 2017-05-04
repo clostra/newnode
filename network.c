@@ -74,7 +74,9 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
         unsigned char buf[4096];
         ssize_t len = recvfrom(n->fd, buf, sizeof(buf), MSG_DONTWAIT, (struct sockaddr *)&src_addr, &addrlen);
         if (len < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // Explanation of ECONNREFUSED
+            // http://stackoverflow.com/questions/2372371/error-receiving-in-udp-connection-refused
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNREFUSED) {
                 utp_issue_deferred_acks(n->utp);
                 break;
             }
