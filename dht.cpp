@@ -97,6 +97,13 @@ struct dht {
     ExternalIPCounter external_ip;
 };
 
+static SOCKADDR_STORAGE to_sockaddr_storage(const sockaddr* addr)
+{
+    SOCKADDR_STORAGE retval;
+    memcpy(&retval, addr, sizeof(*addr));
+    return retval;
+}
+
 void add_bootstrap(dht *d, const char* address, const char* port)
 {
     struct addrinfo hints;
@@ -112,7 +119,7 @@ void add_bootstrap(dht *d, const char* address, const char* port)
         return;
     }
     for (struct addrinfo* i = res; i; i = i->ai_next) {
-        SOCKADDR_STORAGE sa = *(const SOCKADDR_STORAGE*)i->ai_addr;
+        SOCKADDR_STORAGE sa = to_sockaddr_storage(i->ai_addr);
         d->idht->AddBootstrapNode(SockAddr(sa));
     }
     freeaddrinfo(res);
@@ -146,13 +153,13 @@ void dht_tick(dht *d)
 
 bool dht_process_udp(dht *d, const byte *buffer, size_t len, const struct sockaddr *to, socklen_t tolen)
 {
-    SOCKADDR_STORAGE sa = *(const SOCKADDR_STORAGE*)to;
+    SOCKADDR_STORAGE sa = to_sockaddr_storage(to);
     return d->idht->handleReadEvent(&d->udp_socket, (byte*)buffer, len, SockAddr(sa));
 }
 
 bool dht_process_icmp(dht *d, const byte *buffer, size_t len, const struct sockaddr *to, socklen_t tolen)
 {
-    SOCKADDR_STORAGE sa = *(const SOCKADDR_STORAGE*)to;
+    SOCKADDR_STORAGE sa = to_sockaddr_storage(to);
     return d->idht->handleICMP(&d->udp_socket, (byte*)buffer, len, SockAddr(sa));
 }
 
