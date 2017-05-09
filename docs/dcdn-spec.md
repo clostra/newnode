@@ -180,6 +180,22 @@ fetch the file through an untrusted injector proxy. However, given that to
 produce the X-Sign the injector needs the whole might, it makes sense that
 it also sends the first copy that the client can later seed to other peers.
 
+### X-Sign format
+
+X-Sign is a signed message that consists of the ASCII characters "sign"
+(4 bytes), timestamp when the message was generated (4 bytes), and of
+the hash of the content. The content includes HTTP headers other than
+X-Sign. One of the headers whenever peer protocol is used MUST be
+Content-Location, so that the URL is authenticated.
+
+X-Sign is transmitted base-64 encoded.
+
+In other words,
+
+X-Sign = base64(sign("sign" + timestamp + hash(headers + content))).
+
+Here, sign() and hash() are the default primitives in libsodium.
+
 ## Policy Settings
 
 An app incorporating dCDN MAY change the defaults for policy settings.
