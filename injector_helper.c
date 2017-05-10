@@ -152,7 +152,8 @@ static size_t count_injectors(proxy *p)
     return cnt;
 }
 
-static injector *pick_random_injector(proxy *p)
+static
+injector * pick_random_injector(proxy *p)
 {
     // XXX: This would be a faster if p->injectors was an array.
     size_t cnt = count_injectors(p);
@@ -166,7 +167,8 @@ static injector *pick_random_injector(proxy *p)
     return NULL;
 }
 
-static void handle_injector_response(struct evhttp_request *res, void *ctx)
+static
+void handle_injector_response(struct evhttp_request *res, void *ctx)
 {
     // TODO: Remove (or blacklist) the injector on ERR_CONNECTION_REFUSED or if !res.
     // TODO: Retry request with another injector (if any left).
@@ -203,9 +205,138 @@ static void handle_injector_response(struct evhttp_request *res, void *ctx)
     evbuffer_free(evb_out);
 }
 
-void handle_client_request(struct evhttp_request *req_in, void *arg)
+typedef struct {
+    struct evhttp_request *req;
+    struct bufferevent *origin_bev;
+} tunnel;
+
+static
+void destroy_tunnel(tunnel *t)
 {
+    if (t->req) {
+        evhttp_request_free(t->req);
+        t->req = NULL;
+    }
+
+    if (t->origin_bev) {
+        bufferevent_free(t->origin_bev);
+        t->origin_bev = NULL;
+    }
+
+    free(t);
+}
+
+static
+void on_origin_event(struct bufferevent* bev, short what, void *ctx)
+{
+    if (what & BEV_EVENT_CONNECTED) {
+        printf("Connected to %p\n", bev);
+        return;
+    } 
+
+    printf("Disconnected from %p\n", bev);
+    destroy_tunnel(ctx);
+}
+
+static
+void on_origin_read(struct bufferevent* bev, void *ctx)
+{
+    tunnel *t = ctx;
+    struct bufferevent *other;
+
+    if (bev == t->origin_bev) {
+        struct evhttp_connection *con = evhttp_request_get_connection(t->req);
+        other = evhttp_connection_get_bufferevent(con);
+    }
+    else {
+        other = t->origin_bev;
+    }
+
+    bufferevent_write_buffer(other, bufferevent_get_input(bev));
+}
+
+/*
+ * Parse a string of the form "en.wikipedia.org:80". Return
+ * 'true' on success.
+ */
+static
+bool parse_host_uri(const char* uri, char*host, size_t host_max_len, uint16_t* port)
+{
+    size_t uri_size = strlen(uri);
+
+    const char *uri_end = uri + uri_size;
+    const char *addr_end = uri_end;
+
+    for (const char* c = uri; c != uri_end; ++c) {
+        if (*c == ':') {
+            addr_end = c;
+            break;
+        }
+    }
+
+    if (addr_end == uri_end) {
+        assert(0 && "No ':' in the uri string");
+        memcpy(host, uri, MIN(host_max_len, uri_end - uri));
+        *port = 0;
+        return false;
+    }
+
+    size_t addr_len = MIN((size_t) (addr_end - uri), host_max_len);
+
+    memcpy(host, uri, addr_len);
+    host[addr_len] = 0;
+
+    *port = atoi(addr_end + 1);
+
+    return true;
+}
+
+static
+void create_tunnel(proxy *p, struct evhttp_request *req_in)
+{
+    const char *uri = evhttp_request_get_uri(req_in);
+    char addr[512];
+    uint16_t port;
+    parse_host_uri(uri, addr, sizeof(addr), &port);
+
+    // XXX: con_in needs to be freed.
+    struct evhttp_connection *con_in = evhttp_request_get_connection(req_in);
+    struct bufferevent *bev_in = evhttp_connection_get_bufferevent(con_in);
+    struct bufferevent *bev_out = bufferevent_socket_new(p->net->evbase, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+
+    tunnel *t = alloc(tunnel);
+
+    t->req = req_in;
+    t->origin_bev = bev_out;
+
+    bufferevent_setcb(bev_out, on_origin_read, NULL, on_origin_event, t);
+    bufferevent_setcb(bev_in, on_origin_read, NULL, on_origin_event, t);
+
+    // XXX: Check result.
+    bufferevent_socket_connect_hostname(bev_out, p->net->evdns, AF_INET, addr, port);
+
+	bufferevent_enable(bev_in, EV_WRITE | EV_READ);
+	bufferevent_enable(bev_out, EV_WRITE | EV_READ);
+
+    const char *response =
+        "HTTP/1.0 200 Connection established\r\n"
+        "Proxy-agent: Ceno-injector-helper/1.0\r\n"
+        "\r\n";
+
+    bufferevent_write(bev_in, response, strlen(response));
+}
+
+static void
+handle_client_request(struct evhttp_request *req_in, void *arg)
+{
+    printf("handle_client_request\n");
     proxy *p = (proxy *)arg;
+
+    enum evhttp_cmd_type type = evhttp_request_get_command(req_in);
+
+    if (type == EVHTTP_REQ_CONNECT) {
+        return create_tunnel(p, req_in);
+    }
 
     // XXX: Ignore or respond with error if too many requests per client.
 
@@ -221,7 +352,6 @@ void handle_client_request(struct evhttp_request *req_in, void *arg)
         return;
     }
 
-    enum evhttp_cmd_type type = evhttp_request_get_command(req_in);
     const char *uri = evhttp_request_get_uri(req_in);
 
     struct evkeyvalq *hdr_out = evhttp_request_get_output_headers(req_out);
@@ -294,6 +424,11 @@ static int start_taking_requests(proxy *p)
         die("couldn't create evhttp. Exiting.\n");
         return -1;
     }
+
+	evhttp_set_allowed_methods(http,
+	    EVHTTP_REQ_GET |
+	    EVHTTP_REQ_POST |
+	    EVHTTP_REQ_CONNECT);
 
     p->http = http;
 
