@@ -211,17 +211,25 @@ typedef struct {
 } tunnel;
 
 static
+struct bufferevent* tunnel_bev1(tunnel *t)
+{
+    return evhttp_connection_get_bufferevent(evhttp_request_get_connection(t->req));
+}
+
+static
+struct bufferevent* tunnel_bev2(tunnel *t)
+{
+    return t->origin_bev;
+}
+
+static
 void destroy_tunnel(tunnel *t)
 {
-    if (t->req) {
-        evhttp_request_free(t->req);
-        t->req = NULL;
-    }
+    bufferevent_setcb(tunnel_bev1(t), NULL, NULL, NULL, NULL);
+    bufferevent_setcb(tunnel_bev2(t), NULL, NULL, NULL, NULL);
 
-    if (t->origin_bev) {
-        bufferevent_free(t->origin_bev);
-        t->origin_bev = NULL;
-    }
+    evhttp_request_free(t->req);
+    bufferevent_free(t->origin_bev);
 
     free(t);
 }
@@ -230,11 +238,10 @@ static
 void on_origin_event(struct bufferevent* bev, short what, void *ctx)
 {
     if (what & BEV_EVENT_CONNECTED) {
-        printf("Connected to %p\n", bev);
         return;
     } 
 
-    printf("Disconnected from %p\n", bev);
+    // Case of BEV_EVENT_EOF, BEV_EVENT_ERROR, BEV_EVENT_TIMEOUT
     destroy_tunnel(ctx);
 }
 
@@ -242,15 +249,10 @@ static
 void on_origin_read(struct bufferevent* bev, void *ctx)
 {
     tunnel *t = ctx;
-    struct bufferevent *other;
 
-    if (bev == t->origin_bev) {
-        struct evhttp_connection *con = evhttp_request_get_connection(t->req);
-        other = evhttp_connection_get_bufferevent(con);
-    }
-    else {
-        other = t->origin_bev;
-    }
+    struct bufferevent *other = (bev == tunnel_bev2(t))
+                              ? tunnel_bev1(t)
+                              : tunnel_bev2(t);
 
     bufferevent_write_buffer(other, bufferevent_get_input(bev));
 }
@@ -297,9 +299,13 @@ void create_tunnel(proxy *p, struct evhttp_request *req_in)
     const char *uri = evhttp_request_get_uri(req_in);
     char addr[512];
     uint16_t port;
-    parse_host_uri(uri, addr, sizeof(addr), &port);
+    bool parsed = parse_host_uri(uri, addr, sizeof(addr), &port);
 
-    // XXX: con_in needs to be freed.
+    if (!parsed) {
+        assert(0);
+        return;
+    }
+
     struct evhttp_connection *con_in = evhttp_request_get_connection(req_in);
     struct bufferevent *bev_in = evhttp_connection_get_bufferevent(con_in);
     struct bufferevent *bev_out = bufferevent_socket_new(p->net->evbase, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
@@ -329,7 +335,6 @@ void create_tunnel(proxy *p, struct evhttp_request *req_in)
 static void
 handle_client_request(struct evhttp_request *req_in, void *arg)
 {
-    printf("handle_client_request\n");
     proxy *p = (proxy *)arg;
 
     enum evhttp_cmd_type type = evhttp_request_get_command(req_in);
