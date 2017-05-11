@@ -56,6 +56,60 @@ static const bool TEST_LOCAL_INJECTOR = false;
 #   define LOG(...) do {} while(false)
 #endif
 
+// Returns true on error
+static bool fd_local_info(int fd, const char **addr, uint16_t *port)
+{
+    struct sockaddr_storage ss;
+    ev_socklen_t socklen = sizeof(ss);
+    char addrbuf[128];
+    void *inaddr;
+    memset(&ss, 0, sizeof(ss));
+    if (getsockname(fd, (struct sockaddr *)&ss, &socklen)) {
+        perror("getsockname() failed");
+        return 1;
+    }
+    if (ss.ss_family == AF_INET) {
+        if (port) {
+            *port = ntohs(((struct sockaddr_in *)&ss)->sin_port);
+        }
+        inaddr = &((struct sockaddr_in *)&ss)->sin_addr;
+    } else if (ss.ss_family == AF_INET6) {
+        if (port) {
+            *port = ntohs(((struct sockaddr_in6 *)&ss)->sin6_port);
+        }
+        inaddr = &((struct sockaddr_in6 *)&ss)->sin6_addr;
+    } else {
+        LOG("Weird address family %d\n", ss.ss_family);
+        return 1;
+    }
+    if (addr) {
+        *addr = evutil_inet_ntop(ss.ss_family, inaddr, addrbuf, sizeof(addrbuf));
+        if (!*addr) {
+            LOG("evutil_inet_ntop failed\n");
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static uint16_t local_port(struct evhttp_connection* con)
+{
+    struct bufferevent *bev = evhttp_connection_get_bufferevent(con);
+    int fd = bufferevent_getfd(bev);
+    uint16_t port = 0;
+    fd_local_info(fd, NULL, &port);
+    return port;
+}
+
+static uint16_t fd_remote_port(int fd)
+{
+    // XXX: Support for IPv6
+    struct sockaddr_in peeraddr;
+    socklen_t peeraddrlen = sizeof(peeraddr);
+    getpeername(fd, (struct sockaddr*) &peeraddr, &peeraddrlen);
+    return ntohs(peeraddr.sin_port);
+}
+
 typedef struct {
     uint8_t ip[4];
     uint16_t port;
@@ -87,6 +141,8 @@ struct proxy {
     // Timer for announcing ourselves in "injector_proxy_swarm". Is set to NULL
     // when we're not announcing (iff we know zero injectors).
     timer *announce_timer;
+
+    endpoint endpoint_map[65536];
 
     struct evconnlistener *tcp_out_listener;
     uint16_t tcp_out_port;
@@ -167,13 +223,18 @@ injector * pick_random_injector(proxy *p)
     return NULL;
 }
 
+typedef struct {
+    struct evhttp_request *req;
+    endpoint injector_ep;
+} request_ctx;
+
 static
-void handle_injector_response(struct evhttp_request *res, void *ctx)
+void handle_injector_response(struct evhttp_request *res, void *ctx_void)
 {
     // TODO: Remove (or blacklist) the injector on ERR_CONNECTION_REFUSED or if !res.
     // TODO: Retry request with another injector (if any left).
 
-    struct evhttp_request *req = ctx;
+    request_ctx *ctx = ctx_void;
 
     if (!res) {
         int errcode = EVUTIL_SOCKET_ERROR();
@@ -182,9 +243,10 @@ void handle_injector_response(struct evhttp_request *res, void *ctx)
             evutil_socket_error_to_string(errcode),
             errcode);
 
-        evhttp_send_reply(req, 502 /* Bad Gateway */,
+        evhttp_send_reply(ctx->req, 502 /* Bad Gateway */,
                 "Error while waiting for injector response", NULL);
-        return;
+
+        goto finish;
     }
 
     struct evbuffer *evb_out = evbuffer_new();
@@ -194,15 +256,18 @@ void handle_injector_response(struct evhttp_request *res, void *ctx)
 
     const char *response_header_whitelist[] = {"Content-Length", "Content-Type"};
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
-        copy_header(res, req, response_header_whitelist[i]);
+        copy_header(res, ctx->req, response_header_whitelist[i]);
     }
 
     int nread;
     while ((nread = evbuffer_remove_buffer(evb_in,
             evb_out, evbuffer_get_length(evb_in))) > 0) { }
 
-    evhttp_send_reply(req, response_code, response_code_line, evb_out);
+    evhttp_send_reply(ctx->req, response_code, response_code_line, evb_out);
     evbuffer_free(evb_out);
+
+finish:
+    free(ctx);
 }
 
 typedef struct {
@@ -350,7 +415,13 @@ handle_client_request(struct evhttp_request *req_in, void *arg)
         return;
     }
 
-    struct evhttp_request *req_out = evhttp_request_new(handle_injector_response, req_in);
+    injector *i = pick_random_injector(p);
+
+    request_ctx *ctx = alloc(request_ctx);
+    ctx->req = req_in;
+    ctx->injector_ep = i->ep;
+
+    struct evhttp_request *req_out = evhttp_request_new(handle_injector_response, ctx);
 
     if (req_out == NULL) {
         die("evhttp_request_new() failed\n");
@@ -377,44 +448,13 @@ handle_client_request(struct evhttp_request *req_in, void *arg)
 
     int result = evhttp_make_request(http_con, req_out, type, uri);
 
+    // XXX: Explain why we pick the injector here and not only after the
+    // localhost receives this HTTP request.
+    p->endpoint_map[local_port(http_con)] = i->ep;
+
     if (result != 0) {
         die("evhttp_make_request() failed\n");
     }
-}
-
-// Returns true on error
-static bool fd_info(int fd, const char **addr, uint16_t *port) {
-    struct sockaddr_storage ss;
-    ev_socklen_t socklen = sizeof(ss);
-    char addrbuf[128];
-    void *inaddr;
-    memset(&ss, 0, sizeof(ss));
-    if (getsockname(fd, (struct sockaddr *)&ss, &socklen)) {
-        perror("getsockname() failed");
-        return 1;
-    }
-    if (ss.ss_family == AF_INET) {
-        if (port) {
-            *port = ntohs(((struct sockaddr_in *)&ss)->sin_port);
-        }
-        inaddr = &((struct sockaddr_in *)&ss)->sin_addr;
-    } else if (ss.ss_family == AF_INET6) {
-        if (port) {
-            *port = ntohs(((struct sockaddr_in6 *)&ss)->sin6_port);
-        }
-        inaddr = &((struct sockaddr_in6 *)&ss)->sin6_addr;
-    } else {
-        LOG("Weird address family %d\n", ss.ss_family);
-        return 1;
-    }
-    if (addr) {
-        *addr = evutil_inet_ntop(ss.ss_family, inaddr, addrbuf, sizeof(addrbuf));
-        if (!*addr) {
-            LOG("evutil_inet_ntop failed\n");
-            return 1;
-        }
-    }
-    return 0;
 }
 
 static int start_taking_requests(proxy *p)
@@ -451,7 +491,7 @@ static int start_taking_requests(proxy *p)
     {
         uint16_t port;
         const char *addr;
-        if (fd_info(evhttp_bound_socket_get_fd(handle), &addr, &port) == 0) {
+        if (fd_local_info(evhttp_bound_socket_get_fd(handle), &addr, &port) == 0) {
             printf("Listening on TCP:%s:%d\n", addr, port);
         }
     }
@@ -553,19 +593,18 @@ listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
     proxy *p = user_data;
     struct event_base *base = p->net->evbase;
 
-    // Connect to a random uTP injector.
-    injector *i = pick_random_injector(p);
+    endpoint ep = p->endpoint_map[fd_remote_port(fd)];
 
     {
         char addr[32];
-        sprintf(addr, "%d.%d.%d.%d", i->ep.ip[0], i->ep.ip[1], i->ep.ip[2], i->ep.ip[3]);
-        LOG("Proxy: Connecting to UTP:%s:%d\n", addr, (int) i->ep.port);
+        sprintf(addr, "%d.%d.%d.%d", ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3]);
+        LOG("Proxy: Connecting to UTP:%s:%d\n", addr, (int) ep.port);
     }
 
     struct sockaddr_in dest = {
         .sin_family = AF_INET,
-        .sin_addr.s_addr = *((uint32_t*)i->ep.ip),
-        .sin_port = htons(i->ep.port),
+        .sin_addr.s_addr = *((uint32_t*)ep.ip),
+        .sin_port = htons(ep.port),
     };
 
     tcp_connect_utp(base, p->net->utp, fd, (const struct sockaddr *)&dest, sizeof(dest));
@@ -590,7 +629,7 @@ int start_tcp_to_utp_redirect(proxy *p)
         return 1;
     }
 
-    if (fd_info(evconnlistener_get_fd(p->tcp_out_listener), NULL, &p->tcp_out_port)) {
+    if (fd_local_info(evconnlistener_get_fd(p->tcp_out_listener), NULL, &p->tcp_out_port)) {
         LOG("Could not get out lister port\n");
         return 1;
     }
