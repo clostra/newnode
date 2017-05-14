@@ -50,6 +50,17 @@ void ubev_discard_input(utp_bufferevent *u)
     }
 }
 
+void ubev_bev_check_flush(utp_bufferevent *u)
+{
+    if (bufferevent_get_enabled(u->bev) || evbuffer_get_length(bufferevent_get_input(u->bev))) {
+        return;
+    }
+    // utp has no way to tell if the write buffer is flushed. you just have to close and wait for UTP_STATE_DESTROYING
+    utp_close(u->utp);
+    u->utp = NULL;
+    ubev_bev_close(u);
+}
+
 void utp_bufferevent_flush(utp_bufferevent *u)
 {
     evbuffer *in = bufferevent_get_input(u->bev);
@@ -73,12 +84,7 @@ void utp_bufferevent_flush(utp_bufferevent *u)
         }
         evbuffer_drain(in, r);
     }
-    if (!bufferevent_get_enabled(u->bev) && !evbuffer_get_length(in)) {
-        // XXX: utp has no way to tell if the write buffer is flushed. you just have to close and wait for UTP_STATE_DESTROYING
-        utp_close(u->utp);
-        u->utp = NULL;
-        ubev_bev_close(u);
-    }
+    ubev_bev_check_flush(u);
 }
 
 uint64 utp_on_read(utp_callback_arguments *a)
@@ -173,22 +179,12 @@ void ubev_event_cb(struct bufferevent *bev, short events, void *ctx)
         evbuffer_freeze(output, 1);
         assert(!evbuffer_get_length(output));
         bufferevent_disable(u->bev, EV_WRITE);
-
-        // bufferevent can't read anymore. but, it might still have data
         bufferevent_disable(u->bev, EV_READ);
-        if (!evbuffer_get_length(bufferevent_get_input(u->bev))) {
-            ubev_bev_close(u);
-            return;
-        }
     }
     if (events & BEV_EVENT_EOF) {
-        // reading isn't possible, but there may still be input data
         bufferevent_disable(u->bev, EV_READ);
-        if (!bufferevent_get_enabled(u->bev) && !evbuffer_get_length(bufferevent_get_input(u->bev))) {
-            ubev_bev_close(u);
-            return;
-        }
     }
+    ubev_bev_check_flush(u);
 }
 
 utp_bufferevent* utp_bufferevent_new(event_base *base, utp_socket *s, int fd)
