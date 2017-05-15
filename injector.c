@@ -14,9 +14,11 @@
 #include "log.h"
 #include "sha1.h"
 #include "utp.h"
+#include "base64.h"
 #include "timer.h"
 #include "network.h"
 #include "constants.h"
+#include "hash_table.h"
 #include "utp_bufferevent.h"
 
 
@@ -27,8 +29,15 @@ typedef struct bufferevent bufferevent;
 typedef struct evhttp_request evhttp_request;
 typedef struct evhttp_connection evhttp_connection;
 
+hash_table *url_table;
+unsigned char pk[crypto_sign_PUBLICKEYBYTES];
+unsigned char sk[crypto_sign_SECRETKEYBYTES];
 
-void inject_url(network *n, const char *url, const uint8_t *content_hash)
+#define SIG_MSG_LENGTH (sizeof("sign") + sizeof("2011-10-08T07:07:09Z") + crypto_generichash_BYTES)
+#define SIG_LENGTH (crypto_sign_BYTES + SIG_MSG_LENGTH)
+
+
+void inject_url(network *n, const char *url, const uint8_t *sig)
 {
     // TODO
     /*
@@ -167,15 +176,33 @@ int header_cb(struct evhttp_request *req, void *arg)
         break;
     }
 
+    if (!evhttp_request_get_connection(p->server_req)) {
+        return 0;
+    }
+
+    crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
+
     const char *response_header_whitelist[] = {"Content-Length", "Content-Type"};
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
         copy_header(req, p->server_req, response_header_whitelist[i]);
     }
-    crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
-    if (evhttp_request_get_connection(p->server_req)) {
-        evhttp_send_reply_start(p->server_req, code, evhttp_request_get_response_code_line(req));
-        evhttp_request_set_chunked_cb(req, chunked_cb);
+    overwrite_header(p->server_req, "Content-Location", evhttp_request_get_uri(req));
+
+    const char *hashed_headers[] = {"Content-Length", "Content-Location", "Content-Type"};
+    evkeyvalq *in = evhttp_request_get_input_headers(req);
+    for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
+        const char *key = hashed_headers[i];
+        const char *value = evhttp_find_header(in, key);
+        if (!value) {
+            continue;
+        }
+        char buf[1024];
+        snprintf(buf, sizeof(buf), "%s: %s\r\n", key, value);
+        crypto_generichash_update(&p->content_state, (const uint8_t *)buf, strlen(buf));
     }
+
+    evhttp_send_reply_start(p->server_req, code, evhttp_request_get_response_code_line(req));
+    evhttp_request_set_chunked_cb(req, chunked_cb);
 
     return 0;
 }
@@ -193,10 +220,44 @@ void request_done_cb(struct evhttp_request *req, void *arg)
     if (p->server_req) {
         if (req) {
             debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(req));
+
             uint8_t content_hash[crypto_generichash_BYTES];
+            uint8_t *content_hash_p = content_hash;
             crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
 
-            inject_url(p->n, evhttp_request_get_uri(p->server_req), content_hash);
+            const char *uri = evhttp_request_get_uri(p->server_req);
+            uint8_t *sig = hash_get_or_insert(url_table, uri, ^{
+
+                debug("storing sig for %s\n", uri);
+
+                // duplicate the memory because the hash_table owns it now
+                p->server_req->uri = strdup(uri);
+
+                // base64(sign("sign" + timestamp + hash(headers + content)))
+                time_t now = time(NULL);
+                char ts[sizeof("2011-10-08T07:07:09Z")];
+                strftime(ts, sizeof(ts), "%FT%TZ", gmtime(&now));
+                assert(sizeof(ts) - 1 == strlen(ts));
+
+                uint8_t message[SIG_MSG_LENGTH];
+                uint8_t *w = message;
+                memcpy(w, "sign", sizeof("sign") - 1);
+                w += sizeof("sign");
+                memcpy(w, ts, sizeof(ts) - 1);
+                w += sizeof(ts);
+                memcpy(w, content_hash_p, crypto_generichash_BYTES);
+                w += crypto_generichash_BYTES;
+                assert(w == message + sizeof(message));
+
+                uint8_t *signed_message = malloc(SIG_LENGTH);
+                unsigned long long signed_message_len;
+
+                crypto_sign(signed_message, &signed_message_len, message, sizeof(message), sk);
+                assert(signed_message_len == SIG_LENGTH);
+
+                return (void*)signed_message;
+            });
+            inject_url(p->n, uri, sig);
         }
         if (evhttp_request_get_connection(p->server_req)) {
             evhttp_send_reply_end(p->server_req);
@@ -222,6 +283,16 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     ev_uint16_t port;
     evhttp_connection_get_peer(evcon, &address, &port);
     overwrite_header(client_req, "Host", address);
+
+    const char *uri_s = evhttp_request_get_uri(p->server_req);
+    const uint8_t *sig = hash_get(url_table, uri_s);
+    if (sig) {
+        size_t out_len;
+        char *hex_sig = base64_urlsafe_encode(sig, SIG_LENGTH, &out_len);
+        debug("returning sig for %s %s\n", uri_s, hex_sig);
+        overwrite_header(p->server_req, "X-Sign", hex_sig);
+        free(hex_sig);
+    }
 
     evhttp_request_set_header_cb(client_req, header_cb);
     evhttp_request_set_error_cb(client_req, error_cb);
@@ -318,9 +389,13 @@ int main(int argc, char *argv[])
         usage(argv[0]);
     }
 
+    crypto_sign_keypair(pk, sk);
+
     network *n = network_setup(address, port);
 
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
+
+    url_table = hash_table_create();
 
     timer_callback cb = ^{
         dht_announce(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {

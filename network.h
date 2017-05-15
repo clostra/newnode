@@ -5,6 +5,7 @@
 #include <event2/event_struct.h>
 #include <event2/dns.h>
 #include <event2/http.h>
+#include <event2/http_struct.h>
 
 #include "utp.h"
 #include "dht.h"
