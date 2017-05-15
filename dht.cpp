@@ -36,7 +36,7 @@ struct udp_socket : UDPSocketInterface
         SOCKADDR_STORAGE sa;
         socklen_t salen = sizeof(sa);
         if (::getsockname(sock, (struct sockaddr *)&sa, &salen) != -1) {
-            bind_addr = SockAddr(sa);
+            bind_addr = SockAddr((const sockaddr &)sa);
         }
     }
 
@@ -112,8 +112,7 @@ void add_bootstrap(dht *d, const char* address, const char* port)
         return;
     }
     for (struct addrinfo* i = res; i; i = i->ai_next) {
-        SOCKADDR_STORAGE sa = *(const SOCKADDR_STORAGE*)i->ai_addr;
-        d->idht->AddBootstrapNode(SockAddr(sa));
+        d->idht->AddBootstrapNode(SockAddr(i->ai_addr));
     }
     freeaddrinfo(res);
 }
@@ -146,14 +145,12 @@ void dht_tick(dht *d)
 
 bool dht_process_udp(dht *d, const byte *buffer, size_t len, const struct sockaddr *to, socklen_t tolen)
 {
-    SOCKADDR_STORAGE sa = *(const SOCKADDR_STORAGE*)to;
-    return d->idht->handleReadEvent(&d->udp_socket, (byte*)buffer, len, SockAddr(sa));
+    return d->idht->handleReadEvent(&d->udp_socket, (byte*)buffer, len, SockAddr(to));
 }
 
 bool dht_process_icmp(dht *d, const byte *buffer, size_t len, const struct sockaddr *to, socklen_t tolen)
 {
-    SOCKADDR_STORAGE sa = *(const SOCKADDR_STORAGE*)to;
-    return d->idht->handleICMP(&d->udp_socket, (byte*)buffer, len, SockAddr(sa));
+    return d->idht->handleICMP(&d->udp_socket, (byte*)buffer, len, SockAddr(to));
 }
 
 void add_nodes_cb(void *ctx, const byte *info_hash, const byte *peers, uint num_peers)
