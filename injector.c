@@ -339,12 +339,11 @@ uint64 utp_on_accept(utp_callback_arguments *a)
 {
     debug("Accepted inbound socket %p\n", a->socket);
     network *n = (network*)utp_context_get_userdata(a->context);
-    struct sockaddr_in dest = {
-        .sin_family = AF_INET,
-        .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
-        .sin_port = htons(8005)
-    };
-    utp_connect_tcp(n->evbase, a->socket, (const struct sockaddr *)&dest, sizeof(dest));
+    struct sockaddr addr;
+    socklen_t addrlen;
+    utp_getpeername(a->socket, &addr, &addrlen);
+    int fd = utp_socket_create_fd(n->evbase, a->socket);
+    evhttp_get_request(n->http, fd, &addr, addrlen);
     return 0;
 }
 
