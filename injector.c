@@ -186,7 +186,7 @@ int header_cb(struct evhttp_request *req, void *arg)
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
         copy_header(req, p->server_req, response_header_whitelist[i]);
     }
-    overwrite_header(p->server_req, "Content-Location", evhttp_request_get_uri(req));
+    overwrite_header(p->server_req, "Content-Location", evhttp_request_get_uri(p->server_req));
 
     const char *hashed_headers[] = {"Content-Length", "Content-Location", "Content-Type"};
     evkeyvalq *in = evhttp_request_get_input_headers(req);
@@ -219,7 +219,7 @@ void request_done_cb(struct evhttp_request *req, void *arg)
     debug("p:%p request_done_cb\n", p);
     if (p->server_req) {
         if (req) {
-            debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(req));
+            debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(p->server_req));
 
             uint8_t content_hash[crypto_generichash_BYTES];
             uint8_t *content_hash_p = content_hash;
