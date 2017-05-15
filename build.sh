@@ -1,6 +1,16 @@
 #!/bin/bash
 set -e
 
+cd Libevent
+if [ ! -f Makefile ]; then ./autogen.sh; CFLAGS="`pkg-config libssl --cflags --silence-errors`" ./configure --disable-shared; fi
+make
+cd ..
+
+cd libsodium
+if [ ! -f Makefile ]; then ./autogen.sh; ./configure; fi
+make
+cd ..
+
 cd libutp
 make
 cd ..
@@ -17,7 +27,7 @@ cd ..
 FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
   -fPIC -fblocks -fdata-sections -ffunction-sections \
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
-  -std=gnu11 -D__FAVOR_BSD -D_BSD_SOURCE"
+  -D__FAVOR_BSD -D_BSD_SOURCE"
 # debug
 FLAGS="$FLAGS -O0 -fsanitize=address"
 #release
@@ -27,15 +37,13 @@ CFLAGS="$FLAGS -std=gnu11"
 CPPFLAGS="$FLAGS -std=c++14"
 
 echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
-
-#if [ "$(expr substr $(uname -s) 1 5)" = "Linux" ]; then
-#    CFLAGS="$CFLAGS -lstdc++ -lm -lBlocksRuntime"
-#fi
+echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
+echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LB="-lBlocksRuntime"
 
 clang $CPPFLAGS -c dht.cpp -I ./libbtdht/src -I ./libbtdht/btutils/src
 clang $CFLAGS -o injector base64.c injector.c log.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c dht.o \
   -I ./libutp libutp/libutp.a \
   ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
-  `pkg-config --cflags libsodium` `pkg-config --libs libsodium` \
-  `pkg-config --cflags libevent` `pkg-config --libs libevent libevent_pthreads` \
-  -lc++ $LRT
+  -I ./Libevent/include ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a ./Libevent/.libs/libevent_openssl.a \
+  -I ./libsodium/src/libsodium/include ./libsodium/src/libsodium/.libs/libsodium.a \
+  -lstdc++ $LRT $LM $LB
