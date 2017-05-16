@@ -50,6 +50,9 @@ typedef struct proxy_client proxy_client;
 
 static const bool TEST_LOCAL_INJECTOR = false;
 
+#define UTP_LISTENING_PORT "5678"
+#define TCP_LISTENING_PORT 5678
+
 #if false
 #   define LOG(...) printf(__VA_ARGS__)
 #else
@@ -460,7 +463,7 @@ handle_client_request(struct evhttp_request *req_in, void *arg)
 static int start_taking_requests(proxy *p)
 {
     const char *address = "0.0.0.0";
-    uint16_t port = 5678;
+    uint16_t port = TCP_LISTENING_PORT;
 
     /* Create a new evhttp object to handle requests. */
     struct evhttp *http = evhttp_new(p->net->evbase);
@@ -637,12 +640,24 @@ int start_tcp_to_utp_redirect(proxy *p)
     return 0;
 }
 
+static
+uint64 utp_on_accept(utp_callback_arguments *a)
+{
+    network *n = (network*)utp_context_get_userdata(a->context);
+    struct sockaddr_in dest = {
+        .sin_family = AF_INET,
+        .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+        .sin_port = htons(TCP_LISTENING_PORT)
+    };
+    utp_connect_tcp(n->evbase, a->socket, (const struct sockaddr *)&dest, sizeof(dest));
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     char *address = "0.0.0.0";
-    char *port = "5678";
 
-    network *n = network_setup(address, port);
+    network *n = network_setup(address, UTP_LISTENING_PORT);
 
     proxy *p = proxy_create(n);
 
@@ -650,8 +665,7 @@ int main(int argc, char *argv[])
 
     start_tcp_to_utp_redirect(p);
 
-    // TODO
-    //utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
+    utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
 
     int result = network_loop(n);
 
