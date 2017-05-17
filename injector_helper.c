@@ -48,8 +48,6 @@ typedef struct proxy proxy;
 typedef struct injector injector;
 typedef struct proxy_client proxy_client;
 
-static const bool TEST_LOCAL_INJECTOR = false;
-
 #define UTP_LISTENING_PORT "5678"
 #define TCP_LISTENING_PORT 5678
 #define MAX_INJECTORS_TO_TRY 3
@@ -59,11 +57,7 @@ static const bool TEST_LOCAL_INJECTOR = false;
 #define MIN_RANK (-5)
 #define MAX_RANK (5)
 
-#if false
-#   define LOG(...) printf(__VA_ARGS__)
-#else
-#   define LOG(...) do {} while(false)
-#endif
+#define LOG(...) if (p->print_debug) { printf(__VA_ARGS__); }
 
 typedef struct {
     uint8_t ip[4];
@@ -71,6 +65,8 @@ typedef struct {
 } endpoint;
 
 #define MAX_INJECTORS_TO_TRY 3
+
+static const endpoint zero_endpoint = { { 0, 0, 0, 0}, 0 };
 
 typedef struct {
     proxy *p;
@@ -114,13 +110,13 @@ static bool fd_local_info(int fd, const char **addr, uint16_t *port)
         }
         inaddr = &((struct sockaddr_in6 *)&ss)->sin6_addr;
     } else {
-        LOG("Weird address family %d\n", ss.ss_family);
+        fprintf(stderr, "Weird address family %d\n", ss.ss_family);
         return 1;
     }
     if (addr) {
         *addr = evutil_inet_ntop(ss.ss_family, inaddr, addrbuf, sizeof(addrbuf));
         if (!*addr) {
-            LOG("evutil_inet_ntop failed\n");
+            fprintf(stderr, "evutil_inet_ntop failed\n");
             return 1;
         }
     }
@@ -172,6 +168,7 @@ void destroy_injector(injector *i)
 }
 
 struct proxy {
+    bool print_debug;
     network *net;
     struct evhttp *http;
     timer *injector_search_timer;
@@ -187,6 +184,8 @@ struct proxy {
 
     // XXX: Debug variable.
     size_t outstanding_req_cnt;
+    // If this is not all zeros, the proxy won't search the DHT for injectors.
+    endpoint debug_injector;
 
     STAILQ_HEAD(, injector) injectors;
 };
@@ -343,13 +342,13 @@ static void forward_request_to_injector(request_ctx *ctx, injector *i)
 
     int result = evhttp_make_request(http_con, req_out, command, uri);
 
-    // XXX: Explain why we pick the injector here and not only after the
-    // localhost receives this HTTP request.
-    p->endpoint_map[local_port(http_con)] = i->ep;
-
     if (result != 0) {
         die("evhttp_make_request() failed\n");
     }
+
+    // XXX: Explain why we pick the injector here and not only after the
+    // localhost receives this HTTP request.
+    p->endpoint_map[local_port(http_con)] = i->ep;
 }
 
 static void downrank(proxy *p, endpoint inj_ep)
@@ -679,16 +678,14 @@ static void on_injectors_found(proxy *p, const byte *peers, uint num_peers)
 
 static void start_injector_search(proxy *p)
 {
-    if (TEST_LOCAL_INJECTOR) {
-        endpoint test_ep;
-
-        test_ep.ip[0] = 127;
-        test_ep.ip[1] = 0;
-        test_ep.ip[2] = 0;
-        test_ep.ip[3] = 1;
-        test_ep.port = 7000;
-
-        return proxy_add_injector(p, test_ep);
+    if (!is_same_endpoint(p->debug_injector, zero_endpoint)) {
+        // XXX Use the proxy_add_injector function which also check whether the
+        // injector is functioning.
+        //return proxy_add_injector(p, p->debug_injector);
+        injector *inj = create_injector(p->debug_injector);
+        STAILQ_INSERT_TAIL(&p->injectors, inj, tailq);
+        uprank(p, p->debug_injector);
+        return;
     }
 
     dht_get_peers(p->net->dht, injector_swarm,
@@ -727,12 +724,13 @@ void proxy_destroy(proxy *p)
     free(p);
 }
 
-proxy *proxy_create(network *n)
+proxy *proxy_create(network *n, endpoint debug_injector, bool print_debug)
 {
     proxy *p = alloc(proxy);
 
     STAILQ_INIT(&p->injectors);
 
+    p->print_debug = print_debug;
     p->net = n;
     p->http = NULL;
     p->injector_search_timer = NULL;
@@ -740,6 +738,8 @@ proxy *proxy_create(network *n)
     p->tcp_out_listener = NULL;
     p->tcp_out_port = 0;
     p->outstanding_req_cnt = 0;
+    p->debug_injector = debug_injector;
+
 
     if (start_taking_requests(p) != 0) {
         proxy_destroy(p);
@@ -813,13 +813,61 @@ static uint64 utp_on_accept(utp_callback_arguments *a)
     return 0;
 }
 
+void usage(char *name)
+{
+    fprintf(stderr, "\nUsage:\n");
+    fprintf(stderr, "    %s [options]\n", name);
+    fprintf(stderr, "\n");
+    fprintf(stderr, "Options:\n");
+    fprintf(stderr, "    -h           Help\n");
+    fprintf(stderr, "    -i A.B.C.D:P Disable injector DHT search and use this endpoint instead\n");
+    fprintf(stderr, "    -d           Pring debug messages\n");
+    fprintf(stderr, "\n");
+    exit(1);
+}
+
 int main(int argc, char *argv[])
 {
     char *address = "0.0.0.0";
 
+    endpoint debug_injector = zero_endpoint;
+
+    bool print_debug = false;
+
+    for (;;) {
+        int c = getopt(argc, argv, "hi:d");
+        if (c == -1)
+            break;
+        switch (c) {
+        case 'h':
+            usage(argv[0]);
+            break;
+        case 'i': {
+            int d[5];
+            int r = sscanf(optarg, "%d.%d.%d.%d:%d", d, d+1, d+2, d+3, d+4);
+            if (r != 5) {
+                perror("sscanf");
+                usage(argv[0]);
+            }
+            debug_injector.ip[0] = d[0];
+            debug_injector.ip[1] = d[1];
+            debug_injector.ip[2] = d[2];
+            debug_injector.ip[3] = d[3];
+            debug_injector.port  = d[4];
+            break;
+        }
+        case 'd': {
+            print_debug = true;
+            break;
+        }
+        default:
+            die("Unhandled argument: %c\n", c);
+        }
+    }
+
     network *n = network_setup(address, UTP_LISTENING_PORT);
 
-    proxy *p = proxy_create(n);
+    proxy *p = proxy_create(n, debug_injector, print_debug);
 
     assert(p);
 
