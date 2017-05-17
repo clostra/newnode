@@ -52,12 +52,44 @@ static const bool TEST_LOCAL_INJECTOR = false;
 
 #define UTP_LISTENING_PORT "5678"
 #define TCP_LISTENING_PORT 5678
+#define MAX_INJECTORS_TO_TRY 3
+
+#define SECONDS(X) (X * 1000)
+#define MINUTES(X) (X * 1000 * 60)
+#define MIN_RANK (-5)
+#define MAX_RANK (5)
 
 #if false
 #   define LOG(...) printf(__VA_ARGS__)
 #else
 #   define LOG(...) do {} while(false)
 #endif
+
+typedef struct {
+    uint8_t ip[4];
+    uint16_t port;
+} endpoint;
+
+#define MAX_INJECTORS_TO_TRY 3
+
+typedef struct {
+    proxy *p;
+    struct evhttp_request *req;
+    size_t tried_injector_cnt;
+    endpoint tried_injectors[MAX_INJECTORS_TO_TRY];
+} request_ctx;
+
+static request_ctx *create_request_ctx(proxy *p, struct evhttp_request *req)
+{
+    request_ctx *ctx = alloc(request_ctx);
+    ctx->p = p;
+    ctx->req = req;
+    ctx->tried_injector_cnt = 0;
+    return ctx;
+}
+
+static void handle_injector_response(struct evhttp_request *res, void *ctx_void);
+static void forward_request_to_injector(request_ctx *ctx, injector *i);
 
 // Returns true on error
 static bool fd_local_info(int fd, const char **addr, uint16_t *port)
@@ -95,7 +127,7 @@ static bool fd_local_info(int fd, const char **addr, uint16_t *port)
     return 0;
 }
 
-static uint16_t local_port(struct evhttp_connection* con)
+static uint16_t local_port(struct evhttp_connection *con)
 {
     struct bufferevent *bev = evhttp_connection_get_bufferevent(con);
     int fd = bufferevent_getfd(bev);
@@ -113,26 +145,29 @@ static uint16_t fd_remote_port(int fd)
     return ntohs(peeraddr.sin_port);
 }
 
-typedef struct {
-    uint8_t ip[4];
-    uint16_t port;
-} endpoint;
-
 struct injector {
     STAILQ_ENTRY(injector) tailq;
 
+    timer *probe_timer;
+    int rank;
     endpoint ep;
 };
 
 injector *create_injector(endpoint ep)
 {
     injector *c = alloc(injector);
+    c->probe_timer = NULL;
+    c->rank = 0;
     c->ep = ep;
     return c;
 }
 
 void destroy_injector(injector *i)
 {
+    if (i->probe_timer) {
+        timer_cancel(i->probe_timer);
+    }
+
     free(i);
 }
 
@@ -150,11 +185,25 @@ struct proxy {
     struct evconnlistener *tcp_out_listener;
     uint16_t tcp_out_port;
 
+    // XXX: Debug variable.
+    size_t outstanding_req_cnt;
+
     STAILQ_HEAD(, injector) injectors;
 };
 
-static bool same_endpoint(endpoint ep1, endpoint ep2) {
+static bool is_same_endpoint(endpoint ep1, endpoint ep2)
+{
     return memcmp(&ep1, &ep2, sizeof(endpoint)) == 0;
+}
+
+static injector *find_injector(proxy *p, endpoint ep) {
+    struct injector *i;
+    STAILQ_FOREACH(i, &p->injectors, tailq) {
+        if (is_same_endpoint(i->ep, ep)) {
+            return i;
+        }
+    }
+    return NULL;
 }
 
 static void start_announcing_self_in_dht(proxy *p)
@@ -174,6 +223,12 @@ static void start_announcing_self_in_dht(proxy *p)
     p->announce_timer = timer_start(p->net, one_hour, do_announce);
 }
 
+static void probe_injector(proxy *p, injector *i)
+{
+    request_ctx *ctx = create_request_ctx(p, NULL);
+    forward_request_to_injector(ctx, i);
+}
+
 static void proxy_add_injector(proxy *p, endpoint ep)
 {
     // I was seeing addresses 0.0.0.0 reported by the DHT which seems bogus.
@@ -183,24 +238,19 @@ static void proxy_add_injector(proxy *p, endpoint ep)
     }
 
     // Ignore duplicates
-    struct injector *i;
-    STAILQ_FOREACH(i, &p->injectors, tailq) {
-        if (same_endpoint(i->ep, ep)) {
-            //LOG("Not adding duplicate endpoint %d.%d.%d.%d:%d\n",
-            //        ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], ep.port);
-            return;
-        }
-    }
+    if (find_injector(p, ep)) return;
 
-    LOG("Added injector %d.%d.%d.%d:%d\n",
-            ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], ep.port);
+    LOG("New injector %d.%d.%d.%d:%d\n",
+        ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], ep.port);
 
     // TODO: Don't add if too many injectors.
     // TODO: Stop announcing once injector count drops to zero.
     start_announcing_self_in_dht(p);
 
-    injector *c = create_injector(ep);
-    STAILQ_INSERT_TAIL(&p->injectors, c, tailq);
+    injector *inj = create_injector(ep);
+    STAILQ_INSERT_TAIL(&p->injectors, inj, tailq);
+
+    probe_injector(p, inj);
 }
 
 static size_t count_injectors(proxy *p)
@@ -211,25 +261,148 @@ static size_t count_injectors(proxy *p)
     return cnt;
 }
 
-static
-injector * pick_random_injector(proxy *p)
+static injector *pick_random_injector(proxy *p, endpoint *exclude, size_t exclude_cnt)
 {
     // XXX: This would be a faster if p->injectors was an array.
-    size_t cnt = count_injectors(p);
+    const size_t cnt = count_injectors(p);
     struct injector *inj;
 
-    if (cnt) {
-        size_t n = rand() % cnt;
-        STAILQ_FOREACH(inj, &p->injectors, tailq) { if (n-- == 0) return inj; }
+    if (cnt == 0) return NULL;
+
+    injector *injectors[cnt];
+
+    size_t k = 0;
+    STAILQ_FOREACH(inj, &p->injectors, tailq) {
+        if (inj->rank <= 0) {
+            continue;
+        }
+
+        bool is_excluded = false;
+        for (size_t i = 0; exclude && i < exclude_cnt; ++i) {
+            if (is_same_endpoint(exclude[i], inj->ep)) {
+                is_excluded = true;
+                break;
+            }
+        }
+
+        if (!is_excluded) injectors[k++] = inj;
     }
 
-    return NULL;
+    if (k == 0) return NULL;
+
+    return injectors[rand() % k];
 }
 
-typedef struct {
-    struct evhttp_request *req;
-    endpoint injector_ep;
-} request_ctx;
+static void forward_request_to_injector(request_ctx *ctx, injector *i)
+{
+#   define TEST_PAGE "bbc.com"
+
+    assert(ctx->tried_injector_cnt < MAX_INJECTORS_TO_TRY);
+
+    ctx->tried_injectors[ctx->tried_injector_cnt] = i->ep;
+    ctx->tried_injector_cnt++;
+
+    proxy *p = ctx->p;
+
+    struct evhttp_request *req_out = evhttp_request_new(handle_injector_response, ctx);
+
+    if (req_out == NULL) {
+        die("evhttp_request_new() failed\n");
+        return;
+    }
+
+    struct evkeyvalq *hdr_out = evhttp_request_get_output_headers(req_out);
+
+    if (ctx->req) {
+        struct evkeyvalq *hdr_in = evhttp_request_get_input_headers(ctx->req);
+
+        const char *host_hdr = evhttp_find_header(hdr_in, "Host");
+        if (host_hdr) {
+            evhttp_add_header(hdr_out, "Host", host_hdr);
+        }
+    } else {
+        evhttp_add_header(hdr_out, "Host", TEST_PAGE);
+    }
+
+    evhttp_add_header(hdr_out, "Connection", "close");
+
+    struct evhttp_connection *http_con
+        = evhttp_connection_base_new(p->net->evbase, NULL, "127.0.0.1", p->tcp_out_port);
+
+    // XXX: The default value should point to our page.
+    const char *uri = ctx->req
+                    ? evhttp_request_get_uri(ctx->req)
+                    : "http://" TEST_PAGE "/";
+
+    enum evhttp_cmd_type command = ctx->req
+                                 ? evhttp_request_get_command(ctx->req)
+                                 : EVHTTP_REQ_GET;
+
+    p->outstanding_req_cnt++;
+    LOG("req++: total:%zu\n", p->outstanding_req_cnt);
+
+    int result = evhttp_make_request(http_con, req_out, command, uri);
+
+    // XXX: Explain why we pick the injector here and not only after the
+    // localhost receives this HTTP request.
+    p->endpoint_map[local_port(http_con)] = i->ep;
+
+    if (result != 0) {
+        die("evhttp_make_request() failed\n");
+    }
+}
+
+static void downrank(proxy *p, endpoint inj_ep)
+{
+    injector *i = find_injector(p, inj_ep);
+
+    assert(i);
+    if (!i) return;
+
+    i->rank = MAX(i->rank - 1, MIN_RANK);
+
+    LOG("Downranked %d.%d.%d.%d:%d to %d\n",
+        inj_ep.ip[0], inj_ep.ip[1], inj_ep.ip[2], inj_ep.ip[3], inj_ep.port,
+        i->rank);
+
+    if (i->rank > 0) {
+        return;
+    }
+
+    if (i->probe_timer) {
+        // If we have already a timer scheduled, let it finish. Once it fires
+        // and the probing test fails, the injector shall be downranked again
+        // and we'll end up here with `probe_timer == NULL`.
+        return;
+    }
+
+    uint32_t timeout = (1 - i->rank) * SECONDS(30);
+
+    i->probe_timer = timer_start(p->net, timeout, ^{
+        i->probe_timer = NULL;
+        assert(i->rank < 0);
+        probe_injector(p, i);
+      });
+}
+
+static void uprank(proxy *p, endpoint inj_ep)
+{
+    injector *i = find_injector(p, inj_ep);
+
+    assert(i);
+    if (!i) return;
+
+    i->rank = MAX(1, MIN(MAX_RANK, i->rank + 1));
+
+    LOG("Upranked %d.%d.%d.%d:%d to %d\n",
+        inj_ep.ip[0], inj_ep.ip[1], inj_ep.ip[2], inj_ep.ip[3], inj_ep.port,
+           i->rank);
+
+    if (i->probe_timer) {
+        timer_cancel(i->probe_timer);
+        i->probe_timer = NULL;
+    }
+}
 
 static
 void handle_injector_response(struct evhttp_request *res, void *ctx_void)
@@ -238,13 +411,49 @@ void handle_injector_response(struct evhttp_request *res, void *ctx_void)
     // TODO: Retry request with another injector (if any left).
 
     request_ctx *ctx = ctx_void;
+    proxy *p = ctx->p;
+    endpoint ep = ctx->tried_injectors[ctx->tried_injector_cnt - 1];
+
+    p->outstanding_req_cnt--;
+
+    LOG("req--: total:%zu %s%s\n", p->outstanding_req_cnt,
+        res ? "SUCCESS" : "FAILURE",
+        ctx->req ? "" : " TEST");
+
+    if (!ctx->req) {
+        // There was no explicit request from a client, thus we must have made
+        // this request.  That means this was a test whether the injector is
+        // functioning properly.
+        assert(ctx->tried_injector_cnt == 1);
+
+        if (!res) {
+            downrank(p, ep);
+            goto finish;
+        }
+
+        injector *i = find_injector(p, ep);
+        assert(i);
+        if (i) uprank(p, ep);
+
+        goto finish;
+    }
 
     if (!res) {
+        downrank(p, ep);
+
+        if (ctx->tried_injector_cnt < MAX_INJECTORS_TO_TRY) {
+            injector *alt_inj = pick_random_injector(p, ctx->tried_injectors, ctx->tried_injector_cnt);
+
+            if (alt_inj) {
+                return forward_request_to_injector(ctx, alt_inj);
+            }
+        }
+
         int errcode = EVUTIL_SOCKET_ERROR();
 
         debug("handle_injector_response: socket error = %s (%d)\n",
-            evutil_socket_error_to_string(errcode),
-            errcode);
+              evutil_socket_error_to_string(errcode),
+              errcode);
 
         evhttp_send_reply(ctx->req, 502 /* Bad Gateway */,
                 "Error while waiting for injector response", NULL);
@@ -252,12 +461,14 @@ void handle_injector_response(struct evhttp_request *res, void *ctx_void)
         goto finish;
     }
 
+    uprank(p, ep);
+
     struct evbuffer *evb_out = evbuffer_new();
     struct evbuffer *evb_in = evhttp_request_get_input_buffer(res);
     int response_code = evhttp_request_get_response_code(res);
     const char *response_code_line = evhttp_request_get_response_code_line(res);
 
-    const char *response_header_whitelist[] = {"Content-Length", "Content-Type"};
+    const char *response_header_whitelist[] = { "Content-Length", "Content-Type" };
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
         copy_header(res, ctx->req, response_header_whitelist[i]);
     }
@@ -278,20 +489,17 @@ typedef struct {
     struct bufferevent *origin_bev;
 } tunnel;
 
-static
-struct bufferevent* tunnel_bev1(tunnel *t)
+static struct bufferevent *tunnel_bev1(tunnel *t)
 {
     return evhttp_connection_get_bufferevent(evhttp_request_get_connection(t->req));
 }
 
-static
-struct bufferevent* tunnel_bev2(tunnel *t)
+static struct bufferevent *tunnel_bev2(tunnel *t)
 {
     return t->origin_bev;
 }
 
-static
-void destroy_tunnel(tunnel *t)
+static void destroy_tunnel(tunnel *t)
 {
     bufferevent_setcb(tunnel_bev1(t), NULL, NULL, NULL, NULL);
     bufferevent_setcb(tunnel_bev2(t), NULL, NULL, NULL, NULL);
@@ -302,19 +510,17 @@ void destroy_tunnel(tunnel *t)
     free(t);
 }
 
-static
-void on_origin_event(struct bufferevent* bev, short what, void *ctx)
+static void on_origin_event(struct bufferevent *bev, short what, void *ctx)
 {
     if (what & BEV_EVENT_CONNECTED) {
         return;
-    } 
+    }
 
     // Case of BEV_EVENT_EOF, BEV_EVENT_ERROR, BEV_EVENT_TIMEOUT
     destroy_tunnel(ctx);
 }
 
-static
-void on_origin_read(struct bufferevent* bev, void *ctx)
+static void on_origin_read(struct bufferevent *bev, void *ctx)
 {
     tunnel *t = ctx;
 
@@ -329,15 +535,14 @@ void on_origin_read(struct bufferevent* bev, void *ctx)
  * Parse a string of the form "en.wikipedia.org:80". Return
  * 'true' on success.
  */
-static
-bool parse_host_uri(const char* uri, char*host, size_t host_max_len, uint16_t* port)
+static bool parse_host_uri(const char *uri, char *host, size_t host_max_len, uint16_t *port)
 {
     size_t uri_size = strlen(uri);
 
     const char *uri_end = uri + uri_size;
     const char *addr_end = uri_end;
 
-    for (const char* c = uri; c != uri_end; ++c) {
+    for (const char *c = uri; c != uri_end; ++c) {
         if (*c == ':') {
             addr_end = c;
             break;
@@ -351,7 +556,7 @@ bool parse_host_uri(const char* uri, char*host, size_t host_max_len, uint16_t* p
         return false;
     }
 
-    size_t addr_len = MIN((size_t) (addr_end - uri), host_max_len);
+    size_t addr_len = MIN((size_t)(addr_end - uri), host_max_len);
 
     memcpy(host, uri, addr_len);
     host[addr_len] = 0;
@@ -361,8 +566,7 @@ bool parse_host_uri(const char* uri, char*host, size_t host_max_len, uint16_t* p
     return true;
 }
 
-static
-void create_tunnel(proxy *p, struct evhttp_request *req_in)
+static void create_tunnel(proxy *p, struct evhttp_request *req_in)
 {
     const char *uri = evhttp_request_get_uri(req_in);
     char addr[512];
@@ -389,8 +593,8 @@ void create_tunnel(proxy *p, struct evhttp_request *req_in)
     // XXX: Check result.
     bufferevent_socket_connect_hostname(bev_out, p->net->evdns, AF_INET, addr, port);
 
-	bufferevent_enable(bev_in, EV_WRITE | EV_READ);
-	bufferevent_enable(bev_out, EV_WRITE | EV_READ);
+    bufferevent_enable(bev_in, EV_WRITE | EV_READ);
+    bufferevent_enable(bev_out, EV_WRITE | EV_READ);
 
     const char *response =
         "HTTP/1.0 200 Connection established\r\n"
@@ -405,59 +609,21 @@ handle_client_request(struct evhttp_request *req_in, void *arg)
 {
     proxy *p = (proxy *)arg;
 
-    enum evhttp_cmd_type type = evhttp_request_get_command(req_in);
-
-    if (type == EVHTTP_REQ_CONNECT) {
+    if (evhttp_request_get_command(req_in) == EVHTTP_REQ_CONNECT) {
         return create_tunnel(p, req_in);
     }
 
     // XXX: Ignore or respond with error if too many requests per client.
 
-    if (count_injectors(p) == 0) {
+    injector *inj = pick_random_injector(p, NULL, 0);
+
+    if (!inj) {
         evhttp_send_reply(req_in, 502 /* Bad Gateway */, "Proxy has no injectors", NULL);
         return;
     }
 
-    injector *i = pick_random_injector(p);
-
-    request_ctx *ctx = alloc(request_ctx);
-    ctx->req = req_in;
-    ctx->injector_ep = i->ep;
-
-    struct evhttp_request *req_out = evhttp_request_new(handle_injector_response, ctx);
-
-    if (req_out == NULL) {
-        die("evhttp_request_new() failed\n");
-        return;
-    }
-
-    const char *uri = evhttp_request_get_uri(req_in);
-
-    struct evkeyvalq *hdr_out = evhttp_request_get_output_headers(req_out);
-
-    {
-        struct evkeyvalq *hdr_in = evhttp_request_get_input_headers(req_in);
-
-        const char *host_hdr = evhttp_find_header(hdr_in, "Host");
-        if (host_hdr) {
-            evhttp_add_header(hdr_out, "Host", host_hdr);
-        }
-    }
-
-    evhttp_add_header(hdr_out, "Connection", "close");
-
-    struct evhttp_connection *http_con
-        = evhttp_connection_base_new(p->net->evbase, NULL, "127.0.0.1", p->tcp_out_port);
-
-    int result = evhttp_make_request(http_con, req_out, type, uri);
-
-    // XXX: Explain why we pick the injector here and not only after the
-    // localhost receives this HTTP request.
-    p->endpoint_map[local_port(http_con)] = i->ep;
-
-    if (result != 0) {
-        die("evhttp_make_request() failed\n");
-    }
+    request_ctx *ctx = create_request_ctx(p, req_in);
+    forward_request_to_injector(ctx, inj);
 }
 
 static int start_taking_requests(proxy *p)
@@ -473,10 +639,10 @@ static int start_taking_requests(proxy *p)
         return -1;
     }
 
-	evhttp_set_allowed_methods(http,
-	    EVHTTP_REQ_GET |
-	    EVHTTP_REQ_POST |
-	    EVHTTP_REQ_CONNECT);
+    evhttp_set_allowed_methods(http,
+        EVHTTP_REQ_GET |
+        EVHTTP_REQ_POST |
+        EVHTTP_REQ_CONNECT);
 
     p->http = http;
 
@@ -502,13 +668,11 @@ static int start_taking_requests(proxy *p)
     return 0;
 }
 
-static void on_injectors_found(proxy *proxy, const byte *peers, uint num_peers) {
+static void on_injectors_found(proxy *proxy, const byte *peers, uint num_peers)
+{
     for (uint i = 0; i < num_peers; ++i) {
         endpoint ep = *((endpoint *)peers + i * sizeof(endpoint));
         ep.port = ntohs(ep.port);
-
-        //LOG("%d.%d.%d.%d:%d\n", ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], (int)ep.port);
-
         proxy_add_injector(proxy, ep);
     }
 }
@@ -533,11 +697,9 @@ static void start_injector_search(proxy *p)
                 on_injectors_found(p, peers, num_peers);
             });
 
-    const unsigned int minute = 60 * 1000;
-
     const unsigned int retry_timeout = STAILQ_EMPTY(&p->injectors)
-                                     ? minute
-                                     : 25 * minute;
+                                     ? MINUTES(1)
+                                     : MINUTES(25);
 
     p->injector_search_timer = timer_start(p->net,
             retry_timeout,
@@ -577,6 +739,7 @@ proxy *proxy_create(network *n)
     p->announce_timer = NULL;
     p->tcp_out_listener = NULL;
     p->tcp_out_port = 0;
+    p->outstanding_req_cnt = 0;
 
     if (start_taking_requests(p) != 0) {
         proxy_destroy(p);
@@ -590,31 +753,29 @@ proxy *proxy_create(network *n)
 
 static void
 listener_cb(struct evconnlistener *listener, evutil_socket_t fd,
-    struct sockaddr *sa, int socklen, void *user_data)
+            struct sockaddr *sa, int socklen, void *user_data)
 {
-    LOG("Proxy: Accepted TCP\n");
     proxy *p = user_data;
     struct event_base *base = p->net->evbase;
 
     endpoint ep = p->endpoint_map[fd_remote_port(fd)];
 
-    {
-        char addr[32];
-        sprintf(addr, "%d.%d.%d.%d", ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3]);
-        LOG("Proxy: Connecting to UTP:%s:%d\n", addr, (int) ep.port);
-    }
+    //{
+    //    char addr[32];
+    //    sprintf(addr, "%d.%d.%d.%d", ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3]);
+    //    LOG("Proxy: Connecting to UTP:%s:%d\n", addr, (int) ep.port);
+    //}
 
     struct sockaddr_in dest = {
         .sin_family = AF_INET,
-        .sin_addr.s_addr = *((uint32_t*)ep.ip),
+        .sin_addr.s_addr = *((uint32_t *)ep.ip),
         .sin_port = htons(ep.port),
     };
 
     tcp_connect_utp(base, p->net->utp, fd, (const struct sockaddr *)&dest, sizeof(dest));
 }
 
-static
-int start_tcp_to_utp_redirect(proxy *p)
+static int start_tcp_to_utp_redirect(proxy *p)
 {
     event_base *evbase = p->net->evbase;
     struct sockaddr_in sin;
@@ -640,10 +801,9 @@ int start_tcp_to_utp_redirect(proxy *p)
     return 0;
 }
 
-static
-uint64 utp_on_accept(utp_callback_arguments *a)
+static uint64 utp_on_accept(utp_callback_arguments *a)
 {
-    network *n = (network*)utp_context_get_userdata(a->context);
+    network *n = (network *)utp_context_get_userdata(a->context);
     struct sockaddr_in dest = {
         .sin_family = AF_INET,
         .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
