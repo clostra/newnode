@@ -46,13 +46,13 @@ function test_n {
 }
 
 if [ "$test_host" == "localhost" ]; then
-    python -m SimpleHTTPServer $test_port 2>/dev/null &
+    python -m SimpleHTTPServer $test_port  &
 fi
 
 $unbuf ./injector -p 7000 2> >(prepend "Ie") 1> >(prepend "Io") &
 i_pid=$!
 
-$unbuf ./injector_helper 2> >(prepend "He") > >(prepend "Ho") &
+$unbuf ./injector_helper -i 127.0.0.1:7000 -d 2> >(prepend "He") > >(prepend "Ho") &
 h_pid=$!
 
 # Wait for the injector helper to perform a test on the injector nedpoint.

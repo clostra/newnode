@@ -1,5 +1,7 @@
 language: c
-script: ./build.sh
+script:
+  - ./build.sh
+  - ./test.sh
 before_script:
   - sudo apt-get update -qq
   - sudo apt-get install libboost-dev libblocksruntime-dev
