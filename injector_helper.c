@@ -668,12 +668,12 @@ static int start_taking_requests(proxy *p)
     return 0;
 }
 
-static void on_injectors_found(proxy *proxy, const byte *peers, uint num_peers)
+static void on_injectors_found(proxy *p, const byte *peers, uint num_peers)
 {
     for (uint i = 0; i < num_peers; ++i) {
-        endpoint ep = *((endpoint *)peers + i * sizeof(endpoint));
+        endpoint ep = ((endpoint *)peers)[i];
         ep.port = ntohs(ep.port);
-        proxy_add_injector(proxy, ep);
+        proxy_add_injector(p, ep);
     }
 }
 
