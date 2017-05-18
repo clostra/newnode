@@ -11,6 +11,7 @@
 
 
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
+#define MAX(X, Y) (((X) < (Y)) ? (Y) : (X))
 #define lenof(x) (sizeof(x)/sizeof(x[0]))
 #define alloc(type) calloc(1, sizeof(type))
 
