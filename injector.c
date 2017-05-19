@@ -18,98 +18,11 @@
 #include "timer.h"
 #include "network.h"
 #include "constants.h"
+#include "bev_splice.h"
 #include "hash_table.h"
 #include "utp_bufferevent.h"
+#include "http.h"
 
-
-typedef struct evbuffer evbuffer;
-typedef struct evkeyvalq evkeyvalq;
-typedef struct evhttp_uri evhttp_uri;
-typedef struct bufferevent bufferevent;
-typedef struct evhttp_request evhttp_request;
-typedef struct evhttp_connection evhttp_connection;
-
-hash_table *url_table;
-unsigned char pk[crypto_sign_PUBLICKEYBYTES];
-unsigned char sk[crypto_sign_SECRETKEYBYTES];
-
-#define SIG_MSG_LENGTH (sizeof("sign") + sizeof("2011-10-08T07:07:09Z") + crypto_generichash_BYTES)
-#define SIG_LENGTH (crypto_sign_BYTES + SIG_MSG_LENGTH)
-
-
-void inject_url(network *n, const char *url, const uint8_t *sig)
-{
-    // TODO
-    /*
-    dht_put(n->dht, g_public_key, g_secret_key, value_str, 0, ^{
-        printf("put complete\n");
-    });
-    */
-
-    __block struct {
-        uint8_t url_hash[20];
-    } hash_state;
-    SHA1(hash_state.url_hash, (const unsigned char *)url, strlen(url));
-
-    // TODO: stop after 24hr
-    timer_callback cb = ^{
-        dht_announce(n->dht, hash_state.url_hash, ^(const byte *peers, uint num_peers) {
-            if (!peers) {
-                printf("announce complete\n");
-            }
-        });
-    };
-    cb();
-    timer_repeating(n, 25 * 60 * 1000, cb);
-}
-
-int get_port_for_scheme(const char *scheme)
-{
-    struct addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = PF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
-    struct addrinfo *res;
-    int error = getaddrinfo(NULL, scheme, &hints, &res);
-    if (error) {
-        fprintf(stderr, "getaddrinfo failed %s\n", gai_strerror(error));
-        return -1;
-    }
-    int port = -1;
-    for (struct addrinfo *r = res; r; r = r->ai_next) {
-        char portstr[NI_MAXSERV];
-        error = getnameinfo(r->ai_addr, r->ai_addrlen, NULL, 0, portstr, sizeof(portstr), NI_NUMERICSERV);
-        if (error) {
-            fprintf(stderr, "getnameinfo failed %s\n", gai_strerror(error));
-            continue;
-        }
-        port = atoi(portstr);
-        if (port != -1) {
-            break;
-        }
-    }
-    freeaddrinfo(res);
-    return port;
-}
-
-void overwrite_header(struct evhttp_request *to, const char *key, const char *value)
-{
-    evkeyvalq *out = evhttp_request_get_output_headers(to);
-    while (evhttp_find_header(out, key)) {
-        evhttp_remove_header(out, key);
-    }
-    evhttp_add_header(out, key, value);
-}
-
-void copy_header(struct evhttp_request *from, struct evhttp_request *to, const char *key)
-{
-    evkeyvalq *in = evhttp_request_get_input_headers(from);
-    const char *value = evhttp_find_header(in, key);
-    if (value) {
-        overwrite_header(to, key, value);
-    }
-}
 
 typedef struct {
     network *n;
@@ -117,7 +30,60 @@ typedef struct {
     crypto_generichash_state content_state;
 } proxy_request;
 
-void chunked_cb(struct evhttp_request *req, void *arg)
+hash_table *url_table;
+unsigned char pk[crypto_sign_PUBLICKEYBYTES] = testing_pk;
+unsigned char sk[crypto_sign_SECRETKEYBYTES] = testing_sk;
+
+
+void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri);
+
+void request_done_cb(evhttp_request *req, void *arg)
+{
+    proxy_request *p = (proxy_request*)arg;
+    debug("p:%p request_done_cb\n", p);
+    if (p->server_req) {
+        if (req) {
+            debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(p->server_req));
+
+            uint8_t content_hash[crypto_generichash_BYTES];
+            uint8_t *content_hash_p = content_hash;
+            crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
+
+            const char *uri = evhttp_request_get_uri(p->server_req);
+            content_sig *s = hash_get_or_insert(url_table, uri, ^{
+
+                debug("storing sig for %s\n", uri);
+
+                // duplicate the memory because the hash_table owns it now
+                p->server_req->uri = strdup(uri);
+
+                // base64(sign("sign" + timestamp + hash(headers + content)))
+                time_t now = time(NULL);
+                char ts[sizeof("2011-10-08T07:07:09Z")];
+                strftime(ts, sizeof(ts), "%FT%TZ", gmtime(&now));
+                assert(sizeof(ts) - 1 == strlen(ts));
+
+                content_sig *sig = alloc(content_sig);
+                memcpy(sig->sign, "sign", sizeof(sig->sign));
+                memcpy(sig->timestamp, ts, sizeof(sig->timestamp));
+                memcpy(sig->content_hash, content_hash_p, sizeof(sig->content_hash));
+
+                crypto_sign_detached(sig->signature, NULL, (uint8_t*)sig->sign, sizeof(content_sig) - sizeof(sig->signature), sk);
+
+                return (void*)sig;
+            });
+            join_url_swarm(p->n, uri);
+        }
+        if (evhttp_request_get_connection(p->server_req)) {
+            evhttp_send_reply_end(p->server_req);
+        }
+        p->server_req = NULL;
+    }
+
+    free(p);
+}
+
+void chunked_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     evbuffer *input = evhttp_request_get_input_buffer(req);
@@ -138,10 +104,7 @@ void chunked_cb(struct evhttp_request *req, void *arg)
     }
 }
 
-void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri);
-evhttp_connection *make_connection(network *n, const evhttp_uri *uri);
-
-int header_cb(struct evhttp_request *req, void *arg)
+int header_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p header_cb %d %s\n", p, evhttp_request_get_response_code(req), evhttp_request_get_response_code_line(req));
@@ -176,10 +139,6 @@ int header_cb(struct evhttp_request *req, void *arg)
         break;
     }
 
-    if (!evhttp_request_get_connection(p->server_req)) {
-        return 0;
-    }
-
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
 
     const char *response_header_whitelist[] = {"Content-Length", "Content-Type"};
@@ -188,20 +147,11 @@ int header_cb(struct evhttp_request *req, void *arg)
     }
     overwrite_header(p->server_req, "Content-Location", evhttp_request_get_uri(p->server_req));
 
-    const char *hashed_headers[] = {"Content-Length", "Content-Location", "Content-Type"};
-    evkeyvalq *in = evhttp_request_get_input_headers(req);
-    for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
-        const char *key = hashed_headers[i];
-        const char *value = evhttp_find_header(in, key);
-        if (!value) {
-            continue;
-        }
-        char buf[1024];
-        snprintf(buf, sizeof(buf), "%s: %s\r\n", key, value);
-        crypto_generichash_update(&p->content_state, (const uint8_t *)buf, strlen(buf));
-    }
+    hash_headers(evhttp_request_get_input_headers(p->server_req), &p->content_state);
 
-    evhttp_send_reply_start(p->server_req, code, evhttp_request_get_response_code_line(req));
+    if (evhttp_request_get_connection(p->server_req)) {
+        evhttp_send_reply_start(p->server_req, code, evhttp_request_get_response_code_line(req));
+    }
     evhttp_request_set_chunked_cb(req, chunked_cb);
 
     return 0;
@@ -211,61 +161,6 @@ void error_cb(enum evhttp_request_error error, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     fprintf(stderr, "p:%p error_cb %d\n", p, error);
-}
-
-void request_done_cb(struct evhttp_request *req, void *arg)
-{
-    proxy_request *p = (proxy_request*)arg;
-    debug("p:%p request_done_cb\n", p);
-    if (p->server_req) {
-        if (req) {
-            debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(p->server_req));
-
-            uint8_t content_hash[crypto_generichash_BYTES];
-            uint8_t *content_hash_p = content_hash;
-            crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
-
-            const char *uri = evhttp_request_get_uri(p->server_req);
-            uint8_t *sig = hash_get_or_insert(url_table, uri, ^{
-
-                debug("storing sig for %s\n", uri);
-
-                // duplicate the memory because the hash_table owns it now
-                p->server_req->uri = strdup(uri);
-
-                // base64(sign("sign" + timestamp + hash(headers + content)))
-                time_t now = time(NULL);
-                char ts[sizeof("2011-10-08T07:07:09Z")];
-                strftime(ts, sizeof(ts), "%FT%TZ", gmtime(&now));
-                assert(sizeof(ts) - 1 == strlen(ts));
-
-                uint8_t message[SIG_MSG_LENGTH];
-                uint8_t *w = message;
-                memcpy(w, "sign", sizeof("sign") - 1);
-                w += sizeof("sign");
-                memcpy(w, ts, sizeof(ts) - 1);
-                w += sizeof(ts);
-                memcpy(w, content_hash_p, crypto_generichash_BYTES);
-                w += crypto_generichash_BYTES;
-                assert(w == message + sizeof(message));
-
-                uint8_t *signed_message = malloc(SIG_LENGTH);
-                unsigned long long signed_message_len;
-
-                crypto_sign(signed_message, &signed_message_len, message, sizeof(message), sk);
-                assert(signed_message_len == SIG_LENGTH);
-
-                return (void*)signed_message;
-            });
-            inject_url(p->n, uri, sig);
-        }
-        if (evhttp_request_get_connection(p->server_req)) {
-            evhttp_send_reply_end(p->server_req);
-        }
-        p->server_req = NULL;
-    }
-
-    free(p);
 }
 
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri)
@@ -285,10 +180,10 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     overwrite_header(client_req, "Host", address);
 
     const char *uri_s = evhttp_request_get_uri(p->server_req);
-    const uint8_t *sig = hash_get(url_table, uri_s);
+    const content_sig *sig = hash_get(url_table, uri_s);
     if (sig) {
         size_t out_len;
-        char *hex_sig = base64_urlsafe_encode(sig, SIG_LENGTH, &out_len);
+        char *hex_sig = base64_urlsafe_encode((uint8_t*)sig, sizeof(content_sig), &out_len);
         debug("returning sig for %s %s\n", uri_s, hex_sig);
         overwrite_header(p->server_req, "X-Sign", hex_sig);
         free(hex_sig);
@@ -304,28 +199,106 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     debug("p:%p con:%p request submitted: %s\n", p, evhttp_request_get_connection(client_req), evhttp_request_get_uri(client_req));
 }
 
-evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
+typedef struct {
+    evhttp_request *server_req;
+    bufferevent *direct;
+} connect_req;
+
+void connect_cleanup(connect_req *c)
 {
-    const char *scheme = evhttp_uri_get_scheme(uri);
+    if (c->direct) {
+        return;
+    }
+    if (c->server_req) {
+        evhttp_send_error(c->server_req, 502, "Bad Gateway");
+    }
+    free(c);
+}
+
+void connected(connect_req *c, bufferevent *other)
+{
+    bufferevent *bev = evhttp_connection_detach_bufferevent(evhttp_request_get_connection(c->server_req), c->server_req);
+    c->server_req = NULL;
+    connect_cleanup(c);
+    evbuffer_add_printf(bufferevent_get_output(bev), "HTTP/1.0 200 Connection established\r\n\r\n");
+    bev_splice(bev, other);
+    bufferevent_enable(bev, EV_READ|EV_WRITE);
+}
+
+void connect_event_cb(bufferevent *bev, short events, void *ctx)
+{
+    connect_req *c = (connect_req *)ctx;
+    debug("connect_event_cb events:%x bev:%p req:%s\n", events, bev, evhttp_request_get_uri(c->server_req));
+
+    if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+        bufferevent_free(bev);
+        c->direct = NULL;
+        connect_cleanup(c);
+    } else if (events & BEV_EVENT_CONNECTED) {
+        c->direct = NULL;
+        connected(c, bev);
+    }
+}
+
+void close_cb(evhttp_connection *evcon, void *ctx)
+{
+    connect_req *c = (connect_req *)ctx;
+    debug("c:%p close_cb\n", c);
+    c->server_req = NULL;
+    if (c->direct) {
+        bufferevent_free(c->direct);
+        c->direct = NULL;
+    }
+    connect_cleanup(c);
+}
+
+void connect_request(network *n, evhttp_request *req)
+{
+    char buf[2048];
+    snprintf(buf, sizeof(buf), "https://%s", evhttp_request_get_uri(req));
+    evhttp_uri *uri = evhttp_uri_parse(buf);
     const char *host = evhttp_uri_get_host(uri);
     if (!host) {
-        return NULL;
+        evhttp_uri_free(uri);
+        evhttp_send_error(req, 502, "Bad Gateway");
+        return;
     }
     int port = evhttp_uri_get_port(uri);
     if (port == -1) {
-        port = get_port_for_scheme(scheme);
+        port = 443;
+    } else if (port != 443) {
+        evhttp_uri_free(uri);
+        evhttp_send_error(req, 502, "Bad Gateway");
+        return;
     }
-    debug("connecting to %s %d\n", host, port);
-    evhttp_connection *evcon = evhttp_connection_base_new(n->evbase, n->evdns, host, port);
-    // XXX: disable IPv6, since evdns waits for *both* and the v6 request often times out
-    evhttp_connection_set_family(evcon, AF_INET);
-    return evcon;
+
+    connect_req *c = alloc(connect_req);
+    c->server_req = req;
+
+    evhttp_connection_set_closecb(evhttp_request_get_connection(req), close_cb, c);
+
+    c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+    bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
+    bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port);
+    evhttp_uri_free(uri);
+    bufferevent_enable(c->direct, EV_READ);
 }
 
-void http_request_cb(struct evhttp_request *req, void *arg)
+void http_request_cb(evhttp_request *req, void *arg)
 {
     network *n = (network*)arg;
     debug("con:%p request received: %s\n", evhttp_request_get_connection(req), evhttp_request_get_uri(req));
+
+    if (evhttp_request_get_command(req) == EVHTTP_REQ_CONNECT) {
+        connect_request(n, req);
+        return;
+    }
+
+    const char *connection = evhttp_find_header(evhttp_request_get_input_headers(req), "Proxy-Connection");
+    if (connection && strcasecmp(connection, "keep-alive") == 0) {
+        overwrite_header(req, "Proxy-Connection", "Keep-Alive");
+    }
+
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(req);
     evhttp_connection *evcon = make_connection(n, uri);
     if (!evcon) {
@@ -333,18 +306,6 @@ void http_request_cb(struct evhttp_request *req, void *arg)
         return;
     }
     submit_request(n, req, evcon, uri);
-}
-
-uint64 utp_on_accept(utp_callback_arguments *a)
-{
-    debug("Accepted inbound socket %p\n", a->socket);
-    network *n = (network*)utp_context_get_userdata(a->context);
-    struct sockaddr addr;
-    socklen_t addrlen;
-    utp_getpeername(a->socket, &addr, &addrlen);
-    int fd = utp_socket_create_fd(n->evbase, a->socket);
-    evhttp_get_request(n->http, fd, &addr, addrlen);
-    return 0;
 }
 
 void usage(char *name)
@@ -364,6 +325,8 @@ int main(int argc, char *argv[])
 {
     char *address = "0.0.0.0";
     char *port = NULL;
+
+    o_debug = 2;
 
     for (;;) {
         int c = getopt(argc, argv, "hp:s:n");
@@ -388,13 +351,11 @@ int main(int argc, char *argv[])
         usage(argv[0]);
     }
 
-    crypto_sign_keypair(pk, sk);
+    url_table = hash_table_create();
 
     network *n = network_setup(address, port);
 
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
-
-    url_table = hash_table_create();
 
     timer_callback cb = ^{
         dht_announce(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
@@ -406,6 +367,7 @@ int main(int argc, char *argv[])
     cb();
     timer_repeating(n, 25 * 60 * 1000, cb);
 
+    evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_CONNECT);
     evhttp_set_gencb(n->http, http_request_cb, n);
     evhttp_bind_socket_with_handle(n->http, "0.0.0.0", 8005);
 

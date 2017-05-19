@@ -35,8 +35,8 @@ uint64 utp_callback_sendto(utp_callback_arguments *a)
     network *n = (network*)utp_context_get_userdata(a->context);
     struct sockaddr_in *sin = (struct sockaddr_in *)a->address;
 
-    debug("sendto: %zd byte packet to %s:%d%s\n", a->len, inet_ntoa(sin->sin_addr), ntohs(sin->sin_port),
-          (a->flags & UTP_UDP_DONTFRAG) ? "  (DF bit requested, but not yet implemented)" : "");
+    //debug("sendto: %zd byte packet to %s:%d%s\n", a->len, inet_ntoa(sin->sin_addr), ntohs(sin->sin_port),
+    //      (a->flags & UTP_UDP_DONTFRAG) ? "  (DF bit requested, but not yet implemented)" : "");
 
     if (o_debug >= 3) {
         hexdump(a->buf, a->len);
@@ -188,7 +188,7 @@ network* network_setup(char *address, char *port)
 #endif
 
     event_enable_debug_mode();
-    event_enable_debug_logging(EVENT_DBG_ALL);
+    //event_enable_debug_logging(EVENT_DBG_ALL);
 
     event_set_log_callback(libevent_log_cb);
     evdns_set_log_fn(evdns_log_cb);

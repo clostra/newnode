@@ -6,8 +6,6 @@
 #include "network.h"
 
 
-typedef struct event event;
-
 typedef void (^timer_callback)();
 
 typedef struct {

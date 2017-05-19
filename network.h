@@ -18,8 +18,10 @@
 
 typedef struct event_base event_base;
 typedef struct evdns_base evdns_base;
-typedef struct evhttp evhttp;
 typedef struct event event;
+typedef struct evhttp evhttp;
+typedef struct evbuffer evbuffer;
+typedef struct bufferevent bufferevent;
 
 typedef struct {
     event_base *evbase;

@@ -33,8 +33,7 @@ static const unsigned char base64_urlsafe_table[65] =
  */
 char* base64_table_encode(const unsigned char *table, const unsigned char *src, size_t len, size_t *out_len)
 {
-    size_t olen = len * 4 / 3 + 4; /* 3-byte blocks to 4-byte */
-    olen += olen / 72; /* line feeds */
+    size_t olen = BASE64_LENGTH(len);
     olen++; /* nul termination */
     if (olen < len) {
         return NULL; /* integer overflow */

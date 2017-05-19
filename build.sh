@@ -29,7 +29,7 @@ FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-paramet
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
   -D__FAVOR_BSD -D_BSD_SOURCE"
 # debug
-FLAGS="$FLAGS -O0 -fsanitize=address"
+FLAGS="$FLAGS -O0 -fsanitize=address -DDEBUG=1"
 #release
 #FLAGS="$FLAGS -O3"
 
@@ -41,7 +41,15 @@ echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || 
 echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LB="-lBlocksRuntime"
 
 clang $CPPFLAGS -c dht.cpp -I ./libbtdht/src -I ./libbtdht/btutils/src
-clang $CFLAGS -o injector base64.c injector.c log.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c dht.o \
+
+clang $CFLAGS -o injector bev_splice.c base64.c injector.c http.c log.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c dht.o \
+  -I ./libutp libutp/libutp.a \
+  ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
+  -I ./Libevent/include ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a ./Libevent/.libs/libevent_openssl.a \
+  -I ./libsodium/src/libsodium/include ./libsodium/src/libsodium/.libs/libsodium.a \
+  -lstdc++ $LRT $LM $LB
+
+clang $CFLAGS -o client bev_splice.c base64.c client.c http.c log.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c dht.o \
   -I ./libutp libutp/libutp.a \
   ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
   -I ./Libevent/include ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a ./Libevent/.libs/libevent_openssl.a \
