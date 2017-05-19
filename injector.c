@@ -269,6 +269,7 @@ void usage(char *name)
     fprintf(stderr, "    -h          Help\n");
     fprintf(stderr, "    -p <port>   Local port\n");
     fprintf(stderr, "    -s <IP>     Source IP\n");
+    fprintf(stderr, "    -d          Print debug output\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -279,7 +280,7 @@ int main(int argc, char *argv[])
     char *port = NULL;
 
     for (;;) {
-        int c = getopt(argc, argv, "hp:s:n");
+        int c = getopt(argc, argv, "hp:s:nd");
         if (c == -1)
             break;
         switch (c) {
@@ -291,6 +292,9 @@ int main(int argc, char *argv[])
             break;
         case 's':
             address = optarg;
+            break;
+        case 'd':
+            o_debug++;
             break;
         default:
             die("Unhandled argument: %c\n", c);
