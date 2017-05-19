@@ -857,7 +857,11 @@ int main(int argc, char *argv[])
             break;
         }
         case 'd': {
-            print_debug = true;
+            if (!print_debug) {
+                print_debug = true;
+            } else {
+                o_debug++;
+            }
             break;
         }
         default:
