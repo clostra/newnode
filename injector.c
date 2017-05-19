@@ -211,7 +211,8 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
 
     char request_uri[2048];
     const char *q = evhttp_uri_get_query(uri);
-    snprintf(request_uri, sizeof(request_uri), "%s%s%s", evhttp_uri_get_path(uri), q?"?":"", q?q:"");
+    const char *path = evhttp_uri_get_path(uri);
+    snprintf(request_uri, sizeof(request_uri), "%s%s%s", (!path || path[0] == '\0') ? "/" : path, q?"?":"", q?q:"");
     evhttp_make_request(evcon, client_req, EVHTTP_REQ_GET, request_uri);
     debug("p:%p con:%p request submitted: %s\n", p, evhttp_request_get_connection(client_req), evhttp_request_get_uri(client_req));
 }
