@@ -11,6 +11,8 @@
 
 #include "base64.h"
 
+#define ROUND_UP(x, n) ((x + (n - 1)) / n)
+
 static const unsigned char base64_table[65] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -91,14 +93,12 @@ char* base64_urlsafe_encode(const unsigned char *src, size_t len, size_t *out_le
  *
  * Caller is responsible for freeing the returned buffer.
  */
-unsigned char* base64_decode(const unsigned char *src, size_t len, size_t *out_len)
+unsigned char* base64_decode(const char *src, size_t len, size_t *out_len)
 {
-    size_t i;
-
     static unsigned char dtable[256] = {0};
     if (!dtable[0]) {
         memset(dtable, 0x80, 256);
-        for (i = 0; i < sizeof(base64_table) - 1; i++) {
+        for (size_t i = 0; i < sizeof(base64_table) - 1; i++) {
             dtable[base64_table[i]] = (unsigned char)i;
             if (base64_urlsafe_table[i] != base64_table[i]) {
                 dtable[base64_urlsafe_table[i]] = (unsigned char)i;
@@ -107,18 +107,9 @@ unsigned char* base64_decode(const unsigned char *src, size_t len, size_t *out_l
         dtable['='] = 0;
     }
 
-    size_t count = 0;
-    for (i = 0; i < len; i++) {
-        if (dtable[src[i]] != 0x80) {
-            count++;
-        }
-    }
-
-    if (count == 0 || count % 4) {
-        return NULL;
-    }
-
-    size_t olen = count / 4 * 3;
+    size_t count = ROUND_UP(len, 4);
+    size_t plen = count * 4;
+    size_t olen = count * 3;
     unsigned char *out = malloc(olen);
     if (!out) {
         return NULL;
@@ -126,13 +117,17 @@ unsigned char* base64_decode(const unsigned char *src, size_t len, size_t *out_l
     unsigned char *pos = out;
 
     count = 0;
+    unsigned char in[4];
     unsigned char block[4];
-    for (i = 0; i < len; i++) {
-        unsigned char tmp = dtable[src[i]];
+    for (size_t i = 0; i < plen; i++) {
+        char c = (i < len) ? src[i] : '=';
+        unsigned char tmp = dtable[(unsigned char)c];
         if (tmp == 0x80) {
-            continue;
+            free(out);
+            return NULL;
         }
 
+        in[count] = c;
         block[count] = tmp;
         count++;
         if (count == 4) {
@@ -140,6 +135,14 @@ unsigned char* base64_decode(const unsigned char *src, size_t len, size_t *out_l
             *pos++ = (block[1] << 4) | (block[2] >> 2);
             *pos++ = (block[2] << 6) | block[3];
             count = 0;
+        }
+    }
+
+    if (pos > out) {
+        if (in[2] == '=') {
+            pos -= 2;
+        } else if (in[3] == '=') {
+            pos--;
         }
     }
 
