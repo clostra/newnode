@@ -225,7 +225,6 @@ void utp_connect_tcp(event_base *base, utp_socket *s, const struct sockaddr *add
         bufferevent_free(u->bev);
         utp_close(s);
         free(u);
-        puts("bufferevent_socket_connect failed");
-        return;
+        fprintf(stderr, "bufferevent_socket_connect failed");
     }
 }
