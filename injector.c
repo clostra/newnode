@@ -41,43 +41,47 @@ void request_done_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p request_done_cb\n", p);
-    if (p->server_req) {
-        if (req) {
-            debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(p->server_req));
-
-            uint8_t content_hash[crypto_generichash_BYTES];
-            uint8_t *content_hash_p = content_hash;
-            crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
-
-            const char *uri = evhttp_request_get_uri(p->server_req);
-            content_sig *s = hash_get_or_insert(url_table, uri, ^{
-
-                debug("storing sig for %s\n", uri);
-
-                // duplicate the memory because the hash_table owns it now
-                p->server_req->uri = strdup(uri);
-
-                // base64(sign("sign" + timestamp + hash(headers + content)))
-                time_t now = time(NULL);
-                char ts[sizeof("2011-10-08T07:07:09Z")];
-                strftime(ts, sizeof(ts), "%FT%TZ", gmtime(&now));
-                assert(sizeof(ts) - 1 == strlen(ts));
-
-                content_sig *sig = alloc(content_sig);
-                memcpy(sig->sign, "sign", sizeof(sig->sign));
-                memcpy(sig->timestamp, ts, sizeof(sig->timestamp));
-                memcpy(sig->content_hash, content_hash_p, sizeof(sig->content_hash));
-
-                crypto_sign_detached(sig->signature, NULL, (uint8_t*)sig->sign, sizeof(content_sig) - sizeof(sig->signature), sk);
-
-                return (void*)sig;
-            });
-            join_url_swarm(p->n, uri);
-        }
-        if (evhttp_request_get_connection(p->server_req)) {
-            evhttp_send_reply_end(p->server_req);
-        }
+    if (!req) {
+        return;
+    }
+    if (!req->evcon) {
+        evhttp_send_error(p->server_req, 502, "Bad Gateway");
         p->server_req = NULL;
+    }
+    if (p->server_req) {
+        debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(p->server_req));
+
+        evhttp_send_reply_end(p->server_req);
+        p->server_req = NULL;
+
+        uint8_t content_hash[crypto_generichash_BYTES];
+        uint8_t *content_hash_p = content_hash;
+        crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
+
+        const char *uri = evhttp_request_get_uri(p->server_req);
+        content_sig *s = hash_get_or_insert(url_table, uri, ^{
+
+            debug("storing sig for %s\n", uri);
+
+            // duplicate the memory because the hash_table owns it now
+            p->server_req->uri = strdup(uri);
+
+            // base64(sign("sign" + timestamp + hash(headers + content)))
+            time_t now = time(NULL);
+            char ts[sizeof("2011-10-08T07:07:09Z")];
+            strftime(ts, sizeof(ts), "%FT%TZ", gmtime(&now));
+            assert(sizeof(ts) - 1 == strlen(ts));
+
+            content_sig *sig = alloc(content_sig);
+            memcpy(sig->sign, "sign", sizeof(sig->sign));
+            memcpy(sig->timestamp, ts, sizeof(sig->timestamp));
+            memcpy(sig->content_hash, content_hash_p, sizeof(sig->content_hash));
+
+            crypto_sign_detached(sig->signature, NULL, (uint8_t*)sig->sign, sizeof(content_sig) - sizeof(sig->signature), sk);
+
+            return (void*)sig;
+        });
+        join_url_swarm(p->n, uri);
     }
 
     free(p);
@@ -161,6 +165,7 @@ void error_cb(enum evhttp_request_error error, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p error_cb %d\n", p, error);
+    free(p);
 }
 
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri)
