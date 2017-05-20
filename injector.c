@@ -160,7 +160,7 @@ int header_cb(evhttp_request *req, void *arg)
 void error_cb(enum evhttp_request_error error, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    fprintf(stderr, "p:%p error_cb %d\n", p, error);
+    debug("p:%p error_cb %d\n", p, error);
 }
 
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri)
