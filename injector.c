@@ -179,6 +179,8 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     evhttp_connection_get_peer(evcon, &address, &port);
     overwrite_header(client_req, "Host", address);
 
+    overwrite_header(client_req, "User-Agent", "dcdn/0.1");
+
     const char *uri_s = evhttp_request_get_uri(p->server_req);
     const content_sig *sig = hash_get(url_table, uri_s);
     if (sig) {
