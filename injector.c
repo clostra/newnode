@@ -40,19 +40,12 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
 void request_done_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("p:%p request_done_cb\n", p);
+    debug("p:%p request_done_cb %p\n", p, req);
     if (!req) {
         return;
     }
-    if (!req->evcon) {
-        evhttp_send_error(p->server_req, 502, "Bad Gateway");
-        p->server_req = NULL;
-    }
     if (p->server_req) {
         debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(p->server_req));
-
-        evhttp_send_reply_end(p->server_req);
-        p->server_req = NULL;
 
         uint8_t content_hash[crypto_generichash_BYTES];
         uint8_t *content_hash_p = content_hash;
@@ -82,6 +75,8 @@ void request_done_cb(evhttp_request *req, void *arg)
             return (void*)sig;
         });
         join_url_swarm(p->n, uri);
+        evhttp_send_reply_end(p->server_req);
+        p->server_req = NULL;
     }
 
     free(p);
@@ -165,7 +160,16 @@ void error_cb(enum evhttp_request_error error, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p error_cb %d\n", p, error);
+    if (p->server_req) {
+        evhttp_send_error(p->server_req, 502, "Bad Gateway");
+        p->server_req = NULL;
+    }
     free(p);
+}
+
+void conn_close_cb(evhttp_connection *evcon, void *ctx)
+{
+    debug("conn_close_cb\n");
 }
 
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri)
@@ -198,6 +202,8 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
 
     evhttp_request_set_header_cb(client_req, header_cb);
     evhttp_request_set_error_cb(client_req, error_cb);
+
+    evhttp_connection_set_closecb(evcon, conn_close_cb, NULL);
 
     char request_uri[2048];
     const char *q = evhttp_uri_get_query(uri);
