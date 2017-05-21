@@ -138,14 +138,19 @@ int header_cb(evhttp_request *req, void *arg)
         break;
     }
 
-    crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
-
     const char *response_header_whitelist[] = {"Content-Length", "Content-Type"};
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
         copy_header(req, p->server_req, response_header_whitelist[i]);
     }
     overwrite_header(p->server_req, "Content-Location", evhttp_request_get_uri(p->server_req));
 
+    if (evhttp_request_get_command(p->server_req) == EVHTTP_REQ_HEAD) {
+        evhttp_send_reply(p->server_req, 200, "OK", evbuffer_new());
+        p->server_req = NULL;
+        return 0;
+    }
+
+    crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
     hash_headers(evhttp_request_get_input_headers(p->server_req), &p->content_state);
 
     if (evhttp_request_get_connection(p->server_req)) {
@@ -190,16 +195,6 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
 
     overwrite_header(client_req, "User-Agent", "dcdn/0.1");
 
-    const char *uri_s = evhttp_request_get_uri(p->server_req);
-    const content_sig *sig = hash_get(url_table, uri_s);
-    if (sig) {
-        size_t out_len;
-        char *hex_sig = base64_urlsafe_encode((uint8_t*)sig, sizeof(content_sig), &out_len);
-        debug("returning sig for %s %s\n", uri_s, hex_sig);
-        overwrite_header(p->server_req, "X-Sign", hex_sig);
-        free(hex_sig);
-    }
-
     evhttp_request_set_header_cb(client_req, header_cb);
     evhttp_request_set_error_cb(client_req, error_cb);
 
@@ -208,7 +203,7 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     char request_uri[2048];
     const char *q = evhttp_uri_get_query(uri);
     snprintf(request_uri, sizeof(request_uri), "%s%s%s", evhttp_uri_get_path(uri), q?"?":"", q?q:"");
-    evhttp_make_request(evcon, client_req, EVHTTP_REQ_GET, request_uri);
+    evhttp_make_request(evcon, client_req, evhttp_request_get_command(p->server_req), request_uri);
     debug("p:%p con:%p request submitted: %s\n", p, evhttp_request_get_connection(client_req), evhttp_request_get_uri(client_req));
 }
 
@@ -318,6 +313,21 @@ void http_request_cb(evhttp_request *req, void *arg)
         evhttp_send_error(req, 502, "Bad Gateway");
         return;
     }
+
+    const char *uri_s = evhttp_request_get_uri(req);
+    const content_sig *sig = hash_get(url_table, uri_s);
+    if (sig) {
+        size_t out_len;
+        char *hex_sig = base64_urlsafe_encode((uint8_t*)sig, sizeof(content_sig), &out_len);
+        debug("returning sig for %s %s\n", uri_s, hex_sig);
+        overwrite_header(req, "X-Sign", hex_sig);
+        free(hex_sig);
+        // XXX: if we had Content-Length, Content-Type and Content-Location, we could respond to HEAD right here
+        //copy_headers(old_get, req);
+        //evhttp_send_reply(req, 200, "OK", evbuffer_new());
+        //return;
+    }
+
     submit_request(n, req, evcon, uri);
 }
 
@@ -380,7 +390,7 @@ int main(int argc, char *argv[])
     cb();
     timer_repeating(n, 25 * 60 * 1000, cb);
 
-    evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_CONNECT);
+    evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_HEAD | EVHTTP_REQ_CONNECT);
     evhttp_set_gencb(n->http, http_request_cb, n);
     evhttp_bind_socket_with_handle(n->http, "0.0.0.0", 8005);
 
