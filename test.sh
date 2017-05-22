@@ -89,8 +89,7 @@ sleep 5
 
 echo "Testing curl to injector_helper."
 r=0
-#for i in 1 2 8 16 32 64; do
-for i in 1; do
+for i in 1 8 32 64; do
     if ! test_n $i; then
         r=1; break;
     fi
