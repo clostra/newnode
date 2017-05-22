@@ -9,6 +9,7 @@
 #ifndef __BASE64_H__
 #define __BASE64_H__
 
+
 #define ROUND_UP(x, n) ((x + (n - 1)) / n)
 #define BASE64_LENGTH(x) ROUND_UP(x * 4, 3)
 
