@@ -4,6 +4,7 @@
 #include "network.h"
 
 
+uint64 utp_on_error(utp_callback_arguments *a);
 uint64 utp_on_read(utp_callback_arguments *a);
 uint64 utp_on_state_change(utp_callback_arguments *a);
 

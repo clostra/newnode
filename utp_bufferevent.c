@@ -24,6 +24,12 @@ typedef struct {
 } utp_bufferevent;
 
 
+void utp_clear_close(utp_socket *s)
+{
+    utp_set_userdata(s, NULL);
+    utp_close(s);
+}
+
 void ubev_bev_close(utp_bufferevent *u)
 {
     debug("ubev_bev_close %p\n", u);
@@ -56,9 +62,23 @@ void ubev_bev_check_flush(utp_bufferevent *u)
         return;
     }
     // utp has no way to tell if the write buffer is flushed. you just have to close and wait for UTP_STATE_DESTROYING
-    utp_close(u->utp);
+    utp_clear_close(u->utp);
     u->utp = NULL;
     ubev_bev_close(u);
+}
+
+void utp_bufferevent_utp_close(utp_bufferevent *u)
+{
+    utp_clear_close(u->utp);
+    u->utp = NULL;
+    if (u->bev) {
+        if (bufferevent_get_enabled(u->bev) & EV_WRITE && !evbuffer_get_length(bufferevent_get_output(u->bev))) {
+            bufferevent_disable(u->bev, EV_WRITE);
+        }
+        ubev_discard_input(u);
+    } else {
+        free(u);
+    }
 }
 
 void utp_bufferevent_flush(utp_bufferevent *u)
@@ -71,12 +91,7 @@ void utp_bufferevent_flush(utp_bufferevent *u)
         ssize_t r = utp_write(u->utp, buf, len);
         if (r < 0) {
             fprintf(stderr, "utp_write failed\n");
-            utp_close(u->utp);
-            u->utp = NULL;
-            if (bufferevent_get_enabled(u->bev) & EV_WRITE && !evbuffer_get_length(bufferevent_get_output(u->bev))) {
-                bufferevent_disable(u->bev, EV_WRITE);
-            }
-            ubev_discard_input(u);
+            utp_bufferevent_utp_close(u);
             return;
         }
         if (!r) {
@@ -85,6 +100,16 @@ void utp_bufferevent_flush(utp_bufferevent *u)
         evbuffer_drain(in, r);
     }
     ubev_bev_check_flush(u);
+}
+
+uint64 utp_on_error(utp_callback_arguments *a)
+{
+    fprintf(stderr, "Error: %s\n", utp_error_code_names[a->error_code]);
+    utp_bufferevent *u = (utp_bufferevent*)utp_get_userdata(a->socket);
+    if (u) {
+        utp_bufferevent_utp_close(u);
+    }
+    return 0;
 }
 
 uint64 utp_on_read(utp_callback_arguments *a)
@@ -112,16 +137,7 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
         break;
     case UTP_STATE_EOF:
         // XXX: utp does not support half-close. if the other side sent a FIN, they will not read data either
-        utp_close(u->utp);
-        u->utp = NULL;
-        if (u->bev) {
-            if (bufferevent_get_enabled(u->bev) & EV_WRITE && !evbuffer_get_length(bufferevent_get_output(u->bev))) {
-                bufferevent_disable(u->bev, EV_WRITE);
-            }
-            ubev_discard_input(u);
-        } else {
-            free(u);
-        }
+        utp_bufferevent_utp_close(u);
         break;
     case UTP_STATE_DESTROYING: {
         utp_socket_stats *stats = utp_get_stats(a->socket);
@@ -194,7 +210,7 @@ utp_bufferevent* utp_bufferevent_new(event_base *base, utp_socket *s, int fd)
     utp_set_userdata(s, u);
     u->bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
     if (!u->bev) {
-        utp_close(s);
+        utp_clear_close(s);
         free(u);
         return NULL;
     }
@@ -223,7 +239,7 @@ void utp_connect_tcp(event_base *base, utp_socket *s, const struct sockaddr *add
     utp_bufferevent *u = utp_bufferevent_new(base, s, -1);
     if (bufferevent_socket_connect(u->bev, address, address_len) < 0) {
         bufferevent_free(u->bev);
-        utp_close(s);
+        utp_clear_close(s);
         free(u);
         fprintf(stderr, "bufferevent_socket_connect failed");
     }
