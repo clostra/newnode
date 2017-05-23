@@ -3,14 +3,14 @@ set -e
 
 echo "Building libutp..."
 cd libutp
-make
+make -j $(nproc)
 cd ..
 
 echo "Building Libevent..."
 cd Libevent
 if [ ! -f configure ]; then ./autogen.sh; fi
 if [ ! -f Makefile ]; then ./configure; fi
-make
+make -j $(nproc)
 cd ..
 
 echo "Building libbtdht..."
@@ -27,7 +27,7 @@ echo "Building libsodium..."
 cd libsodium
 if [ ! -f configure ]; then ./autogen.sh; fi
 if [ ! -f Makefile ]; then ./configure; fi
-make
+make -j $(nproc)
 cd ..
 
 FLAGS="-g -O0 -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Wno-error=shadow -Wfatal-errors \
