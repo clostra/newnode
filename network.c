@@ -246,8 +246,22 @@ network* network_setup(char *address, port_t port)
     return n;
 }
 
+static void signal_cb(evutil_socket_t sig, short events, void * ctx)
+{
+    network *n = ctx;
+    struct timeval delay = { 0, 0 };
+    event_base_loopexit(n->evbase, &delay);
+}
+
 int network_loop(network *n)
 {
+    struct event *signal_event = evsignal_new(n->evbase, SIGINT, signal_cb, n);
+
+    if (!signal_event || event_add(signal_event, NULL)<0) {
+        fprintf(stderr, "Could not create/add a signal event!\n");
+        return 1;
+    }
+
     event_base_dispatch(n->evbase);
 
     utp_context_stats *stats = utp_get_context_stats(n->utp);
@@ -266,6 +280,7 @@ int network_loop(network *n)
     utp_destroy(n->utp);
     dht_destroy(n->dht);
     close(n->fd);
+    event_free(signal_event);
 
     return 0;
 }
