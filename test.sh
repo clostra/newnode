@@ -2,8 +2,10 @@
 
 set -e
 
-test_host=localhost
-test_port=8080
+origin_addr=localhost
+origin_port=8080
+injector_tcp_port=8005
+proxy_tcp_port=5678
 
 unbuf='stdbuf -i0 -o0 -e0'
 
@@ -11,7 +13,7 @@ function run_http_server {
 python << END
 import SimpleHTTPServer
 import SocketServer
-PORT = 8080
+PORT = $origin_port
 
 class H(SimpleHTTPServer.SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -31,7 +33,7 @@ function prepend {
 
 function do_curl {
     port=$1
-    host="$test_host:$test_port"
+    host="$origin_addr:$origin_port"
 
     code=$(curl -x localhost:$port $host -o /dev/null -w "%{http_code}" --silent --show-error)
     
@@ -48,7 +50,7 @@ function test_n {
     pids=()
     
     for ((i=0;i<$n;i++)); do
-        do_curl 5678 $i &
+        do_curl $proxy_tcp_port $i &
         pids+=("$!")
     done
     
@@ -64,7 +66,7 @@ function test_n {
     return $r
 }
 
-if [ "$test_host" == "localhost" ]; then
+if [ "$origin_addr" == "localhost" ]; then
     run_http_server &
 fi
 
@@ -75,10 +77,10 @@ i_pid=$!
 sleep 2
 
 echo "Testing curl directly to the server."
-do_curl 8080
+do_curl $origin_port
 
 echo "Testing curl to injector."
-do_curl 8005
+do_curl $injector_tcp_port
 
 echo "Starting injector."
 $unbuf ./injector_helper -i 127.0.0.1:7000 2> >(prepend "He") > >(prepend "Ho") &
@@ -89,7 +91,7 @@ sleep 5
 
 echo "Testing curl to injector_helper."
 r=0
-for i in 1 8 32 64; do
+for i in 1 8 32; do
     if ! test_n $i; then
         r=1; break;
     fi
