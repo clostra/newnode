@@ -1,7 +1,12 @@
+sudo: require
 language: c
+install:
+  - sudo pip install codecov
 script:
   - ./build.sh
   - ./test.sh
+  - for f in *.c; do gcov -n -o . $f; done
+  - codecov
 before_script:
   - sudo apt-get update -qq
   - sudo apt-get install libboost-dev libblocksruntime-dev
