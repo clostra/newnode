@@ -33,7 +33,7 @@ uint64 utp_on_firewall(utp_callback_arguments *a)
 uint64 utp_callback_sendto(utp_callback_arguments *a)
 {
     network *n = (network*)utp_context_get_userdata(a->context);
-    struct sockaddr_in *sin = (struct sockaddr_in *)a->address;
+    sockaddr_in *sin = (sockaddr_in *)a->address;
 
     //debug("sendto: %zd byte packet to %s:%d%s\n", a->len, inet_ntoa(sin->sin_addr), ntohs(sin->sin_port),
     //      (a->flags & UTP_UDP_DONTFRAG) ? "  (DF bit requested, but not yet implemented)" : "");
@@ -63,10 +63,10 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
 #endif
 
     for (;;) {
-        struct sockaddr_storage src_addr;
+        sockaddr_storage src_addr;
         socklen_t addrlen = sizeof(src_addr);
         unsigned char buf[4096];
-        ssize_t len = recvfrom(n->fd, buf, sizeof(buf), MSG_DONTWAIT, (struct sockaddr *)&src_addr, &addrlen);
+        ssize_t len = recvfrom(n->fd, buf, sizeof(buf), MSG_DONTWAIT, (sockaddr *)&src_addr, &addrlen);
         if (len < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNREFUSED || errno == ECONNRESET) {
                 utp_issue_deferred_acks(n->utp);
@@ -78,7 +78,7 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
         if (o_debug) {
             char host[NI_MAXHOST];
             char serv[NI_MAXSERV];
-            getnameinfo((struct sockaddr *)&src_addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+            getnameinfo((sockaddr *)&src_addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
             //debug("Received %zd byte UDP packet from %s:%s\n", len, host, serv);
         }
 
@@ -86,10 +86,10 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
             hexdump(buf, len);
         }
 
-        if (utp_process_udp(n->utp, buf, len, (struct sockaddr *)&src_addr, addrlen)) {
+        if (utp_process_udp(n->utp, buf, len, (sockaddr *)&src_addr, addrlen)) {
             continue;
         }
-        if (dht_process_udp(n->dht, buf, len, (struct sockaddr *)&src_addr, addrlen)) {
+        if (dht_process_udp(n->dht, buf, len, (sockaddr *)&src_addr, addrlen)) {
             continue;
         }
     }
@@ -123,7 +123,7 @@ network* network_setup(char *address, char *port)
 
     network *n = alloc(network);
 
-    n->fd = socket(((struct sockaddr*)res->ai_addr)->sa_family, SOCK_DGRAM, IPPROTO_UDP);
+    n->fd = socket(((sockaddr*)res->ai_addr)->sa_family, SOCK_DGRAM, IPPROTO_UDP);
     if (n->fd < 0) {
         pdie("socket");
     }
@@ -141,15 +141,15 @@ network* network_setup(char *address, char *port)
 
     freeaddrinfo(res);
 
-    struct sockaddr_storage sin;
+    sockaddr_storage sin;
     socklen_t len = sizeof(sin);
-    if (getsockname(n->fd, (struct sockaddr *)&sin, &len) != 0) {
+    if (getsockname(n->fd, (sockaddr *)&sin, &len) != 0) {
         pdie("getsockname");
     }
 
     char host[NI_MAXHOST];
     char serv[NI_MAXSERV];
-    error = getnameinfo((struct sockaddr *)&sin, len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+    error = getnameinfo((sockaddr *)&sin, len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
     if (error) {
         die("getnameinfo: %s\n", gai_strerror(error));
     }

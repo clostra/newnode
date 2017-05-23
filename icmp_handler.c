@@ -22,7 +22,7 @@ void icmp_handler(network *n)
         unsigned char vec_buf[4096];
         unsigned char ancillary_buf[4096];
         struct iovec iov = { vec_buf, sizeof(vec_buf) };
-        struct sockaddr_in remote;
+        sockaddr_in remote;
 
         struct msghdr msg;
         memset(&msg, 0, sizeof(msg));
@@ -43,7 +43,7 @@ void icmp_handler(network *n)
             pdie("recvmsg");
         }
 
-        dht_process_icmp(n->dht, (const byte*) &msg, sizeof(msg), (struct sockaddr *)&remote, sizeof(remote));
+        dht_process_icmp(n->dht, (const byte*) &msg, sizeof(msg), (sockaddr *)&remote, sizeof(remote));
 
         for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
             if (cmsg->cmsg_type != IP_RECVERR) {
@@ -86,8 +86,8 @@ void icmp_handler(network *n)
 
             // "Node that caused the error"
             // "Node that generated the error"
-            struct sockaddr *icmp_addr = (struct sockaddr *)SO_EE_OFFENDER(e);
-            struct sockaddr_in *icmp_sin = (struct sockaddr_in *)icmp_addr;
+            sockaddr *icmp_addr = (sockaddr *)SO_EE_OFFENDER(e);
+            sockaddr_in *icmp_sin = (sockaddr_in *)icmp_addr;
 
             if (icmp_addr->sa_family != AF_INET) {
                 debug("ICMP's address family is %d, not AF_INET?\n", icmp_addr->sa_family);
@@ -120,10 +120,10 @@ void icmp_handler(network *n)
 
             if (e->ee_type == 3 && e->ee_code == 4) {
                 debug("ICMP type 3, code 4: Fragmentation error, discovered MTU %d\n", e->ee_info);
-                utp_process_icmp_fragmentation(n->utp, vec_buf, len, (struct sockaddr *)&remote, sizeof(remote), e->ee_info);
+                utp_process_icmp_fragmentation(n->utp, vec_buf, len, (sockaddr *)&remote, sizeof(remote), e->ee_info);
             } else {
                 debug("ICMP type %d, code %d\n", e->ee_type, e->ee_code);
-                utp_process_icmp_error(n->utp, vec_buf, len, (struct sockaddr *)&remote, sizeof(remote));
+                utp_process_icmp_error(n->utp, vec_buf, len, (sockaddr *)&remote, sizeof(remote));
             }
         }
     }

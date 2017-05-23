@@ -136,14 +136,14 @@ uint64 utp_on_accept(utp_callback_arguments *a)
 {
     debug("Accepted inbound socket %p\n", a->socket);
     network *n = (network*)utp_context_get_userdata(a->context);
-    struct sockaddr_storage addr;
+    sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
-    if (utp_getpeername(a->socket, (struct sockaddr *)&addr, &addrlen) == -1) {
+    if (utp_getpeername(a->socket, (sockaddr *)&addr, &addrlen) == -1) {
         debug("utp_getpeername failed\n");
     }
     int fd = utp_socket_create_fd(n->evbase, a->socket);
     evutil_make_socket_closeonexec(fd);
     evutil_make_socket_nonblocking(fd);
-    evhttp_get_request(n->http, fd, (struct sockaddr *)&addr, addrlen);
+    evhttp_get_request(n->http, fd, (sockaddr *)&addr, addrlen);
     return 0;
 }

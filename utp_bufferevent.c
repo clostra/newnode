@@ -234,7 +234,7 @@ int utp_socket_create_fd(event_base *base, utp_socket *s)
     return fds[1];
 }
 
-void utp_connect_tcp(event_base *base, utp_socket *s, const struct sockaddr *address, socklen_t address_len)
+void utp_connect_tcp(event_base *base, utp_socket *s, const sockaddr *address, socklen_t address_len)
 {
     utp_bufferevent *u = utp_bufferevent_new(base, s, -1);
     if (bufferevent_socket_connect(u->bev, address, address_len) < 0) {
