@@ -22,6 +22,9 @@ typedef struct event event;
 typedef struct evhttp evhttp;
 typedef struct evbuffer evbuffer;
 typedef struct bufferevent bufferevent;
+typedef struct sockaddr sockaddr;
+typedef struct sockaddr_in sockaddr_in;
+typedef struct sockaddr_storage sockaddr_storage;
 
 typedef struct {
     event_base *evbase;
