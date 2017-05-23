@@ -22,6 +22,7 @@ class H(SimpleHTTPServer.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write('It works')
 
+SocketServer.TCPServer.allow_reuse_address = True
 httpd = SocketServer.TCPServer(("", PORT), H)
 httpd.serve_forever()
 END
@@ -97,7 +98,7 @@ for i in 1 8 32; do
     fi
 done
 
-kill $i_pid $h_pid 2>/dev/null || true
+kill -SIGINT $i_pid $h_pid 2>/dev/null || true
 
 echo DONE
 
