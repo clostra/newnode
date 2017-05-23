@@ -151,8 +151,6 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
             debug("    Retransmits:         %d\n", stats->rexmit);
             debug("    Fast Retransmits:    %d\n", stats->fastrexmit);
             debug("    Best guess at MTU:   %d\n", stats->mtu_guess);
-        } else {
-            debug("No socket statistics available\n");
         }
         break;
     }

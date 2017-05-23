@@ -126,6 +126,7 @@ evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
         port = get_port_for_scheme(scheme);
     }
     debug("connecting to %s %d\n", host, port);
+    // XXX: doesn't handle SSL
     evhttp_connection *evcon = evhttp_connection_base_new(n->evbase, n->evdns, host, port);
     // XXX: disable IPv6, since evdns waits for *both* and the v6 request often times out
     evhttp_connection_set_family(evcon, AF_INET);
