@@ -28,14 +28,14 @@ struct udp_socket : UDPSocketInterface
     {
         socklen_t salen;
         const SOCKADDR_STORAGE sa(dest.get_sockaddr_storage(&salen));
-        ::sendto(sock, (char*)p, len, flags, (struct sockaddr*)&sa, salen);
+        ::sendto(sock, (char*)p, len, flags, (sockaddr*)&sa, salen);
     }
 
     void RefreshBindAddr()
     {
         SOCKADDR_STORAGE sa;
         socklen_t salen = sizeof(sa);
-        if (::getsockname(sock, (struct sockaddr *)&sa, &salen) != -1) {
+        if (::getsockname(sock, (sockaddr *)&sa, &salen) != -1) {
             bind_addr = SockAddr((const sockaddr &)sa);
         }
     }
@@ -143,12 +143,12 @@ void dht_tick(dht *d)
     d->idht->Tick();
 }
 
-bool dht_process_udp(dht *d, const byte *buffer, size_t len, const struct sockaddr *to, socklen_t tolen)
+bool dht_process_udp(dht *d, const byte *buffer, size_t len, const sockaddr *to, socklen_t tolen)
 {
     return d->idht->handleReadEvent(&d->udp_socket, (byte*)buffer, len, SockAddr(to));
 }
 
-bool dht_process_icmp(dht *d, const byte *buffer, size_t len, const struct sockaddr *to, socklen_t tolen)
+bool dht_process_icmp(dht *d, const byte *buffer, size_t len, const sockaddr *to, socklen_t tolen)
 {
     return d->idht->handleICMP(&d->udp_socket, (byte*)buffer, len, SockAddr(to));
 }
