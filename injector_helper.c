@@ -717,8 +717,8 @@ void proxy_destroy(proxy *p)
 
     while (!STAILQ_EMPTY(&p->injectors)) {
         injector *i = STAILQ_FIRST(&p->injectors);
-        destroy_injector(i);
         STAILQ_REMOVE_HEAD(&p->injectors, tailq);
+        destroy_injector(i);
     }
 
     free(p);
