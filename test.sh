@@ -68,7 +68,7 @@ if [ "$test_host" == "localhost" ]; then
     run_http_server &
 fi
 
-$unbuf ./injector -p 7000 2> >(prepend "Ie") 1> >(prepend "Io") &
+$unbuf ./injector -d -p 7000 2> >(prepend "Ie") 1> >(prepend "Io") &
 i_pid=$!
 
 # Make sure injector starts properly.
