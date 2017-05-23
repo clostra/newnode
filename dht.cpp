@@ -223,5 +223,5 @@ void dht_destroy(dht *d)
 {
     d->idht->Shutdown();
     d->idht.reset(NULL);
-    free(d);
+    delete d;
 }
