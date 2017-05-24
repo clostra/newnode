@@ -3,14 +3,14 @@ set -e
 
 echo "Building libutp..."
 cd libutp
-make -j $(nproc)
+make
 cd ..
 
 echo "Building Libevent..."
 cd Libevent
 if [ ! -f configure ]; then ./autogen.sh; fi
-if [ ! -f Makefile ]; then ./configure; fi
-make -j $(nproc)
+if [ ! -f Makefile ]; then ./configure --disable-openssl; fi
+make
 cd ..
 
 echo "Building libbtdht..."
@@ -27,7 +27,7 @@ echo "Building libsodium..."
 cd libsodium
 if [ ! -f configure ]; then ./autogen.sh; fi
 if [ ! -f Makefile ]; then ./configure; fi
-make -j $(nproc)
+make
 cd ..
 
 FLAGS="-g -O0 -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Wno-error=shadow -Wfatal-errors \
@@ -43,11 +43,11 @@ echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || 
 echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LB="-lBlocksRuntime"
 
 if [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
-    CFLAGS="$CFLAGS -lstdc++ -lpthread"
+    CFLAGS="$CFLAGS -lpthread"
 fi
 
 echo "Building dht.o..."
-clang $CPPFLAGS -c dht.cpp -I ./libbtdht/src -I ./libbtdht/btutils/src -I ./libsodium/src/libsodium/include
+clang++ $CPPFLAGS -c dht.cpp -I ./libbtdht/src -I ./libbtdht/btutils/src -I ./libsodium/src/libsodium/include
 
 echo "Building injector..."
 clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c http_util.c dht.o \
@@ -56,7 +56,7 @@ clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c sha1.c timer
   -I ./libsodium/src/libsodium/include ./libsodium/src/libsodium/.libs/libsodium.a \
   ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
   `pkg-config --cflags libevent` \
-  $LRT $LM $LB
+  -lstdc++ $LRT $LM $LB
 
 echo "Building injector_helper..."
 clang $CFLAGS -o injector_helper injector_helper.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c http_util.c dht.o \
@@ -65,4 +65,4 @@ clang $CFLAGS -o injector_helper injector_helper.c log.c icmp_handler.c network.
   -I ./libsodium/src/libsodium/include ./libsodium/src/libsodium/.libs/libsodium.a \
   ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
   `pkg-config --cflags libevent` \
-  $LRT $LM $LB
+  -lstdc++ $LRT $LM $LB
