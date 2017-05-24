@@ -7,7 +7,8 @@ origin_port=8080
 injector_tcp_port=8005
 proxy_tcp_port=5678
 
-unbuf='stdbuf -i0 -o0 -e0'
+# XXX Find a stdbuf replacement on OSX
+if `which stdbuf >/dev/null`; then unbuf='stdbuf -i0 -o0 -e0'; fi
 
 function run_http_server {
 python << END
@@ -92,7 +93,7 @@ sleep 5
 
 echo "Testing curl to injector_helper."
 r=0
-for i in 1 8 32; do
+for i in 1 8 12; do
     if ! test_n $i; then
         r=1; break;
     fi
