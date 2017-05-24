@@ -1,14 +1,25 @@
 sudo: require
+
 language: c
+
+matrix:
+  include:
+    - os: linux
+      before_script:
+        - sudo apt-get update -qq
+        - sudo apt-get install libboost-dev libblocksruntime-dev
+    - os: osx
+      before_script:
+        - brew install boost-build
+
 install:
   - sudo pip install codecov
+
 script:
   - ./build.sh
   - ./test.sh
   - for f in *.c; do gcov -n -o . $f; done
   - codecov
-before_script:
-  - sudo apt-get update -qq
-  - sudo apt-get install libboost-dev libblocksruntime-dev
+
 after_success:
   - bash <(curl -s https://codecov.io/bash)
