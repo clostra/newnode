@@ -10,25 +10,6 @@ proxy_tcp_port=5678
 # XXX Find a stdbuf replacement on OSX
 if `which stdbuf >/dev/null`; then unbuf='stdbuf -i0 -o0 -e0'; fi
 
-function run_http_server {
-python << END
-import SimpleHTTPServer
-import SocketServer
-PORT = $origin_port
-
-class H(SimpleHTTPServer.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html')
-        self.end_headers()
-        self.wfile.write('It works')
-
-SocketServer.TCPServer.allow_reuse_address = True
-httpd = SocketServer.TCPServer(("", PORT), H)
-httpd.serve_forever()
-END
-}
-
 function prepend {
     while read line; do echo "$1 `date +'%M:%S'`| $line"; done
 }
@@ -69,7 +50,7 @@ function test_n {
 }
 
 if [ "$origin_addr" == "localhost" ]; then
-    run_http_server &
+    ./test_server & # listens on origin_port
 fi
 
 $unbuf ./injector -p 7000 2> >(prepend "Ie") 1> >(prepend "Io") &
@@ -89,11 +70,11 @@ $unbuf ./injector_helper -i 127.0.0.1:7000 2> >(prepend "He") > >(prepend "Ho") 
 h_pid=$!
 
 # Wait for the injector helper to perform a test on the injector nedpoint.
-sleep 5
+sleep 2
 
 echo "Testing curl to injector_helper."
 r=0
-for i in 1 8 12; do
+for i in 1 8 16; do
     if ! test_n $i; then
         r=1; break;
     fi
