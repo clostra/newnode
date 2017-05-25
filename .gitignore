@@ -40,4 +40,5 @@ default.profraw
 
 injector
 injector_helper
+test_server
 dht.dat

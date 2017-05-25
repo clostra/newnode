@@ -42,12 +42,12 @@ echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
 echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LB="-lBlocksRuntime"
 
-if [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
-    CFLAGS="$CFLAGS -lpthread"
-fi
-
 echo "Building dht.o..."
 clang++ $CPPFLAGS -c dht.cpp -I ./libbtdht/src -I ./libbtdht/btutils/src -I ./libsodium/src/libsodium/include
+
+echo "Building HTTP test server..."
+clang $CFLAGS -o test_server test_server.c \
+  -I ./Libevent/include ./Libevent/.libs/libevent.a
 
 echo "Building injector..."
 clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c http_util.c dht.o \
