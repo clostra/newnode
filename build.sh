@@ -30,10 +30,13 @@ if [ ! -f Makefile ]; then ./configure; fi
 make
 cd ..
 
+echo "int main() {}"|clang -x c - -fsanitize-address-use-after-scope 2>/dev/null && SANITIZE_SCOPE="-fsanitize-address-use-after-scope"
+echo "int main() {}"|clang -x c - -fsanitize=undefined 2>/dev/null && SANITIZE_UNDEFINED="-fsanitize=undefined -fno-sanitize=vptr"
+
 FLAGS="-g -O0 -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Wno-error=shadow -Wfatal-errors \
   -fPIC -fblocks -fdata-sections -ffunction-sections \
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
-  -std=gnu11 -D__FAVOR_BSD -D_BSD_SOURCE -fsanitize=address --coverage"
+  -std=gnu11 -D__FAVOR_BSD -D_BSD_SOURCE -fsanitize=address $SANITIZE_SCOPE $SANITIZE_UNDEFINED --coverage"
 
 CFLAGS="$FLAGS -std=gnu11"
 CPPFLAGS="$FLAGS -std=c++1y"
