@@ -4,6 +4,7 @@
 
 [![Build Status](https://travis-ci.org/clostra/dcdn.svg?branch=master)](https://travis-ci.org/clostra/dcdn)
 [![codecov.io](https://codecov.io/github/clostra/dcdn/coverage.svg?branch=master)](https://codecov.io/github/clostra/dcdn?branch=master)
+[![Stories in Ready](https://badge.waffle.io/clostra/dcdn.svg?label=ready&title=Ready)](http://waffle.io/clostra/dcdn)
 
 ## How to contribute
 
