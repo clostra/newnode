@@ -1,10 +1,11 @@
 # dCDN
 
-## Build status
+## Integration status
 
 [![Build Status](https://travis-ci.org/clostra/dcdn.svg?branch=master)](https://travis-ci.org/clostra/dcdn)
 [![codecov.io](https://codecov.io/github/clostra/dcdn/coverage.svg?branch=master)](https://codecov.io/github/clostra/dcdn?branch=master)
 [![Stories in Ready](https://badge.waffle.io/clostra/dcdn.svg?label=ready&title=Ready)](http://waffle.io/clostra/dcdn)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/8bb7b46af1bc434cbd53918fa0c2f9f2)](https://www.codacy.com/app/clostra/dcdn)
 
 ## How to contribute
 
