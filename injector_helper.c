@@ -88,11 +88,10 @@ static void handle_injector_response(struct evhttp_request *res, void *ctx_void)
 static void forward_request_to_injector(request_ctx *ctx, injector *i);
 
 // Returns true on error
-static bool fd_local_info(int fd, const char **addr, uint16_t *port)
+static bool fd_local_info(int fd, char *addr, size_t addrlen, uint16_t *port)
 {
     struct sockaddr_storage ss;
     ev_socklen_t socklen = sizeof(ss);
-    char addrbuf[128];
     void *inaddr;
     memset(&ss, 0, sizeof(ss));
     if (getsockname(fd, (struct sockaddr *)&ss, &socklen)) {
@@ -114,8 +113,8 @@ static bool fd_local_info(int fd, const char **addr, uint16_t *port)
         return 1;
     }
     if (addr) {
-        *addr = evutil_inet_ntop(ss.ss_family, inaddr, addrbuf, sizeof(addrbuf));
-        if (!*addr) {
+        const char* r = evutil_inet_ntop(ss.ss_family, inaddr, addr, addrlen);
+        if (!r) {
             fprintf(stderr, "evutil_inet_ntop failed\n");
             return 1;
         }
@@ -128,7 +127,7 @@ static uint16_t local_port(struct evhttp_connection *con)
     struct bufferevent *bev = evhttp_connection_get_bufferevent(con);
     int fd = bufferevent_getfd(bev);
     uint16_t port = 0;
-    fd_local_info(fd, NULL, &port);
+    fd_local_info(fd, NULL, 0, &port);
     return port;
 }
 
@@ -658,8 +657,8 @@ static int start_taking_requests(proxy *p)
 
     {
         uint16_t port;
-        const char *addr;
-        if (fd_local_info(evhttp_bound_socket_get_fd(handle), &addr, &port) == 0) {
+        char addr[256];
+        if (fd_local_info(evhttp_bound_socket_get_fd(handle), addr, sizeof(addr) - 1, &port) == 0) {
             printf("Listening on TCP:%s:%d\n", addr, port);
         }
     }
@@ -793,7 +792,7 @@ static int start_tcp_to_utp_redirect(proxy *p)
         return 1;
     }
 
-    if (fd_local_info(evconnlistener_get_fd(p->tcp_out_listener), NULL, &p->tcp_out_port)) {
+    if (fd_local_info(evconnlistener_get_fd(p->tcp_out_listener), NULL, 0, &p->tcp_out_port)) {
         LOG("Could not get out lister port\n");
         return 1;
     }
