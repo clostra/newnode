@@ -183,6 +183,8 @@ void ubev_event_cb(struct bufferevent *bev, short events, void *ctx)
     }
     if (events & BEV_EVENT_EOF) {
         bufferevent_disable(u->bev, EV_READ);
+        utp_close(u->utp);
+        u->utp = NULL;
     }
     ubev_bev_check_flush(u);
 }
