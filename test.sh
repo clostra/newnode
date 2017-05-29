@@ -9,6 +9,10 @@ proxy_tcp_port=5678
 HTTP_OK=200
 HTTP_BAD_GATEWAY=502
 
+function seconds_since_epoch {
+    date +'%s'
+}
+
 function now {
     date +'%M:%S'
 }
@@ -90,9 +94,19 @@ for i in 1 8 16; do
     fi
 done
 
-kill -SIGINT $server_pid
+if [ "$r" == "0" ]; then
+    # Kill the origin and try to connect to it. It shouldn't take long for the
+    # injector and proxy to find out the origin is unreachable.
+    kill -SIGINT $server_pid
 
-test_n 2 $HTTP_BAD_GATEWAY
+    start_time=$(seconds_since_epoch)
+    test_n 2 $HTTP_BAD_GATEWAY
+    end_time=$(seconds_since_epoch)
+
+    if [ $(($end_time - $start_time)) -ge 5 ]; then
+        r=2
+    fi
+fi
 
 kill -SIGINT $i_pid $h_pid 2>/dev/null || true
 
