@@ -64,7 +64,8 @@ void load_dht_state(BencEntity* ent)
     fseek(f, 0, SEEK_END);
     long fsize = ftell(f);
     fseek(f, 0, SEEK_SET);
-    char *buf = (char*)malloc(fsize);
+    char *buf = (char*)malloc(fsize + 1);
+    buf[fsize] = '\0'; // The BencEntity::Parse function expects this to be a null terminated string.
     fread(buf, fsize, 1, f);
     fclose(f);
 
