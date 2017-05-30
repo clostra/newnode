@@ -26,7 +26,7 @@
 1. Get an issue assigned by @shalunov
 2. Work on the issue in your forked repo
 3. If you like feature branches, you can do that
-4. When you're satisfied with your changes, send a pull request and tag the issue in it
+4. When you're satisfied with your changes, send a pull request and **tag the issue the end of the title**
 5. Wait for CI checks to complete on the pull request; if they fail, you'll need to revise
 6. If code review is requested, wait for the reviewer to provide one
 7. If the reviewer requests revisions, discuss, address, and probably revise
