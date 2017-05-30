@@ -2,6 +2,10 @@
 
 set -e
 
+if [ -z "$ASAN_OPTIONS" ]; then
+    export ASAN_OPTIONS=strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1
+fi
+
 origin_addr=localhost
 origin_port=8080
 injector_tcp_port=8005
