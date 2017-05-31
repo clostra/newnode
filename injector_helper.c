@@ -554,10 +554,14 @@ static bool parse_host_uri(const char *uri, char *host, size_t host_max_len, uin
         return false;
     }
 
-    size_t addr_len = MIN((size_t)(addr_end - uri), host_max_len);
+    size_t s = addr_end - uri;
 
-    memcpy(host, uri, addr_len);
-    host[addr_len] = 0;
+    if (s >= host_max_len) {
+        return false;
+    }
+
+    memcpy(host, uri, s);
+    host[s] = '\0';
 
     *port = atoi(addr_end + 1);
 
