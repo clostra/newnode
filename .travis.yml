@@ -16,6 +16,7 @@ install:
   - sudo pip install codecov
 
 script:
+  - clang -v
   - ./build.sh
   - ./test.sh
   - for f in *.c; do gcov -n -o . $f; done

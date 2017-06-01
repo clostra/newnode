@@ -45,8 +45,11 @@ echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
 echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LB="-lBlocksRuntime"
 
+INC="-I ./libutp -I./Libevent/include -I ./libsodium/src/libsodium/include"
+DHT_INC="-I ./libbtdht/src -I ./libbtdht/btutils/src -I ./libsodium/src/libsodium/include"
+
 echo "Building dht.o..."
-clang++ $CPPFLAGS -c dht.cpp -I ./libbtdht/src -I ./libbtdht/btutils/src -I ./libsodium/src/libsodium/include
+clang++ $CPPFLAGS -c dht.cpp $DHT_INC
 
 echo "Building HTTP test server..."
 clang $CFLAGS -o test_server test_server.c \
@@ -54,18 +57,22 @@ clang $CFLAGS -o test_server test_server.c \
 
 echo "Building injector..."
 clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c http_util.c dht.o \
-  -I ./libutp libutp/libutp.a \
-  -I ./Libevent/include ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a \
-  -I ./libsodium/src/libsodium/include ./libsodium/src/libsodium/.libs/libsodium.a \
+  $INC libutp/libutp.a ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a \
+  ./libsodium/src/libsodium/.libs/libsodium.a \
   ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
   `pkg-config --cflags libevent` \
   -lstdc++ $LRT $LM $LB
 
 echo "Building injector_helper..."
 clang $CFLAGS -o injector_helper injector_helper.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c http_util.c dht.o \
-  -I ./libutp libutp/libutp.a \
-  -I ./Libevent/include ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a \
-  -I ./libsodium/src/libsodium/include ./libsodium/src/libsodium/.libs/libsodium.a \
-  ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
+  $INC libutp/libutp.a ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a \
+  ./libsodium/src/libsodium/.libs/libsodium.a ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
   `pkg-config --cflags libevent` \
   -lstdc++ $LRT $LM $LB
+
+if `which clang-tidy >/dev/null`; then
+    echo "Running clang-tidy"
+    CHECKS='clang-diagnostic-*,clang-analyzer-*'
+    clang-tidy -checks="$CHECKS" dht.cpp -- $CPPFLAGS $DHT_INC
+    clang-tidy -checks="$CHECKS" *.c -- $CFLAGS $INC
+fi
