@@ -547,23 +547,27 @@ static bool parse_host_uri(const char *uri, char *host, size_t host_max_len, uin
         }
     }
 
-    if (addr_end == uri_end) {
-        assert(0 && "No ':' in the uri string");
-        memcpy(host, uri, MIN(host_max_len, uri_end - uri));
-        *port = 0;
-        return false;
-    }
-
     size_t s = addr_end - uri;
 
     if (s >= host_max_len) {
         return false;
     }
 
+    if (addr_end == uri_end) {
+        assert(0 && "No ':' in the uri string");
+        return false;
+    }
+
     memcpy(host, uri, s);
     host[s] = '\0';
 
-    *port = atoi(addr_end + 1);
+    assert(!errno);
+    errno = 0;
+
+    if (port) {
+        *port = strtol(addr_end + 1, NULL, 10);
+        if (errno) { errno = 0; return false; }
+    }
 
     return true;
 }
@@ -571,7 +575,7 @@ static bool parse_host_uri(const char *uri, char *host, size_t host_max_len, uin
 static void create_tunnel(proxy *p, struct evhttp_request *req_in)
 {
     const char *uri = evhttp_request_get_uri(req_in);
-    char addr[512];
+    char addr[2000]; // https://stackoverflow.com/a/417184/273348
     uint16_t port;
     bool parsed = parse_host_uri(uri, addr, sizeof(addr), &port);
 
