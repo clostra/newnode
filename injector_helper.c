@@ -554,14 +554,12 @@ static bool parse_host_uri(const char *uri, char *host, size_t host_max_len, uin
     }
 
     if (addr_end == uri_end) {
-        assert(0 && "No ':' in the uri string");
         return false;
     }
 
     memcpy(host, uri, s);
     host[s] = '\0';
 
-    assert(!errno);
     errno = 0;
 
     if (port) {
