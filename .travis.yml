@@ -5,18 +5,29 @@ language: c
 matrix:
   include:
     - os: linux
+      addons:
+        apt:
+          # http://apt.llvm.org/
+          sources: [ubuntu-toolchain-r-test, llvm-toolchain-precise-3.9]
+          packages: [libboost-dev, libblocksruntime-dev, libclang-3.9-dev, clang-3.9, clang-tidy-3.9]
       before_script:
-        - sudo apt-get update -qq
-        - sudo apt-get install libboost-dev libblocksruntime-dev
+        - export PATH="/usr/lib/llvm-3.9/bin:$PATH"
     - os: osx
+      osx_image: xcode8.3
       before_script:
+        - brew update
+        - brew outdated libffi || brew upgrade libffi
         - brew install boost-build
+        - brew install llvm --with-clang --with-clang-extra-tools -v
+          # Set path to clang-tidy
+        - export PATH="/usr/local/opt/llvm/bin:$PATH"
 
 install:
   - sudo pip install codecov
 
 script:
   - clang -v
+  - clang-tidy -version
   - ./build.sh
   - ./test.sh
   - for f in *.c; do gcov -n -o . $f; done
