@@ -72,7 +72,13 @@ clang $CFLAGS -o injector_helper injector_helper.c log.c icmp_handler.c network.
 
 if `which clang-tidy >/dev/null`; then
     echo "Running clang-tidy"
+
+    # TODO?
+    #if `clang-tidy -warnings-as-errors 1>/dev/null 2>/dev/null`; then
+    #    WAE="-warnings-as-errors='*,-clang-analyzer-beta*'"
+    #fi
+
     CHECKS='clang-diagnostic-*,clang-analyzer-*'
-    clang-tidy -checks="$CHECKS" dht.cpp -- $CPPFLAGS $DHT_INC
-    clang-tidy -checks="$CHECKS" *.c -- $CFLAGS $INC
+    clang-tidy -checks="$CHECKS" $WAE dht.cpp -- $CPPFLAGS $DHT_INC
+    clang-tidy -checks="$CHECKS" $WAE *.c -- $CFLAGS $INC
 fi
