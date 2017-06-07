@@ -11,7 +11,11 @@ matrix:
           sources: [ubuntu-toolchain-r-test, llvm-toolchain-precise-3.9]
           packages: [libboost-dev, libblocksruntime-dev, libclang-3.9-dev, clang-3.9, clang-tidy-3.9]
       before_script:
-        - export PATH="/usr/lib/llvm-3.9/bin:$PATH"
+          # Download newer version of curl, the one available doesn't support the CONNECT proxy method.
+        - wget https://github.com/curl/curl/releases/download/curl-7_54_0/curl-7.54.0.tar.bz2
+        - tar xf curl-7.54.0.tar.bz2
+        - cd curl-7.54.0 && ./buildconf && ./configure --prefix=$HOME/curl && make && make install && cd ..
+        - export PATH="/usr/lib/llvm-3.9/bin:$HOME/curl/bin:$PATH"
     - os: osx
       osx_image: xcode8.3
       before_script:
