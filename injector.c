@@ -63,9 +63,10 @@ int get_port_for_scheme(const char *scheme)
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
     struct addrinfo *res;
+    fprintf(stderr, "scheme:%s\n", scheme);
     int error = getaddrinfo(NULL, scheme, &hints, &res);
     if (error) {
-        fprintf(stderr, "getaddrinfo failed %s\n", gai_strerror(error));
+        fprintf(stderr, "getaddrinfo failed %s for scheme %s\n", gai_strerror(error), scheme);
         return -1;
     }
     int port = -1;
