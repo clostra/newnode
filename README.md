@@ -16,9 +16,9 @@
 ## How to prepare your dev environment
 
 1. Fork the repo
-2. Clone your fork onto a dev machine running Mac OS X or Ubuntu
+2. `git clone --recursive git@github.com:`〈*your username*〉`/dcdn.git` (NB: **--recursive**)
 3. `./build.sh && ./test.sh`
-4. If this fail, read `.travis.yml` and do what it does to build
+4. If this fails, read `.travis.yml` and install requirements
 5. When your build works and tests pass, you're ready to contribute
 
 ## How to deal with an issue
