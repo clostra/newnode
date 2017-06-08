@@ -59,22 +59,21 @@ function test_n {
     local n=$1
     local host=$2
     local pids=()
+    local i
     
     for ((i=0;i<$n;i++)); do
         do_curl $HELPER_TCP_PORT $host "${@:3}" &
         pids+=("$!")
     done
     
-    local r=0
     for p in "${pids[@]}"; do
-        if [ "$r" == "0" ]; then
-            wait $p || r=1
-        else
-            kill $p 2>/dev/null
+        if ! wait $p; then
+            kill "${pids[@]}" 2>/dev/null || true
+            return 1
         fi
     done
 
-    return $r
+    return 0
 }
 
 #-------------------------------------------------------------------------------
@@ -125,7 +124,7 @@ kill -SIGINT $server_pid
 start_time=$(seconds_since_epoch)
 test_n 2 $LOCAL_ORIGIN $HTTP_BAD_GATEWAY
 end_time=$(seconds_since_epoch)
-[ $(($end_time - $start_time)) -lt 5 ] || exit 3
+[ $((end_time - start_time)) -lt 5 ] || exit 3
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing response if injector is down."
