@@ -86,9 +86,9 @@ int get_port_for_scheme(const char *scheme)
 }
 
 typedef struct {
+    crypto_generichash_state content_state;
     network *n;
     evhttp_request *server_req;
-    crypto_generichash_state content_state;
 } proxy_request;
 
 void chunked_cb(struct evhttp_request *req, void *arg)
