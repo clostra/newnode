@@ -42,8 +42,11 @@ function now {
     date +'%M:%S'
 }
 
-# XXX Find a stdbuf replacement on OSX
-if `which stdbuf >/dev/null`; then unbuf='stdbuf -i0 -o0 -e0'; fi
+if `which stdbuf >/dev/null`; then
+    unbuf='stdbuf -i0 -o0 -e0';
+else
+    echo "Warning: output is buffered, stdout and stderr may have mixed order."
+fi
 
 function prepend {
     while read line; do echo "$(now) $1| $line"; done
