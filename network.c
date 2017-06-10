@@ -52,12 +52,6 @@ uint64 utp_callback_log(utp_callback_arguments *a)
     return 0;
 }
 
-uint64 utp_on_error(utp_callback_arguments *a)
-{
-    fprintf(stderr, "Error: %s\n", utp_error_code_names[a->error_code]);
-    return 0;
-}
-
 void udp_read(evutil_socket_t fd, short events, void *arg)
 {
     network *n = (network*)arg;

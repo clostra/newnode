@@ -135,7 +135,12 @@ end_time=$(seconds_since_epoch)
 #-------------------------------------------------------------------------------
 echo "$(now) Testing response if injector is down."
 kill -SIGINT $injector_pid 2>/dev/null
+start_time=$(seconds_since_epoch)
 do_curl $HELPER_TCP_PORT $LOCAL_ORIGIN $HTTP_BAD_GATEWAY
+end_time=$(seconds_since_epoch)
+# On OSX uTP doesn't seem to realize the remote is down (perhaps it's not
+# receiving icmp packets?) and only relies on timeouts.
+[[ "$OSTYPE" =~ ^darwin ]] || [ $((end_time - start_time)) -lt 5 ] || exit 4
 
 #-------------------------------------------------------------------------------
 echo "$(now) DONE"
