@@ -97,6 +97,15 @@ uint64 utp_on_read(utp_callback_arguments *a)
     return 0;
 }
 
+uint64 utp_on_error(utp_callback_arguments *a)
+{
+    utp_bufferevent *u = (utp_bufferevent*)utp_get_userdata(a->socket);
+    fprintf(stderr, "uTP error: %s %p\n", utp_error_code_names[a->error_code], u);
+    bufferevent_free(u->bev);
+    free(u);
+    return 0;
+}
+
 uint64 utp_on_state_change(utp_callback_arguments *a)
 {
     debug("state %d: %s\n", a->state, utp_state_names[a->state]);

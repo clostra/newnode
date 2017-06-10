@@ -21,6 +21,8 @@ matrix:
         - brew install llvm --with-clang --with-clang-extra-tools -v
           # Set path to clang-tidy
         - export PATH="/usr/local/opt/llvm/bin:$PATH"
+          # Set path to stdbuf
+        - export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"
 
 install:
   - sudo pip install codecov
