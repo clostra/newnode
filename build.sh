@@ -23,13 +23,6 @@ bjam toolset=clang cxxflags="-std=c++1y"
 cp `find bin -name libbtdht.a` .
 cd ..
 
-echo "Building libsodium..."
-cd libsodium
-if [ ! -f configure ]; then ./autogen.sh; fi
-if [ ! -f Makefile ]; then ./configure; fi
-make
-cd ..
-
 echo "int main() {}"|clang -x c - -fsanitize-address-use-after-scope 2>/dev/null && SANITIZE_SCOPE="-fsanitize-address-use-after-scope"
 echo "int main() {}"|clang -x c - -fsanitize=undefined 2>/dev/null && SANITIZE_UNDEFINED="-fsanitize=undefined -fno-sanitize=vptr"
 
@@ -45,8 +38,8 @@ echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
 echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LB="-lBlocksRuntime"
 
-INC="-I ./libutp -I./Libevent/include -I ./libsodium/src/libsodium/include"
-DHT_INC="-I ./libbtdht/src -I ./libbtdht/btutils/src -I ./libsodium/src/libsodium/include"
+INC="-I ./libutp -I./Libevent/include"
+DHT_INC="-I ./libbtdht/src -I ./libbtdht/btutils/src"
 
 echo "Building dht.o..."
 clang++ $CPPFLAGS -c dht.cpp $DHT_INC
@@ -58,17 +51,16 @@ clang $CFLAGS -o test_server test_server.c \
 echo "Building injector..."
 clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c http_util.c dht.o \
   $INC libutp/libutp.a ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a \
-  ./libsodium/src/libsodium/.libs/libsodium.a \
   ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
   `pkg-config --cflags libevent` \
-  -lstdc++ $LRT $LM $LB
+  -lsodium -lstdc++ $LRT $LM $LB
 
 echo "Building injector_helper..."
 clang $CFLAGS -o injector_helper injector_helper.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c http_util.c dht.o \
   $INC libutp/libutp.a ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a \
-  ./libsodium/src/libsodium/.libs/libsodium.a ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
+  ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
   `pkg-config --cflags libevent` \
-  -lstdc++ $LRT $LM $LB
+  -lsodium -lstdc++ $LRT $LM $LB
 
 if `which clang-tidy >/dev/null`; then
     echo "Running clang-tidy"
