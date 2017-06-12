@@ -39,7 +39,6 @@ handle_connection(utp_socket *s)
 
 #include "log.h"
 #include "timer.h"
-#include "constants.h"
 #include "network.h"
 #include "utp_bufferevent.h"
 #include "http_util.h"
@@ -209,7 +208,7 @@ static void start_announcing_self_in_dht(proxy *p)
     if (p->announce_timer) return;
 
     timer_callback do_announce = ^{
-        dht_announce(p->net->dht, injector_proxy_swarm, ^(const byte *peers, uint num_peers) {
+        dht_announce(p->net->dht, injector_proxy_swarm(p->net->conf), ^(const byte *peers, uint num_peers) {
             if (!peers) {
                 LOG("announce to injector_proxy_swarm complete\n");
             }
@@ -694,7 +693,7 @@ static void start_injector_search(proxy *p)
         return;
     }
 
-    dht_get_peers(p->net->dht, injector_swarm,
+    dht_get_peers(p->net->dht, injector_swarm(p->net->conf),
             ^(const byte *peers, uint num_peers) {
                 // TODO: Ensure safety after p is destroyed.
                 on_injectors_found(p, peers, num_peers);
@@ -825,9 +824,10 @@ void usage(char *name)
     fprintf(stderr, "    %s [options]\n", name);
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "    -h           Help\n");
-    fprintf(stderr, "    -i A.B.C.D:P Disable injector DHT search and use this endpoint instead\n");
-    fprintf(stderr, "    -d           Pring debug messages\n");
+    fprintf(stderr, "    -h              Help\n");
+    fprintf(stderr, "    -i A.B.C.D:P    Disable injector DHT search and use this endpoint instead\n");
+    fprintf(stderr, "    -d              Pring debug messages\n");
+    fprintf(stderr, "    -a <swarm-salt> Use <swarm-salt> to calculate swarm locations.\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -835,13 +835,14 @@ void usage(char *name)
 int main(int argc, char *argv[])
 {
     char *address = "0.0.0.0";
+    const char *swarm_salt = "";
 
     endpoint debug_injector = zero_endpoint;
 
     bool print_debug = false;
 
     for (;;) {
-        int c = getopt(argc, argv, "hi:d");
+        int c = getopt(argc, argv, "hi:da:");
         if (c == -1)
             break;
         switch (c) {
@@ -870,12 +871,16 @@ int main(int argc, char *argv[])
             }
             break;
         }
+        case 'a':
+            swarm_salt = optarg;
+            break;
         default:
             die("Unhandled argument: %c\n", c);
         }
     }
 
-    network *n = network_setup(address, UTP_LISTENING_PORT);
+    config *c = config_new(swarm_salt);
+    network *n = network_setup(address, c, UTP_LISTENING_PORT);
 
     proxy *p = proxy_create(n, debug_injector, print_debug);
 

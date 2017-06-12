@@ -16,7 +16,6 @@
 #include "utp.h"
 #include "timer.h"
 #include "network.h"
-#include "constants.h"
 #include "utp_bufferevent.h"
 #include "http_util.h"
 
@@ -267,10 +266,11 @@ void usage(char *name)
     fprintf(stderr, "    %s [options] -p <listening-port>\n", name);
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "    -h          Help\n");
-    fprintf(stderr, "    -p <port>   Local port\n");
-    fprintf(stderr, "    -s <IP>     Source IP\n");
-    fprintf(stderr, "    -d          Print debug output\n");
+    fprintf(stderr, "    -h              Help\n");
+    fprintf(stderr, "    -p <port>       Local port\n");
+    fprintf(stderr, "    -s <IP>         Source IP\n");
+    fprintf(stderr, "    -d              Print debug output\n");
+    fprintf(stderr, "    -a <swarm-salt> Use <swarm-salt> to calculate swarm locations.\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -279,9 +279,10 @@ int main(int argc, char *argv[])
 {
     char *address = "0.0.0.0";
     char *port = NULL;
+    const char* swarm_salt = "";
 
     for (;;) {
-        int c = getopt(argc, argv, "hp:s:nd");
+        int c = getopt(argc, argv, "hp:s:nda:");
         if (c == -1)
             break;
         switch (c) {
@@ -297,6 +298,9 @@ int main(int argc, char *argv[])
         case 'd':
             o_debug++;
             break;
+        case 'a':
+            swarm_salt = optarg;
+            break;
         default:
             die("Unhandled argument: %c\n", c);
         }
@@ -306,12 +310,13 @@ int main(int argc, char *argv[])
         usage(argv[0]);
     }
 
-    network *n = network_setup(address, port);
+    config *conf = config_new(swarm_salt);
+    network *n = network_setup(address, conf, port);
 
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
 
     timer_callback cb = ^{
-        dht_announce(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
+        dht_announce(n->dht, injector_swarm(n->conf), ^(const byte *peers, uint num_peers) {
             if (!peers) {
                 printf("announce complete\n");
             }

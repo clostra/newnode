@@ -111,7 +111,7 @@ void evdns_log_cb(int severity, const char *msg)
     debug("[evdns] %d %s\n", severity, msg);
 }
 
-network* network_setup(char *address, char *port)
+network* network_setup(char *address, config *conf, char *port)
 {
     signal(SIGPIPE, SIG_IGN);
 
@@ -128,6 +128,8 @@ network* network_setup(char *address, char *port)
     }
 
     network *n = alloc(network);
+
+    n->conf = conf;
 
     n->fd = socket(((struct sockaddr*)res->ai_addr)->sa_family, SOCK_DGRAM, IPPROTO_UDP);
     if (n->fd < 0) {
@@ -272,6 +274,7 @@ int network_loop(network *n)
     utp_destroy(n->utp);
     dht_destroy(n->dht);
     close(n->fd);
+    config_delete(n->conf);
     evhttp_free(n->http);
     free(n);
 
