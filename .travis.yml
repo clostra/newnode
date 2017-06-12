@@ -14,7 +14,7 @@ matrix:
             # Precise doesn't have libsodium by default
             - sourceline: 'ppa:chris-lea/libsodium'
           packages:
-            - libboost-dev
+            - libboost-dev # Only for bjam
             - libblocksruntime-dev
             - libclang-3.9-dev
             - clang-3.9
