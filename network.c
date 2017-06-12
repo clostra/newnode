@@ -269,6 +269,9 @@ int network_loop(network *n)
     utp_destroy(n->utp);
     dht_destroy(n->dht);
     close(n->fd);
+    evhttp_free(n->http);
+    free(n);
+
     event_free(signal_event);
 
     return 0;
