@@ -7,9 +7,19 @@ matrix:
     - os: linux
       addons:
         apt:
-          # http://apt.llvm.org/
-          sources: [ubuntu-toolchain-r-test, llvm-toolchain-precise-3.9]
-          packages: [libboost-dev, libblocksruntime-dev, libclang-3.9-dev, clang-3.9, clang-tidy-3.9]
+          sources:
+            - ubuntu-toolchain-r-test
+            # http://apt.llvm.org/
+            - llvm-toolchain-precise-3.9
+            # Precise doesn't have libsodium by default
+            - sourceline: 'ppa:chris-lea/libsodium'
+          packages:
+            - libboost-dev
+            - libblocksruntime-dev
+            - libclang-3.9-dev
+            - clang-3.9
+            - clang-tidy-3.9
+            - libsodium-dev
       before_script:
         - export PATH="/usr/lib/llvm-3.9/bin:$PATH"
     - os: osx
@@ -19,6 +29,7 @@ matrix:
         - brew outdated libffi || brew upgrade libffi
         - brew install boost-build
         - brew install llvm --with-clang --with-clang-extra-tools -v
+        - brew install libsodium
           # Set path to clang-tidy
         - export PATH="/usr/local/opt/llvm/bin:$PATH"
           # Set path to stdbuf
