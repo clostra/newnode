@@ -136,6 +136,9 @@ network* network_setup(char *address, char *port)
 
 #ifdef __linux__
     int on = 1;
+    if (setsockopt(n->fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != 0) {
+        pdie("setsockopt");
+    }
     if (setsockopt(n->fd, SOL_IP, IP_RECVERR, &on, sizeof(on)) != 0) {
         pdie("setsockopt");
     }
