@@ -28,7 +28,6 @@ typedef struct bufferevent bufferevent;
 typedef struct evhttp_request evhttp_request;
 typedef struct evhttp_connection evhttp_connection;
 
-
 void inject_url(network *n, const char *url, const uint8_t *content_hash)
 {
     // TODO
