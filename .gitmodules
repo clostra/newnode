@@ -10,3 +10,10 @@
 [submodule "libsodium"]
 	path = libsodium
 	url = ../libsodium
+[submodule "openssl"]
+	path = openssl
+	url = https://github.com/openssl/openssl.git
+	branch = OpenSSL_1_0_2l
+[submodule "blocksruntime"]
+	path = blocksruntime
+	url = https://github.com/mackyle/blocksruntime.git

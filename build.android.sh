@@ -1,13 +1,29 @@
 #!/bin/bash
 set -e
 
+export ARCH=arm
+CPU_ARCH=armv7-a
+TRIPLE=arm-linux-androideabi
+NDK_API=21
+export TOOLCHAIN="$(pwd)/android-toolchain-$CPU_ARCH"
+if [ ! -d $TOOLCHAIN ]; then
+    $ANDROID_NDK_HOME/build/tools/make_standalone_toolchain.py --force --api=$NDK_API --arch=$ARCH --stl=libc++ --install-dir="$TOOLCHAIN"
+fi
+export PATH="$TOOLCHAIN/bin/":"$TOOLCHAIN/$TRIPLE/bin/":"$PATH"
+
+
 cd openssl
-OPENSSL_DIR="$(pwd)/.native"
+OPENSSL_DIR="$(pwd)/.android-${NDK_API}"
 if [ ! -d $OPENSSL_DIR ]; then
-    KERNEL_BITS=64 ./config no-shared -no-ssl2 -no-ssl3 -no-comp -no-hw -no-engine --openssldir="$OPENSSL_DIR"
+    export SYSTEM=android
+    export SYSROOT="$TOOLCHAIN/sysroot"
+    export ANDROID_DEV="$SYSROOT/usr"
+    export MACHINE=armv7
+    export CROSS_COMPILE=$TRIPLE-
+    ./config no-shared -no-ssl2 -no-ssl3 -no-comp -no-hw -no-engine --openssldir="$OPENSSL_DIR"
     make clean
     make depend
-    make all
+    make -j3 all
     make install_sw
 fi
 cd ..
@@ -18,9 +34,9 @@ OPENSSL_LDFLAGS="-L$OPENSSL_DIR/lib -lssl -lcrypto"
 cd Libevent
 if [ ! -d .libs ]; then
     ./autogen.sh
-    ./configure --disable-shared CFLAGS="$OPENSSL_CFLAGS" LDFLAGS="$OPENSSL_LDFLAGS"
+    ./configure --disable-shared --host=$TRIPLE CFLAGS="$OPENSSL_CFLAGS" LDFLAGS="$OPENSSL_LDFLAGS"
     make clean
-    make
+    make -j3
 fi
 cd ..
 LIBEVENT_CFLAGS=-ILibevent/include
@@ -28,28 +44,21 @@ LIBEVENT="$LIBEVENT_CFLAGS Libevent/.libs/libevent.a Libevent/.libs/libevent_pth
 
 
 cd libsodium
-LIBSODIUM_DIR="$(pwd)/native"
-if [ ! -d $LIBSODIUM_DIR ]; then
-    ./autogen.sh
-    make distclean
-    mkdir -p $LIBSODIUM_DIR
-    ./configure --enable-minimal --disable-shared --prefix=$LIBSODIUM_DIR
-    make -j3 check
-    make -j3 install
-fi
+LIBSODIUM_DIR="$(pwd)/libsodium-android-$CPU_ARCH"
+test -d $LIBSODIUM_DIR || ./dist-build/android-$CPU_ARCH.sh
 cd ..
 LIBSODIUM_CFLAGS=-I${LIBSODIUM_DIR}/include
 LIBSODIUM="$LIBSODIUM_CFLAGS ${LIBSODIUM_DIR}/lib/libsodium.a"
 
 
 cd libutp
-test -f libutp.a || (make clean && make -j3 libutp.a)
+test -f libutp.a || (make clean && CC=clang CXX=clang++ make -j3 libutp.a)
 cd ..
 LIBUTP_CFLAGS=-Ilibutp
 LIBUTP=libutp/libutp.a
 
 
-BTFLAGS="-D_UNICODE -D_DEBUG -DLINUX"
+BTFLAGS="-D_UNICODE -D_DEBUG -DLINUX -DANDROID"
 cd libbtdht/btutils
 if [ ! -f libbtutils.a ]; then
     for f in src/*.cpp; do
@@ -69,24 +78,29 @@ LIBBTDHT_CFLAGS="-Ilibbtdht/src -Ilibbtdht/btutils/src $BTFLAGS"
 LIBBTDHT="libbtdht/libbtdht.a libbtdht/btutils/libbtutils.a"
 
 
+cd blocksruntime
+test -f libBlocksRuntime.a || CC=clang ./buildlib
+cd ..
+LIBBLOCKSRUNTIME_CFLAGS=-Iblocksruntime/BlocksRuntime
+LIBBLOCKSRUNTIME=blocksruntime/libBlocksRuntime.a
+
+
 FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
   -fPIC -fblocks -fdata-sections -ffunction-sections \
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
   -D__FAVOR_BSD -D_BSD_SOURCE"
 # debug
-FLAGS="$FLAGS -O0 -fsanitize=address -DDEBUG=1"
+FLAGS="$FLAGS -O0 -DDEBUG=1"
 #release
 #FLAGS="$FLAGS -O3"
 
 CFLAGS="$FLAGS -std=gnu11"
 CPPFLAGS="$FLAGS -std=c++14"
 
-echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
-echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
-echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LIBBLOCKSRUNTIME="-lBlocksRuntime"
-
 clang++ $CPPFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c dht.cpp
 for file in bev_splice.c base64.c client.c http.c log.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c; do
-    clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS -c $file
+    clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
 done
-clang++ $FLAGS -o client *.o $LRT $LM $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
+clang++ $FLAGS -shared -o libdcdn.so *.o -static-libstdc++ -lm $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
+strip -x libdcdn.so
+ls -l libdcdn.so
