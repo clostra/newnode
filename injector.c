@@ -28,7 +28,6 @@ typedef struct bufferevent bufferevent;
 typedef struct evhttp_request evhttp_request;
 typedef struct evhttp_connection evhttp_connection;
 
-
 void inject_url(network *n, const char *url, const uint8_t *content_hash)
 {
     // TODO
@@ -126,7 +125,7 @@ int header_cb(struct evhttp_request *req, void *arg)
     case HTTP_MOVETEMP: {
         const char *new_location = evhttp_find_header(evhttp_request_get_input_headers(req), "Location");
         if (new_location) {
-            const evhttp_uri *new_uri = evhttp_uri_parse(new_location);
+            evhttp_uri *new_uri = evhttp_uri_parse(new_location);
             if (new_uri) {
                 debug("redirect to %s\n", new_location);
                 const char *scheme = evhttp_uri_get_scheme(new_uri);
@@ -138,6 +137,7 @@ int header_cb(struct evhttp_request *req, void *arg)
                 submit_request(p->n, p->server_req, evcon, new_uri);
                 // we made a new proxy_request, so disconnect the original request
                 p->server_req = NULL;
+                evhttp_uri_free(new_uri);
             }
         }
         return 0;

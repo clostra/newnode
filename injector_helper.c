@@ -293,7 +293,7 @@ static injector *pick_random_injector(proxy *p, endpoint *exclude, size_t exclud
 
 static void forward_request_to_injector(request_ctx *ctx, injector *i)
 {
-#   define TEST_PAGE "bbc.com"
+#   define TEST_PAGE "www.bbc.com"
 
     assert(ctx->tried_injector_cnt < MAX_INJECTORS_TO_TRY);
 
@@ -337,7 +337,7 @@ static void forward_request_to_injector(request_ctx *ctx, injector *i)
                                  : EVHTTP_REQ_GET;
 
     p->outstanding_req_cnt++;
-    LOG("req++: total:%zu\n", p->outstanding_req_cnt);
+    LOG("req++: total:%zu %s\n", p->outstanding_req_cnt, uri);
 
     int result = evhttp_make_request(http_con, req_out, command, uri);
 
@@ -414,9 +414,10 @@ void handle_injector_response(struct evhttp_request *res, void *ctx_void)
 
     p->outstanding_req_cnt--;
 
-    LOG("req--: total:%zu %s%s\n", p->outstanding_req_cnt,
+    LOG("req--: total:%zu %s%s for %d.%d.%d.%d:%hu\n", p->outstanding_req_cnt,
         res ? "SUCCESS" : "FAILURE",
-        ctx->req ? "" : " TEST");
+        ctx->req ? "" : " TEST",
+        ep.ip[0], ep.ip[1], ep.ip[2], ep.ip[3], ep.port);
 
     if (!ctx->req) {
         // There was no explicit request from a client, thus we must have made
