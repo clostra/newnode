@@ -122,9 +122,9 @@ function can_ping_self {
 }
 
 #-------------------------------------------------------------------------------
-ifconfig
-echo ">> LAN `lanip`"
-echo ">> WAN `wanip`"
+echo ">> WAN `wanip || true`"
+echo ">> LAN `lanip || true`"
+ifconfig || true
 upnpc -a `lanip` $INJECTOR_UDP_PORT $INJECTOR_UDP_PORT UDP $((5 * 60)) || true
 
 USE_DHT=$(can_ping_self && echo "1" || echo "0")
