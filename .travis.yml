@@ -1,4 +1,4 @@
-sudo: require
+sudo: false
 
 language: c
 
@@ -9,7 +9,7 @@ matrix:
         apt:
           # http://apt.llvm.org/
           sources: [ubuntu-toolchain-r-test, llvm-toolchain-precise-3.9]
-          packages: [libboost-dev, libblocksruntime-dev, libclang-3.9-dev, clang-3.9, clang-tidy-3.9]
+          packages: [libboost-dev, libblocksruntime-dev, libclang-3.9-dev, clang-3.9, clang-tidy-3.9 miniupnpc]
       before_script:
         - export PATH="/usr/lib/llvm-3.9/bin:$PATH"
     - os: osx
@@ -19,11 +19,14 @@ matrix:
         - brew outdated libffi || brew upgrade libffi
         - brew install boost-build
         - brew install llvm --with-clang --with-clang-extra-tools -v
+        - brew install miniupnpc
           # Set path to clang-tidy
         - export PATH="/usr/local/opt/llvm/bin:$PATH"
+          # Set path to stdbuf and gtimeout
+        - export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"
 
 install:
-  - sudo pip install codecov
+  - pip install --user codecov
 
 script:
   - clang -v

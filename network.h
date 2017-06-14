@@ -8,6 +8,7 @@
 
 #include "utp.h"
 #include "dht.h"
+#include "config.h"
 
 
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
@@ -29,9 +30,10 @@ typedef struct {
     utp_context *utp;
     dht *dht;
     evhttp *http;
+    config *conf;
 } network;
 
-network* network_setup(char *address, char *port);
+network* network_setup(char *address, config*, char *port);
 int network_loop(network *n);
 
 #endif // __NETWORK_H__
