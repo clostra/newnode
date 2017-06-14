@@ -26,7 +26,7 @@ matrix:
         - export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"
 
 install:
-  - pip install codecov
+  - pip install --user codecov
 
 script:
   - clang -v
