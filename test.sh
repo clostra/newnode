@@ -100,7 +100,7 @@ function rnd {
 
 # Determine our WAN IP address.
 function wanip {
-    dig +short myip.opendns.com @resolver1.opendns.com
+    curl http://canhazip.com
 }
 
 function lanip {
