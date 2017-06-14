@@ -127,7 +127,7 @@ echo ">> LAN `lanip || true`"
 ifconfig || true
 upnpc -a `lanip` $INJECTOR_UDP_PORT $INJECTOR_UDP_PORT UDP $((5 * 60)) || true
 
-USE_DHT=$(can_ping_self && echo "1" || echo "0")
+USE_DHT="1" # $(can_ping_self && echo "1" || echo "0")
 
 if [ "$USE_DHT" == "1" ]; then
     SWARM_SALT=$(rnd)
