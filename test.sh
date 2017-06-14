@@ -103,6 +103,10 @@ function wanip {
     dig +short myip.opendns.com @resolver1.opendns.com
 }
 
+function lanip {
+    ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1'
+}
+
 # Determine whether we can receive UDP packets sent by us to our WAN IP
 # address.
 function can_ping_self {
@@ -118,6 +122,10 @@ function can_ping_self {
 }
 
 #-------------------------------------------------------------------------------
+ifconfig
+echo ">> `lanip`"
+upnpc -a `lanip` $INJECTOR_UDP_PORT $INJECTOR_UDP_PORT UDP $((5 * 60)) || true
+
 USE_DHT=$(can_ping_self && echo "1" || echo "0")
 
 if [ "$USE_DHT" == "1" ]; then
