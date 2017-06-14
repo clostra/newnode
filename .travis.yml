@@ -26,6 +26,9 @@ install:
   - sudo pip install codecov
 
 script:
+  - ifconfig
+  - dig +short myip.opendns.com @resolver1.opendns.com || true
+  - curl http://canhazip.com || true
   - clang -v
   - clang-tidy -version
   - ./build.sh
