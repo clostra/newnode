@@ -111,7 +111,7 @@ void evdns_log_cb(int severity, const char *msg)
     debug("[evdns] %d %s\n", severity, msg);
 }
 
-network* network_setup(char *address, char *port)
+network* network_setup(char *address, config *conf, char *port)
 {
     signal(SIGPIPE, SIG_IGN);
 
@@ -129,6 +129,8 @@ network* network_setup(char *address, char *port)
 
     network *n = alloc(network);
 
+    n->conf = conf;
+
     n->fd = socket(((struct sockaddr*)res->ai_addr)->sa_family, SOCK_DGRAM, IPPROTO_UDP);
     if (n->fd < 0) {
         pdie("socket");
@@ -136,6 +138,9 @@ network* network_setup(char *address, char *port)
 
 #ifdef __linux__
     int on = 1;
+    if (setsockopt(n->fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) != 0) {
+        pdie("setsockopt");
+    }
     if (setsockopt(n->fd, SOL_IP, IP_RECVERR, &on, sizeof(on)) != 0) {
         pdie("setsockopt");
     }
@@ -269,6 +274,10 @@ int network_loop(network *n)
     utp_destroy(n->utp);
     dht_destroy(n->dht);
     close(n->fd);
+    config_delete(n->conf);
+    evhttp_free(n->http);
+    free(n);
+
     event_free(signal_event);
 
     return 0;
