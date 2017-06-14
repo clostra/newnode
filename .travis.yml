@@ -1,4 +1,4 @@
-#sudo: require
+sudo: false
 
 language: c
 
@@ -26,7 +26,7 @@ matrix:
         - export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"
 
 install:
-  - sudo pip install codecov
+  - pip install codecov
 
 script:
   - clang -v
