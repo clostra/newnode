@@ -100,7 +100,7 @@ function rnd {
 
 # Determine our WAN IP address.
 function wanip {
-    dig +short myip.opendns.com @resolver1.opendns.com
+    curl -s http://canhazip.com
 }
 
 # Determine whether we can receive UDP packets sent by us to our WAN IP

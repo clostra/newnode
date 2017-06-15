@@ -1,6 +1,7 @@
-sudo: require
+sudo: false
 
-language: c
+# Should be faster than 'c' and we're installing custom clang anyway.
+language: generic
 
 matrix:
   include:
@@ -23,9 +24,11 @@ matrix:
         - export PATH="/usr/local/opt/llvm/bin:$PATH"
           # Set path to stdbuf and gtimeout
         - export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"
+          # Codecov script shall be installed here
+        - export PATH="$HOME/Library/Python/2.7/bin:$PATH"
 
 install:
-  - sudo pip install codecov
+  - pip install --user codecov
 
 script:
   - clang -v
