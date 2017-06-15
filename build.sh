@@ -55,8 +55,10 @@ echo "Building HTTP test server..."
 clang $CFLAGS -o test_server test_server.c \
   -I ./Libevent/include ./Libevent/.libs/libevent.a
 
+COMMON_C=(log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c http_util.c config.c)
+
 echo "Building injector..."
-clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c http_util.c dht.o \
+clang $CFLAGS -o injector injector.c "${COMMON_C[@]}" dht.o \
   $INC libutp/libutp.a ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a \
   ./libsodium/src/libsodium/.libs/libsodium.a \
   ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
@@ -64,7 +66,7 @@ clang $CFLAGS -o injector injector.c log.c icmp_handler.c network.c sha1.c timer
   -lstdc++ $LRT $LM $LB
 
 echo "Building injector_helper..."
-clang $CFLAGS -o injector_helper injector_helper.c log.c icmp_handler.c network.c sha1.c timer.c utp_bufferevent.c http_util.c dht.o \
+clang $CFLAGS -o injector_helper injector_helper.c "${COMMON_C[@]}" dht.o \
   $INC libutp/libutp.a ./Libevent/.libs/libevent.a ./Libevent/.libs/libevent_pthreads.a \
   ./libsodium/src/libsodium/.libs/libsodium.a ./libbtdht/libbtdht.a ./libbtdht/btutils/libbtutils.a \
   `pkg-config --cflags libevent` \

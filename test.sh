@@ -14,6 +14,7 @@ fi
 
 LOCAL_ORIGIN=localhost:8080
 INJECTOR_TCP_PORT=8005
+INJECTOR_UDP_PORT=7000
 HELPER_TCP_PORT=5678
 
 HTTP_OK=200
@@ -46,7 +47,7 @@ function now {
 if `which stdbuf >/dev/null`; then unbuf='stdbuf -i0 -o0 -e0'; fi
 
 function prepend {
-    while read line; do echo "$(now) $1| $line"; done
+    while read line; do echo "$(now) |$1| $line"; done
 }
 
 function do_curl {
@@ -82,18 +83,71 @@ function test_n {
     return 0
 }
 
+function countdown {
+    local i
+    for ((i=$1;i>0;i--)); do
+        echo -en "countdown $i   \r"
+        # '|| exit' because sleep catches the SIGINT signal.
+        sleep 1 || exit
+    done
+    echo "             "
+}
+
+# Return a random alpha numeric string of size 32.
+function rnd {
+    cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1
+}
+
+# Determine our WAN IP address.
+function wanip {
+    curl -s http://canhazip.com
+}
+
+# Determine whether we can receive UDP packets sent by us to our WAN IP
+# address.
+function can_ping_self {
+    local myip=$(wanip)
+    local port=$INJECTOR_UDP_PORT
+    local msg=$(rnd)
+    ( echo "$msg" | nc -u $myip $port -w0) &
+    local n=$!
+    while read line; do
+        [ "$msg" == "$line" ] && return 0
+    done < <(timeout 3 nc -lu 0.0.0.0 $port)
+    return 1
+}
+
+#-------------------------------------------------------------------------------
+USE_DHT=$(can_ping_self && echo "1" || echo "0")
+
+if [ "$USE_DHT" == "1" ]; then
+    SWARM_SALT=$(rnd)
+    echo "Using DHT with SWARM_SALT=$SWARM_SALT"
+    ADD_SWARM_SALT="-a $SWARM_SALT"
+else
+    echo "Warning: Not using DHT in tests because this PC can't communicate"
+    echo "         with itself through its WAN IP address. Consider opening"
+    echo "         port $INJECTOR_UDP_PORT on your router."
+
+    countdown 5
+
+    ADD_INJECTOR_EP="-i 127.0.0.1:$INJECTOR_UDP_PORT"
+fi
+
 #-------------------------------------------------------------------------------
 ./test_server &
 server_pid=$!
 all_jobs+=("$server_pid")
 
 echo "$(now) Starting injector."
-$unbuf ./injector -p 7000 2> >(prepend "Ie") 1> >(prepend "Io") &
+$unbuf ./injector -p $INJECTOR_UDP_PORT $ADD_SWARM_SALT 1> >(prepend "I") 2>&1 &
 injector_pid=$!
 all_jobs+=("$injector_pid")
 
-# Make sure injector starts properly.
-sleep 2
+# Make sure injector starts properly (if using DHT, allow time to register in
+# its swarm).
+# XXX Instead of countdown it'd be better to wait for an output from injector.
+[ "$USE_DHT" == "1" ] && countdown 30 || countdown 2
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing curl directly to the server."
@@ -105,11 +159,11 @@ do_curl $INJECTOR_TCP_PORT $LOCAL_ORIGIN $HTTP_OK
 
 #-------------------------------------------------------------------------------
 echo "$(now) Starting injector helper."
-$unbuf ./injector_helper -i 127.0.0.1:7000 2> >(prepend "He") > >(prepend "Ho") &
+$unbuf ./injector_helper $ADD_INJECTOR_EP $ADD_SWARM_SALT 1> >(prepend "H") 2>&1 &
 all_jobs+=("$!")
 
-# Wait for the injector helper to perform a test on the injector nedpoint.
-sleep 2
+# Wait for the injector helper to perform a test on the injector endpoint.
+[ "$USE_DHT" == "1" ] && countdown 10 || countdown 2
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing curl to injector_helper."

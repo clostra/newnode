@@ -16,7 +16,6 @@
 #include "utp.h"
 #include "timer.h"
 #include "network.h"
-#include "constants.h"
 #include "utp_bufferevent.h"
 #include "http_util.h"
 
@@ -27,7 +26,6 @@ typedef struct evhttp_uri evhttp_uri;
 typedef struct bufferevent bufferevent;
 typedef struct evhttp_request evhttp_request;
 typedef struct evhttp_connection evhttp_connection;
-
 
 void inject_url(network *n, const char *url, const uint8_t *content_hash)
 {
@@ -126,7 +124,7 @@ int header_cb(struct evhttp_request *req, void *arg)
     case HTTP_MOVETEMP: {
         const char *new_location = evhttp_find_header(evhttp_request_get_input_headers(req), "Location");
         if (new_location) {
-            const evhttp_uri *new_uri = evhttp_uri_parse(new_location);
+            evhttp_uri *new_uri = evhttp_uri_parse(new_location);
             if (new_uri) {
                 debug("redirect to %s\n", new_location);
                 const char *scheme = evhttp_uri_get_scheme(new_uri);
@@ -138,6 +136,7 @@ int header_cb(struct evhttp_request *req, void *arg)
                 submit_request(p->n, p->server_req, evcon, new_uri);
                 // we made a new proxy_request, so disconnect the original request
                 p->server_req = NULL;
+                evhttp_uri_free(new_uri);
             }
         }
         return 0;
@@ -267,10 +266,11 @@ void usage(char *name)
     fprintf(stderr, "    %s [options] -p <listening-port>\n", name);
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "    -h          Help\n");
-    fprintf(stderr, "    -p <port>   Local port\n");
-    fprintf(stderr, "    -s <IP>     Source IP\n");
-    fprintf(stderr, "    -d          Print debug output\n");
+    fprintf(stderr, "    -h              Help\n");
+    fprintf(stderr, "    -p <port>       Local port\n");
+    fprintf(stderr, "    -s <IP>         Source IP\n");
+    fprintf(stderr, "    -d              Print debug output\n");
+    fprintf(stderr, "    -a <swarm-salt> Use <swarm-salt> to calculate swarm locations.\n");
     fprintf(stderr, "\n");
     exit(1);
 }
@@ -279,9 +279,10 @@ int main(int argc, char *argv[])
 {
     char *address = "0.0.0.0";
     char *port = NULL;
+    const char* swarm_salt = "";
 
     for (;;) {
-        int c = getopt(argc, argv, "hp:s:nd");
+        int c = getopt(argc, argv, "hp:s:nda:");
         if (c == -1)
             break;
         switch (c) {
@@ -297,6 +298,9 @@ int main(int argc, char *argv[])
         case 'd':
             o_debug++;
             break;
+        case 'a':
+            swarm_salt = optarg;
+            break;
         default:
             die("Unhandled argument: %c\n", c);
         }
@@ -306,12 +310,13 @@ int main(int argc, char *argv[])
         usage(argv[0]);
     }
 
-    network *n = network_setup(address, port);
+    config *conf = config_new(swarm_salt);
+    network *n = network_setup(address, conf, port);
 
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
 
     timer_callback cb = ^{
-        dht_announce(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
+        dht_announce(n->dht, injector_swarm(n->conf), ^(const byte *peers, uint num_peers) {
             if (!peers) {
                 printf("announce complete\n");
             }
