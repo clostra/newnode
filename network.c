@@ -17,6 +17,10 @@
 #include <event2/thread.h>
 #include <event2/event-config.h>
 
+#ifdef ANDROID
+#include <sys/system_properties.h>
+#endif
+
 #include "network.h"
 #include "timer.h"
 #include "log.h"
@@ -198,6 +202,17 @@ network* network_setup(char *address, char *port)
         fprintf(stderr, "evdns_base_new failed\n");
         return NULL;
     }
+#ifdef ANDROID
+    char buf[PROP_VALUE_MAX];
+    if (__system_property_get("net.dns1", buf)) {
+        evdns_base_nameserver_ip_add(n->evdns, buf);
+    }
+    if (__system_property_get("net.dns2", buf)) {
+        evdns_base_nameserver_ip_add(n->evdns, buf);
+    }
+#endif
+    evdns_base_nameserver_ip_add(n->evdns, "8.8.8.8");
+    evdns_base_nameserver_ip_add(n->evdns, "8.8.4.4");
 
     n->http = evhttp_new(n->evbase);
     if (!n->http) {
