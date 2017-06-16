@@ -4,10 +4,10 @@ set -e
 export ARCH=arm
 CPU_ARCH=armv7-a
 TRIPLE=arm-linux-androideabi
-NDK_API=21
+NDK_API=26
 export TOOLCHAIN="$(pwd)/android-toolchain-$CPU_ARCH"
 if [ ! -d $TOOLCHAIN ]; then
-    $ANDROID_NDK_HOME/build/tools/make_standalone_toolchain.py --force --api=$NDK_API --arch=$ARCH --stl=libc++ --install-dir="$TOOLCHAIN"
+    $ANDROID_NDK_HOME/build/tools/make_standalone_toolchain.py --force --unified-headers --api=$NDK_API --arch=$ARCH --stl=libc++ --install-dir="$TOOLCHAIN"
 fi
 export PATH="$TOOLCHAIN/bin/":"$TOOLCHAIN/$TRIPLE/bin/":"$PATH"
 
@@ -45,6 +45,7 @@ LIBEVENT="$LIBEVENT_CFLAGS Libevent/.libs/libevent.a Libevent/.libs/libevent_pth
 
 cd libsodium
 LIBSODIUM_DIR="$(pwd)/libsodium-android-$CPU_ARCH"
+test -f configure || ./autogen.sh
 test -d $LIBSODIUM_DIR || ./dist-build/android-$CPU_ARCH.sh
 cd ..
 LIBSODIUM_CFLAGS=-I${LIBSODIUM_DIR}/include
