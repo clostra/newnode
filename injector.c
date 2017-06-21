@@ -377,9 +377,11 @@ int main(int argc, char *argv[])
     }
     fseek(f, 0, SEEK_END);
     long fsize = ftell(f);
+    if (fsize != sizeof(sk)) {
+        die("wrong size injector_sk\n");
+    }
     fseek(f, 0, SEEK_SET);
-    char *buf = (char*)malloc(fsize);
-    fread(buf, fsize, 1, f);
+    fread(sk, fsize, 1, f);
     fclose(f);
 
     url_table = hash_table_create();
