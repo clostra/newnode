@@ -34,7 +34,7 @@ OPENSSL_LDFLAGS="-L$OPENSSL_DIR/lib -lssl -lcrypto"
 cd Libevent
 if [ ! -d .libs ]; then
     ./autogen.sh
-    ./configure --disable-shared --host=$TRIPLE CFLAGS="$OPENSSL_CFLAGS" LDFLAGS="$OPENSSL_LDFLAGS"
+    ./configure --disable-shared --host=$TRIPLE CFLAGS="-g $OPENSSL_CFLAGS" LDFLAGS="$OPENSSL_LDFLAGS"
     make clean
     make -j3
 fi
@@ -91,9 +91,9 @@ FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-paramet
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
   -D__FAVOR_BSD -D_BSD_SOURCE"
 # debug
-FLAGS="$FLAGS -O0 -DDEBUG=1"
-#release
-#FLAGS="$FLAGS -O3"
+#FLAGS="$FLAGS -O0 -DDEBUG=1"
+# release
+FLAGS="$FLAGS -O3"
 
 CFLAGS="$FLAGS -std=gnu11"
 CPPFLAGS="$FLAGS -std=c++14"

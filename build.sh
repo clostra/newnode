@@ -31,7 +31,6 @@ cd libsodium
 LIBSODIUM_DIR="$(pwd)/native"
 if [ ! -d $LIBSODIUM_DIR ]; then
     ./autogen.sh
-    make distclean
     mkdir -p $LIBSODIUM_DIR
     ./configure --enable-minimal --disable-shared --prefix=$LIBSODIUM_DIR
     make -j3 check
@@ -86,7 +85,11 @@ echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || 
 echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LIBBLOCKSRUNTIME="-lBlocksRuntime"
 
 clang++ $CPPFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c dht.cpp
-for file in bev_splice.c base64.c client.c http.c log.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c; do
+for file in client.c injector.c bev_splice.c base64.c http.c log.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c; do
     clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS -c $file
 done
+mv client.o client.o.tmp
+clang++ $FLAGS -o injector *.o $LRT $LM $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
+mv injector.o injector.o.tmp
+mv client.o.tmp client.o
 clang++ $FLAGS -o client *.o $LRT $LM $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME

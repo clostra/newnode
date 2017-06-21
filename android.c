@@ -6,6 +6,9 @@
 #include <android/log.h>
 
 
+void client_init();
+int client_run();
+
 int pfd[2];
 
 void* stdio_thread(void *useradata)
@@ -25,13 +28,13 @@ void* stdio_thread(void *useradata)
 
 void start_stdio_thread()
 {
-    setvbuf(stdout, 0, _IOLBF, 0);
-    setvbuf(stderr, 0, _IONBF, 0);
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
     pipe(pfd);
     dup2(pfd[1], 1);
     dup2(pfd[1], 2);
     pthread_t t;
-    if (pthread_create(&t, 0, stdio_thread, 0) == -1) {
+    if (pthread_create(&t, NULL, stdio_thread, NULL) == -1) {
         return;
     }
     pthread_detach(t);
@@ -39,8 +42,7 @@ void start_stdio_thread()
 
 void* android_main(void *userdata)
 {
-    int run_client();
-    run_client();
+    client_run();
     return NULL;
 }
 
@@ -51,6 +53,7 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
         return JNI_ERR;
     }
     start_stdio_thread();
+    client_init();
     pthread_t t;
     pthread_create(&t, NULL, android_main, NULL);
     return  JNI_VERSION_1_6;
