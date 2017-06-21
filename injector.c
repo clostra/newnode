@@ -31,8 +31,8 @@ typedef struct {
 } proxy_request;
 
 hash_table *url_table;
-unsigned char pk[crypto_sign_PUBLICKEYBYTES] = testing_pk;
-unsigned char sk[crypto_sign_SECRETKEYBYTES] = testing_sk;
+unsigned char pk[crypto_sign_PUBLICKEYBYTES] = injector_pk;
+unsigned char sk[crypto_sign_SECRETKEYBYTES] = injector_sk;
 
 
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri);
@@ -337,12 +337,12 @@ void usage(char *name)
     fprintf(stderr, "    %s [options] -p <listening-port>\n", name);
     fprintf(stderr, "\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "    -h          Help\n");
-    fprintf(stderr, "    -p <port>   Local port\n");
     fprintf(stderr, "    -s <IP>     Source IP\n");
     fprintf(stderr, "\n");
     exit(1);
 }
+
+
 
 int main(int argc, char *argv[])
 {
@@ -352,13 +352,10 @@ int main(int argc, char *argv[])
     o_debug = 2;
 
     for (;;) {
-        int c = getopt(argc, argv, "hp:s:n");
+        int c = getopt(argc, argv, "p:s:n");
         if (c == -1)
             break;
         switch (c) {
-        case 'h':
-            usage(argv[0]);
-            break;
         case 'p':
             port = optarg;
             break;
