@@ -18,9 +18,9 @@ OPENSSL_LDFLAGS="-L$OPENSSL_DIR/lib -lssl -lcrypto"
 cd Libevent
 if [ ! -d .libs ]; then
     ./autogen.sh
-    ./configure --disable-shared CFLAGS="$OPENSSL_CFLAGS" LDFLAGS="$OPENSSL_LDFLAGS"
+    ./configure --disable-shared CFLAGS="-g $OPENSSL_CFLAGS" LDFLAGS="$OPENSSL_LDFLAGS"
     make clean
-    make
+    make -j3
 fi
 cd ..
 LIBEVENT_CFLAGS=-ILibevent/include
@@ -48,7 +48,7 @@ LIBUTP_CFLAGS=-Ilibutp
 LIBUTP=libutp/libutp.a
 
 
-BTFLAGS="-D_UNICODE -D_DEBUG -DLINUX"
+BTFLAGS="-D_UNICODE -DLINUX -D_DEBUG"
 cd libbtdht/btutils
 if [ ! -f libbtutils.a ]; then
     for f in src/*.cpp; do
@@ -72,10 +72,7 @@ FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-paramet
   -fPIC -fblocks -fdata-sections -ffunction-sections \
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
   -D__FAVOR_BSD -D_BSD_SOURCE"
-# debug
 FLAGS="$FLAGS -O0 -fsanitize=address -DDEBUG=1"
-#release
-#FLAGS="$FLAGS -O3"
 
 CFLAGS="$FLAGS -std=gnu11"
 CPPFLAGS="$FLAGS -std=c++14"

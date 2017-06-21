@@ -58,8 +58,10 @@ cd ..
 LIBUTP_CFLAGS=-Ilibutp
 LIBUTP=libutp/libutp.a
 
-
-BTFLAGS="-D_UNICODE -D_DEBUG -DLINUX -DANDROID"
+BTFLAGS="-D_UNICODE -DLINUX -DANDROID"
+if [ ! -z "$DEBUG" ]; then
+    BTFLAGS="$BTFLAGS -D_DEBUG"
+fi
 cd libbtdht/btutils
 if [ ! -f libbtutils.a ]; then
     for f in src/*.cpp; do
@@ -90,10 +92,11 @@ FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-paramet
   -fPIC -fblocks -fdata-sections -ffunction-sections \
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
   -D__FAVOR_BSD -D_BSD_SOURCE"
-# debug
-#FLAGS="$FLAGS -O0 -DDEBUG=1"
-# release
-FLAGS="$FLAGS -O3"
+if [ ! -z "$DEBUG" ]; then
+    FLAGS="$FLAGS -O0 -DDEBUG=1"
+else
+    FLAGS="$FLAGS -O3"
+fi
 
 CFLAGS="$FLAGS -std=gnu11"
 CPPFLAGS="$FLAGS -std=c++14"
@@ -103,5 +106,7 @@ for file in android.c bev_splice.c base64.c client.c http.c log.c icmp_handler.c
     clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
 done
 clang++ $FLAGS -shared -o libdcdn.so *.o -static-libstdc++ -lm $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -llog
-strip -x libdcdn.so
+if [ -z "$DEBUG" ]; then
+    strip -x libdcdn.so
+fi
 ls -l libdcdn.so
