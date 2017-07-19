@@ -12,9 +12,9 @@ if [ -z "$LSAN_OPTIONS" ]; then
     export LSAN_OPTIONS=suppressions=.lsan.supp
 fi
 
-LOCAL_ORIGIN=localhost:8080
+LOCAL_ORIGIN=localhost:8000
 INJECTOR_TCP_PORT=8005
-HELPER_TCP_PORT=5678
+CLIENT_TCP_PORT=8006
 
 HTTP_OK=200
 HTTP_MOVED=301
@@ -68,7 +68,7 @@ function test_n {
     local i
     
     for ((i=0;i<$n;i++)); do
-        do_curl $HELPER_TCP_PORT $host "${@:3}" &
+        do_curl $CLIENT_TCP_PORT $host "${@:3}" &
         pids+=("$!")
     done
     
@@ -83,7 +83,7 @@ function test_n {
 }
 
 #-------------------------------------------------------------------------------
-./test_server &
+python -m SimpleHTTPServer &
 server_pid=$!
 all_jobs+=("$server_pid")
 
@@ -104,22 +104,22 @@ echo "$(now) Testing curl to injector."
 do_curl $INJECTOR_TCP_PORT $LOCAL_ORIGIN $HTTP_OK
 
 #-------------------------------------------------------------------------------
-echo "$(now) Starting injector helper."
-$unbuf ./injector_helper -i 127.0.0.1:7000 2> >(prepend "He") > >(prepend "Ho") &
+echo "$(now) Starting client."
+$unbuf ./client 2> >(prepend "He") > >(prepend "Ho") &
 all_jobs+=("$!")
 
-# Wait for the injector helper to perform a test on the injector nedpoint.
+# Wait for the client to perform a test on the injector nedpoint.
 sleep 2
 
 #-------------------------------------------------------------------------------
-echo "$(now) Testing curl to injector_helper."
+echo "$(now) Testing curl to client."
 for i in 1 8 16; do
     test_n $i $LOCAL_ORIGIN $HTTP_OK || exit 1
 done
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing HTTPS forwarding."
-do_curl $HELPER_TCP_PORT https://google.com $HTTP_OK $HTTP_FOUND $HTTP_MOVED || exit 2
+do_curl $CLIENT_TCP_PORT https://google.com $HTTP_OK $HTTP_FOUND $HTTP_MOVED || exit 2
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing fast failure response."
@@ -135,7 +135,7 @@ end_time=$(seconds_since_epoch)
 #-------------------------------------------------------------------------------
 echo "$(now) Testing response if injector is down."
 kill -SIGINT $injector_pid 2>/dev/null
-do_curl $HELPER_TCP_PORT $LOCAL_ORIGIN $HTTP_BAD_GATEWAY
+do_curl $CLIENT_TCP_PORT $LOCAL_ORIGIN $HTTP_BAD_GATEWAY
 
 #-------------------------------------------------------------------------------
 echo "$(now) DONE"
