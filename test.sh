@@ -95,7 +95,7 @@ do_curl $INJECTOR_TCP_PORT $LOCAL_ORIGIN $HTTP_OK
 
 #-------------------------------------------------------------------------------
 echo "$(now) Starting client."
-$unbuf ./client 2> >(prepend "He") > >(prepend "Ho") &
+$unbuf ./client 2> >(prepend "Ce") > >(prepend "Co") &
 all_jobs+=("$!")
 
 # Wait for the client to perform a test on the injector nedpoint.
