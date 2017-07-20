@@ -1,30 +1,16 @@
 #!/bin/bash
 set -e
 
-cd openssl
-OPENSSL_DIR="$(pwd)/.native"
-if [ ! -d $OPENSSL_DIR ]; then
-    KERNEL_BITS=64 ./config no-shared -no-ssl2 -no-ssl3 -no-comp -no-hw -no-engine --openssldir="$OPENSSL_DIR"
-    make clean
-    make depend
-    make all
-    make install_sw
-fi
-cd ..
-OPENSSL_CFLAGS=-I$OPENSSL_DIR/include
-OPENSSL_LDFLAGS="-L$OPENSSL_DIR/lib -lssl -lcrypto"
-
-
 cd Libevent
 if [ ! -d .libs ]; then
     ./autogen.sh
-    ./configure --disable-shared CFLAGS="-g $OPENSSL_CFLAGS" LDFLAGS="$OPENSSL_LDFLAGS"
+    ./configure --disable-shared --disable-openssl
     make clean
     make -j3
 fi
 cd ..
 LIBEVENT_CFLAGS=-ILibevent/include
-LIBEVENT="$LIBEVENT_CFLAGS Libevent/.libs/libevent.a Libevent/.libs/libevent_pthreads.a Libevent/.libs/libevent_openssl.a"
+LIBEVENT="$LIBEVENT_CFLAGS Libevent/.libs/libevent.a Libevent/.libs/libevent_pthreads.a"
 
 
 cd libsodium
