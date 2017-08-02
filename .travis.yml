@@ -5,6 +5,7 @@ language: c
 matrix:
   include:
     - os: linux
+      dist: trusty
       before_script:
         - sudo apt-get update -qq
         - sudo apt-get install libboost-dev libblocksruntime-dev
