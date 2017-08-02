@@ -1,6 +1,7 @@
 sudo: require
 
 language: c
+compiler: clang
 
 matrix:
   include:
