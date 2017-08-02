@@ -11,16 +11,12 @@ HTTP_MOVED=301
 HTTP_FOUND=302
 HTTP_BAD_GATEWAY=502
 
-trap 'kill -SIGTERM $(jobs -pr); exit' HUP INT TERM EXIT
+trap 'kill -SIGTERM $(jobs -pr) || true; exit' HUP INT TERM EXIT
 
 function element_in {
     local e
     for e in "${@:2}"; do [[ "$e" == "$1" ]] && return 0; done
     return 1
-}
-
-function seconds_since_epoch {
-    date +'%s'
 }
 
 function now {
@@ -43,27 +39,6 @@ function do_curl {
         echo "Expected HTTP response one of (${@:3}) but received $code"
         return 1
     fi
-    return 0
-}
-
-function test_n {
-    local n=$1
-    local host=$2
-    local pids=()
-    local i
-    
-    for ((i=0;i<$n;i++)); do
-        do_curl $CLIENT_TCP_PORT $host "${@:3}" &
-        pids+=("$!")
-    done
-    
-    for p in "${pids[@]}"; do
-        if ! wait $p; then
-            kill "${pids[@]}" 2>/dev/null || true
-            return 1
-        fi
-    done
-
     return 0
 }
 
@@ -95,13 +70,11 @@ sleep 2
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing curl to client."
-for i in 1 8 16; do
-    test_n $i $LOCAL_ORIGIN $HTTP_OK || exit 1
-done
+do_curl $CLIENT_TCP_PORT $LOCAL_ORIGIN $HTTP_OK
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing HTTPS forwarding."
-do_curl $CLIENT_TCP_PORT https://google.com $HTTP_OK $HTTP_FOUND $HTTP_MOVED || exit 2
+do_curl $CLIENT_TCP_PORT https://google.com $HTTP_OK $HTTP_FOUND $HTTP_MOVED
 
 #-------------------------------------------------------------------------------
 echo "$(now) DONE"
