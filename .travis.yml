@@ -8,7 +8,9 @@ matrix:
       dist: trusty
       addons:
         apt:
-          packages: [libboost-dev, libblocksruntime-dev, clang-3.9, libc++-dev]
+          packages: [libboost-dev, libblocksruntime-dev, clang-5.0, libc++-dev]
+        env:
+          - MATRIX_EVAL="CC=clang-5.0 && CXX=clang++-5.0"
     - os: osx
       before_script:
         - brew install boost-build
