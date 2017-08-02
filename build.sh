@@ -72,7 +72,7 @@ for file in client.c injector.c bev_splice.c base64.c http.c log.c icmp_handler.
     clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS -c $file
 done
 mv client.o client.o.tmp
-clang++ $FLAGS -o injector *.o $LRT $LM $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
+clang++ $FLAGS -o injector *.o -stdlib=libc++ $LRT $LM $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
 mv injector.o injector.o.tmp
 mv client.o.tmp client.o
-clang++ $FLAGS -o client *.o $LRT $LM $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
+clang++ $FLAGS -o client *.o -stdlib=libc++ $LRT $LM $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
