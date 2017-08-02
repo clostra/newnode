@@ -17,6 +17,9 @@ matrix:
       before_script:
         - brew install boost-build
 
+before_install:
+  - eval "${MATRIX_EVAL}"
+
 install:
   - sudo pip install codecov
 
