@@ -32,7 +32,11 @@ typedef struct {
 
 hash_table *url_table;
 unsigned char pk[crypto_sign_PUBLICKEYBYTES] = injector_pk;
+#ifdef injector_sk
+unsigned char sk[crypto_sign_SECRETKEYBYTES] = injector_sk;
+#else
 unsigned char sk[crypto_sign_SECRETKEYBYTES];
+#endif
 
 
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri);
@@ -371,6 +375,7 @@ int main(int argc, char *argv[])
         usage(argv[0]);
     }
 
+#ifndef injector_sk
     FILE *f = fopen("injector_sk", "rb");
     if (!f) {
         die("no injector_sk\n");
@@ -383,6 +388,7 @@ int main(int argc, char *argv[])
     fseek(f, 0, SEEK_SET);
     fread(sk, fsize, 1, f);
     fclose(f);
+#endif
 
     url_table = hash_table_create();
 
