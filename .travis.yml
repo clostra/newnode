@@ -7,12 +7,12 @@ matrix:
     - os: linux
       dist: trusty
       before_script:
-        - echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-5.0 main" | sudo tee -a /etc/apt/sources.list > /dev/null
+        - echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-4.0 main" | sudo tee -a /etc/apt/sources.list > /dev/null
         - wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
         - sudo apt-get update -qq
-        - sudo apt-get install libboost-dev libblocksruntime-dev libc++-dev clang-5.0
+        - sudo apt-get install libboost-dev libblocksruntime-dev libc++-dev clang-4.0
       env:
-        - MATRIX_EVAL="CC=clang-5.0 && CXX=clang++-5.0"
+        - MATRIX_EVAL="CC=clang-4.0 && CXX=clang++-4.0"
     - os: osx
       before_script:
         - brew install boost-build
