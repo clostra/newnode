@@ -8,6 +8,8 @@ matrix:
       dist: trusty
       addons:
         apt:
+          sources:
+            - llvm-toolchain-trusty
           packages: [libboost-dev, libblocksruntime-dev, clang-5.0, libc++-dev]
         env:
           - MATRIX_EVAL="CC=clang-5.0 && CXX=clang++-5.0"
