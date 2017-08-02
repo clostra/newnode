@@ -1,4 +1,4 @@
-sudo: require
+sudo: false
 
 language: c
 compiler: clang
@@ -19,7 +19,6 @@ install:
 
 script:
   - clang -v
-  - clang -dM -E - < /dev/null
   - ./build.sh
   - ./test.sh
   - for f in *.c; do gcov -n -o . $f; done
