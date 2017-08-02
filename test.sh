@@ -38,7 +38,6 @@ function do_curl {
     local proxy=""
     [ -n "$1" ] && proxy="-x localhost:$1"
     local host=$2
-    echo curl $proxy $host -o /dev/null -w "$http_code" --silent --show-error
     local code=$(curl $proxy $host -o /dev/null -w "%{http_code}" --silent --show-error)
     if ! element_in $code "${@:3}"; then
         echo "Expected HTTP response one of (${@:3}) but received $code"
@@ -103,22 +102,6 @@ done
 #-------------------------------------------------------------------------------
 echo "$(now) Testing HTTPS forwarding."
 do_curl $CLIENT_TCP_PORT https://google.com $HTTP_OK $HTTP_FOUND $HTTP_MOVED || exit 2
-
-#-------------------------------------------------------------------------------
-echo "$(now) Testing fast failure response."
-# Kill the origin and try to connect to it. It shouldn't take long for the
-# injector and proxy to find out the origin is unreachable.
-kill -SIGTERM $server_pid
-
-start_time=$(seconds_since_epoch)
-test_n 2 $LOCAL_ORIGIN $HTTP_BAD_GATEWAY
-end_time=$(seconds_since_epoch)
-[ $((end_time - start_time)) -lt 5 ] || exit 3
-
-#-------------------------------------------------------------------------------
-echo "$(now) Testing response if injector is down."
-kill -SIGINT $injector_pid 2>/dev/null
-do_curl $CLIENT_TCP_PORT $LOCAL_ORIGIN $HTTP_BAD_GATEWAY
 
 #-------------------------------------------------------------------------------
 echo "$(now) DONE"
