@@ -1,4 +1,4 @@
-sudo: false
+sudo: required
 
 language: generic
 
@@ -6,20 +6,18 @@ matrix:
   include:
     - os: linux
       dist: trusty
-      addons:
-        apt:
-          sources:
-            - llvm-toolchain-trusty
-          packages: [libboost-dev, libblocksruntime-dev, clang-5.0, libc++-dev]
-        env:
-          - MATRIX_EVAL="CC=clang-5.0 && CXX=clang++-5.0"
+      before_script:
+        - echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty main" | sudo tee -a /etc/apt/sources.list > /dev/null
+        - sudo apt-get update -qq
+        - sudo apt-get install libboost-dev libblocksruntime-dev libc++-dev clang-5.0
+      env:
+        - MATRIX_EVAL="CC=clang-5.0 && CXX=clang++-5.0"
     - os: osx
       before_script:
         - brew install boost-build
 
 install:
-  - export PATH=$HOME/.local/bin:$PATH
-  - pip install --user codecov
+  - sudo pip install codecov
 
 script:
   - clang -v
