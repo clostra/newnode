@@ -38,14 +38,14 @@ BTFLAGS="-D_UNICODE -DLINUX -D_DEBUG"
 cd libbtdht/btutils
 if [ ! -f libbtutils.a ]; then
     for f in src/*.cpp; do
-        clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -fPIC -c $f
+        clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -stdlib=libc++ -fPIC -c $f
     done
     ar rs libbtutils.a *.o
 fi
 cd ..
 if [ ! -f libbtdht.a ]; then
     for f in src/*.cpp; do
-        clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -fPIC -I btutils/src -I src -c $f
+        clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -stdlib=libc++ -fPIC -I btutils/src -I src -c $f
     done
     ar rs libbtdht.a *.o
 fi
@@ -61,7 +61,7 @@ FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-paramet
 FLAGS="$FLAGS -O0 -fsanitize=address -DDEBUG=1"
 
 CFLAGS="$FLAGS -std=gnu11"
-CPPFLAGS="$FLAGS -std=c++14"
+CPPFLAGS="$FLAGS -std=c++14 -stdlib=libc++"
 
 echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
