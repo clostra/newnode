@@ -15,7 +15,8 @@ matrix:
         - brew install boost-build
 
 install:
-  - sudo pip install codecov
+  - export PATH=$HOME/.local/bin:$PATH
+  - pip install --user codecov
 
 script:
   - clang -v
