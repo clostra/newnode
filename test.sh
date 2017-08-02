@@ -11,12 +11,7 @@ HTTP_MOVED=301
 HTTP_FOUND=302
 HTTP_BAD_GATEWAY=502
 
-trap cleanup SIGINT SIGTERM EXIT
-
-all_jobs=()
-function cleanup {
-    kill -SIGINT ${all_jobs[*]} 2>/dev/null || true
-}
+trap 'kill -SIGTERM $(jobs -pr); exit' HUP INT TERM EXIT
 
 function element_in {
     local e
@@ -43,6 +38,7 @@ function do_curl {
     local proxy=""
     [ -n "$1" ] && proxy="-x localhost:$1"
     local host=$2
+    echo curl $proxy $host -o /dev/null -w "$http_code" --silent --show-error
     local code=$(curl $proxy $host -o /dev/null -w "%{http_code}" --silent --show-error)
     if ! element_in $code "${@:3}"; then
         echo "Expected HTTP response one of (${@:3}) but received $code"
@@ -75,12 +71,10 @@ function test_n {
 #-------------------------------------------------------------------------------
 python -m SimpleHTTPServer &
 server_pid=$!
-all_jobs+=("$server_pid")
 
 echo "$(now) Starting injector."
 $unbuf ./injector -p 7000 2> >(prepend "Ie") 1> >(prepend "Io") &
 injector_pid=$!
-all_jobs+=("$injector_pid")
 
 # Make sure injector starts properly.
 sleep 2
@@ -96,7 +90,6 @@ do_curl $INJECTOR_TCP_PORT $LOCAL_ORIGIN $HTTP_OK
 #-------------------------------------------------------------------------------
 echo "$(now) Starting client."
 $unbuf ./client 2> >(prepend "Ce") > >(prepend "Co") &
-all_jobs+=("$!")
 
 # Wait for the client to perform a test on the injector nedpoint.
 sleep 2
@@ -115,7 +108,7 @@ do_curl $CLIENT_TCP_PORT https://google.com $HTTP_OK $HTTP_FOUND $HTTP_MOVED || 
 echo "$(now) Testing fast failure response."
 # Kill the origin and try to connect to it. It shouldn't take long for the
 # injector and proxy to find out the origin is unreachable.
-kill -SIGINT $server_pid
+kill -SIGTERM $server_pid
 
 start_time=$(seconds_since_epoch)
 test_n 2 $LOCAL_ORIGIN $HTTP_BAD_GATEWAY
