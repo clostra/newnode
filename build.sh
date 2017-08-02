@@ -38,14 +38,14 @@ BTFLAGS="-D_UNICODE -DLINUX -D_DEBUG"
 cd libbtdht/btutils
 if [ ! -f libbtutils.a ]; then
     for f in src/*.cpp; do
-        clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -fPIC -c $f
+        clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -stdlib=libc++ -fPIC -c $f
     done
     ar rs libbtutils.a *.o
 fi
 cd ..
 if [ ! -f libbtdht.a ]; then
     for f in src/*.cpp; do
-        clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -fPIC -I btutils/src -I src -c $f
+        clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -stdlib=libc++ -fPIC -I btutils/src -I src -c $f
     done
     ar rs libbtdht.a *.o
 fi
@@ -54,14 +54,14 @@ LIBBTDHT_CFLAGS="-Ilibbtdht/src -Ilibbtdht/btutils/src $BTFLAGS"
 LIBBTDHT="libbtdht/libbtdht.a libbtdht/btutils/libbtutils.a"
 
 
-FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
+FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Wno-error=shadow -Wfatal-errors \
   -fPIC -fblocks -fdata-sections -ffunction-sections \
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
   -D__FAVOR_BSD -D_BSD_SOURCE"
 FLAGS="$FLAGS -O0 -fsanitize=address -DDEBUG=1"
 
 CFLAGS="$FLAGS -std=gnu11"
-CPPFLAGS="$FLAGS -std=c++14"
+CPPFLAGS="$FLAGS -std=c++14 -stdlib=libc++"
 
 echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
@@ -72,7 +72,7 @@ for file in client.c injector.c bev_splice.c base64.c http.c log.c icmp_handler.
     clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS -c $file
 done
 mv client.o client.o.tmp
-clang++ $FLAGS -o injector *.o $LRT $LM $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
+clang++ $FLAGS -o injector *.o -stdlib=libc++ $LRT $LM $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
 mv injector.o injector.o.tmp
 mv client.o.tmp client.o
-clang++ $FLAGS -o client *.o $LRT $LM $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
+clang++ $FLAGS -o client *.o -stdlib=libc++ $LRT $LM $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME

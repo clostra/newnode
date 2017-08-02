@@ -1,23 +1,30 @@
-sudo: require
+sudo: required
 
-language: c
+language: generic
 
 matrix:
   include:
     - os: linux
       dist: trusty
       before_script:
+        - echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-4.0 main" | sudo tee -a /etc/apt/sources.list > /dev/null
+        - wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
         - sudo apt-get update -qq
-        - sudo apt-get install libboost-dev libblocksruntime-dev
+        - sudo apt-get install libboost-dev libblocksruntime-dev libc++-dev clang-4.0
+      env:
+        - MATRIX_EVAL="CC=clang-4.0 && CXX=clang++-4.0"
     - os: osx
       before_script:
         - brew install boost-build
+
+before_install:
+  - eval "${MATRIX_EVAL}"
 
 install:
   - sudo pip install codecov
 
 script:
-  - clang -v
+  - $CC -v
   - ./build.sh
   - ./test.sh
   - for f in *.c; do gcov -n -o . $f; done
