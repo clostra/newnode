@@ -1,7 +1,6 @@
 sudo: false
 
-language: c
-compiler: clang
+language: generic
 
 matrix:
   include:
@@ -9,7 +8,7 @@ matrix:
       dist: trusty
       addons:
         apt:
-          packages: [libboost-dev, libblocksruntime-dev, libc++-dev]
+          packages: [libboost-dev, libblocksruntime-dev, clang-3.9, libc++-dev]
     - os: osx
       before_script:
         - brew install boost-build
