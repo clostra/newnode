@@ -155,7 +155,7 @@ int header_cb(evhttp_request *req, void *arg)
     }
 
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
-    hash_headers(evhttp_request_get_input_headers(p->server_req), &p->content_state);
+    hash_headers(evhttp_request_get_output_headers(p->server_req), &p->content_state);
 
     if (evhttp_request_get_connection(p->server_req)) {
         evhttp_send_reply_start(p->server_req, code, evhttp_request_get_response_code_line(req));
@@ -353,7 +353,7 @@ int main(int argc, char *argv[])
     char *address = "0.0.0.0";
     char *port = NULL;
 
-    o_debug = 2;
+    o_debug = 1;
 
     for (;;) {
         int c = getopt(argc, argv, "p:s:n");
