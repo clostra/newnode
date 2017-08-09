@@ -78,7 +78,6 @@ void request_done_cb(evhttp_request *req, void *arg)
 
             return (void*)sig;
         });
-        join_url_swarm(p->n, uri);
         evhttp_send_reply_end(p->server_req);
         p->server_req = NULL;
     }
