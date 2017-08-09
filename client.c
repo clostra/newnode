@@ -779,8 +779,7 @@ void http_request_cb(evhttp_request *req, void *arg)
         length -= content_start;
         evbuffer *content = evbuffer_new();
         evbuffer_add_file(content, fd, content_start, length);
-        debug("responding with %d %s %u\n", evhttp_request_get_response_code(req),
-            evhttp_request_get_response_code_line(req), length);
+        debug("responding with %d %s %u\n", HTTP_OK, "OK", , length);
         evhttp_send_reply(req, HTTP_OK, "OK", content);
         evbuffer_free(content);
         return;
