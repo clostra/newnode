@@ -34,7 +34,7 @@ void join_url_swarm(network *n, const char *url)
     timer_callback cb = ^{
         dht_announce(n->dht, hash_state.url_hash, ^(const byte *peers, uint num_peers) {
             if (!peers) {
-                printf("announce complete\n");
+                //printf("announce complete\n");
             }
         });
     };

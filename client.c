@@ -443,6 +443,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
                 }
                 remove_server_req_cb(p);
                 p->server_req = NULL;
+                join_url_swarm(p->n, content_location);
             }
         }
     }
