@@ -355,9 +355,10 @@ int main(int argc, char *argv[])
     o_debug = 1;
 
     for (;;) {
-        int c = getopt(argc, argv, "p:s:n");
-        if (c == -1)
+        int c = getopt(argc, argv, "p:s:");
+        if (c == -1) {
             break;
+        }
         switch (c) {
         case 'p':
             port = optarg;
