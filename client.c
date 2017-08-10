@@ -48,6 +48,10 @@ typedef struct {
     peer *peer;
 } PACKED peer_sort;
 
+#define CACHE_PATH "/tmp/dcdn/"
+#define CACHE_NAME CACHE_PATH "cache.XXXXXXXX"
+#define CACHE_HEADERS_NAME CACHE_NAME ".headers"
+
 typedef struct {
     network *n;
     evhttp_request *direct_req;
@@ -56,7 +60,7 @@ typedef struct {
     evhttp_request *server_req;
     void (*evhttp_handle_request)(struct evhttp_request *, void *);
     crypto_generichash_state content_state;
-    char cache_name[sizeof("cache.XXXXXXXX")];
+    char cache_name[sizeof(CACHE_NAME)];
     int cache_file;
     peer *peer;
     bool injector:1;
@@ -74,6 +78,21 @@ time_t injector_reachable;
 bool memeq(const uint8_t *a, const uint8_t *b, size_t len)
 {
     return memcmp(a, b, len) == 0;
+}
+
+int mkpath(char *file_path)
+{
+    for (char *p = strchr(file_path + 1, '/'); p; p = strchr(p + 1, '/')) {
+        *p = '\0';
+        if (mkdir(file_path, 0755) == -1) {
+            if (errno != EEXIST) {
+                *p = '/';
+                return -1;
+            }
+        }
+        *p = '/';
+    }
+    return 0;
 }
 
 void add_addresses(peer **peers, uint *ppeers_len, const byte *addrs, uint num_addrs)
@@ -258,6 +277,7 @@ int proxy_header_cb(evhttp_request *req, void *arg)
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
     hash_headers(evhttp_request_get_input_headers(req), &p->content_state);
 
+    mkpath(p->cache_name);
     p->cache_file = mkstemp(p->cache_name);
     debug("start cache:%s\n", p->cache_name);
 
@@ -389,7 +409,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
                     injector_reachable = time(NULL);
                     update_injector_proxy_swarm(p->n);
                 }
-                char headers_name[] = "cache.XXXXXXXX.headers";
+                char headers_name[] = CACHE_HEADERS_NAME;
                 int headers_file = mkstemps(headers_name, sizeof(headers_name) - sizeof(p->cache_name));
                 evkeyvalq *in = evhttp_request_get_input_headers(req);
                 const char *headers[] = hashed_headers;
@@ -419,13 +439,15 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
                 p->cache_file = -1;
                 const char *content_location = evhttp_find_header(in, "Content-Location");
                 char *uri = evhttp_encode_uri(content_location);
-                char uri_headers[2048];
-                snprintf(uri_headers, sizeof(uri_headers), "%s.headers", uri);
-                debug("store cache:%s headers:%s\n", uri, uri_headers);
-                rename(p->cache_name, uri);
-                rename(headers_name, uri_headers);
-                int fd = open(uri, O_RDONLY);
+                char cache_path[2048];
+                char cache_headers_path[2048];
+                snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, uri);
+                snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
                 free(uri);
+                debug("store cache:%s headers:%s\n", cache_path, cache_headers_path);
+                rename(p->cache_name, cache_path);
+                rename(headers_name, cache_headers_path);
+                int fd = open(cache_path, O_RDONLY);
                 off_t length = lseek(fd, 0, SEEK_END);
                 evbuffer *content = evbuffer_new();
                 evbuffer_add_file(content, fd, 0, length);
@@ -597,7 +619,7 @@ void submit_request(network *n, evhttp_request *server_req, const evhttp_uri *ur
 {
     proxy_request *p = alloc(proxy_request);
     p->n = n;
-    snprintf(p->cache_name, sizeof(p->cache_name), "cache.XXXXXXXX");
+    snprintf(p->cache_name, sizeof(p->cache_name), CACHE_NAME);
     p->cache_file = -1;
     p->server_req = server_req;
     p->evhttp_handle_request = p->server_req->cb;
@@ -757,12 +779,14 @@ void http_request_cb(evhttp_request *req, void *arg)
         return;
     }
     char *uri = evhttp_encode_uri(evhttp_request_get_uri(req));
-    char uri_headers[2048];
-    snprintf(uri_headers, sizeof(uri_headers), "%s.headers", uri);
-    int cache_file = open(uri, O_RDONLY);
-    int headers_file = open(uri_headers, O_RDONLY);
-    debug("check hit:%d,%d cache:%s\n", cache_file != -1, headers_file != -1, uri);
+    char cache_path[2048];
+    char cache_headers_path[2048];
+    snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, uri);
+    snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
     free(uri);
+    int cache_file = open(cache_path, O_RDONLY);
+    int headers_file = open(cache_headers_path, O_RDONLY);
+    debug("check hit:%d,%d cache:%s\n", cache_file != -1, headers_file != -1, cache_path);
     if (cache_file != -1 && headers_file != -1) {
         evhttp_request *temp = evhttp_request_new(NULL, NULL);
         evbuffer *header_buf = evbuffer_new();
