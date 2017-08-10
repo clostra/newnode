@@ -13,12 +13,6 @@ HTTP_BAD_GATEWAY=502
 
 trap 'kill -SIGTERM $(jobs -pr) || true; exit' HUP INT TERM EXIT
 
-function element_in {
-    local e
-    for e in "${@:2}"; do [[ "$e" == "$1" ]] && return 0; done
-    return 1
-}
-
 function now {
     date +'%M:%S'
 }
@@ -31,12 +25,9 @@ function prepend {
 }
 
 function do_curl {
-    local proxy=""
-    [ -n "$1" ] && proxy="-x localhost:$1"
-    local host=$2
-    local code=$(curl $proxy $host -o /dev/null -w "%{http_code}" --silent --show-error)
-    if ! element_in $code "${@:3}"; then
-        echo "Expected HTTP response one of (${@:3}) but received $code"
+    local code=$(curl $1 -o /dev/null -w "%{http_code}" --silent --show-error)
+    if [ $code != $2 ]; then
+        echo "Expected HTTP response $2 but received $code"
         return 1
     fi
     return 0
@@ -47,7 +38,7 @@ python -m SimpleHTTPServer &
 server_pid=$!
 
 echo "$(now) Starting injector."
-$unbuf ./injector -p 7000 2> >(prepend "Ie") 1> >(prepend "Io") &
+$unbuf ./injector -p 7000 2> >(prepend "inject_err") 1> >(prepend "inject_out") &
 injector_pid=$!
 
 # Make sure injector starts properly.
@@ -55,26 +46,26 @@ sleep 2
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing curl directly to the server."
-do_curl "" $LOCAL_ORIGIN $HTTP_OK
+do_curl $LOCAL_ORIGIN $HTTP_OK
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing curl to injector."
-do_curl $INJECTOR_TCP_PORT $LOCAL_ORIGIN $HTTP_OK
+http_proxy=localhost:$INJECTOR_TCP_PORT do_curl $LOCAL_ORIGIN $HTTP_OK
 
 #-------------------------------------------------------------------------------
 echo "$(now) Starting client."
-$unbuf ./client 2> >(prepend "Ce") > >(prepend "Co") &
+$unbuf ./client -i 2> >(prepend "client_err") > >(prepend "client_out") &
 
 # Wait for the client to perform a test on the injector nedpoint.
 sleep 2
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing curl to client."
-do_curl $CLIENT_TCP_PORT $LOCAL_ORIGIN $HTTP_OK
+http_proxy=localhost:$CLIENT_TCP_PORT do_curl $LOCAL_ORIGIN $HTTP_OK
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing HTTPS forwarding."
-do_curl $CLIENT_TCP_PORT https://google.com $HTTP_OK $HTTP_FOUND $HTTP_MOVED
+http_proxy=localhost:$CLIENT_TCP_PORT do_curl https://www.google.com $HTTP_OK
 
 #-------------------------------------------------------------------------------
 echo "$(now) DONE"
