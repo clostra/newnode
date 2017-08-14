@@ -208,9 +208,6 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
     if (!req) {
         return;
     }
-    if (!req->evcon) {
-        debug("evcon:%p\n", req->evcon);
-    }
     debug("p:%p direct server_request_done_cb con:%p %s\n", p, req->evcon, evhttp_request_get_uri(p->server_req));
     p->direct_req = NULL;
     proxy_request_cleanup(p);
@@ -388,7 +385,6 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
         return;
     }
     if (!req->evcon) {
-        debug("evcon:%p\n", req->evcon);
         // connection failed
         if (p->injector) {
             injector_reachable = 0;
@@ -555,20 +551,44 @@ void direct_submit_request(proxy_request *p, const evhttp_uri *uri)
     debug("p:%p con:%p direct request submitted: %s\n", p, evhttp_request_get_connection(p->direct_req), evhttp_request_get_uri(p->direct_req));
 }
 
+address parse_address(const char *addr)
+{
+    address a;
+    char *port = strchr(addr, ':');
+    *port = '\0';
+    a.ip = inet_addr(addr);
+    a.port = htons(atoi(port+1));
+    return a;
+}
+
 void proxy_submit_request(proxy_request *p, const evhttp_uri *uri)
 {
     assert(!p->proxy_req);
 
-    evhttp_connection *evcon = injector_connection(p->n, &p->peer);
-    p->injector = true;
-    if (!evcon) {
-        p->injector = false;
-        evcon = injector_proxy_connection(p->n, &p->peer);
+    evhttp_connection *evcon;
+
+    const char *xpeer = evhttp_find_header(evhttp_request_get_input_headers(p->server_req), "X-Peer");
+    if (xpeer) {
+        // XXX: leaks peer
+        p->peer = alloc(peer);
+        p->peer->addr = parse_address(xpeer);
+        address *a = &p->peer->addr;
+        sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
+        debug("X-Peer %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
+        evcon = evhttp_utp_create(p->n, (sockaddr*)&sin, sizeof(sin));
+    } else {
+        evcon = injector_connection(p->n, &p->peer);
+        p->injector = true;
         if (!evcon) {
-            debug("p:%p could not find peers\n", p);
-            proxy_request_cleanup(p);
-            return;
+            p->injector = false;
+            evcon = injector_proxy_connection(p->n, &p->peer);
         }
+    }
+
+    if (!evcon) {
+        debug("p:%p could not find peers\n", p);
+        proxy_request_cleanup(p);
+        return;
     }
 
     p->proxy_req = evhttp_request_new(proxy_request_done_cb, p);
@@ -634,7 +654,8 @@ void submit_request(network *n, evhttp_request *server_req, const evhttp_uri *ur
     sockaddr_storage ss;
     socklen_t len = sizeof(ss);
     getpeername(fd, (sockaddr *)&ss, &len);
-    if (addr_is_localhost((sockaddr *)&ss, len)) {
+    const char *peer = evhttp_find_header(evhttp_request_get_input_headers(server_req), "X-Peer");
+    if (!peer && addr_is_localhost((sockaddr *)&ss, len)) {
         direct_submit_request(p, uri);
     }
     proxy_submit_request(p, uri);
@@ -821,9 +842,7 @@ void client_init()
     evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_CONNECT);
     evhttp_set_gencb(n->http, http_request_cb, n);
     evhttp_bind_socket_with_handle(n->http, "0.0.0.0", 8006);
-
-    // 127.0.0.1:9001
-    //add_addresses(&injectors, &injectors_len, (const byte *)"\x7f\x0\x0\x1\x23\x29", 1);
+    printf("listening on TCP:%s:%d\n", "0.0.0.0", 8006);
 
     timer_callback cb = ^{
         dht_get_peers(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
