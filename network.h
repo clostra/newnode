@@ -25,6 +25,7 @@ typedef struct bufferevent bufferevent;
 typedef struct sockaddr sockaddr;
 typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr_storage sockaddr_storage;
+typedef in_port_t port_t;
 
 typedef struct {
     event_base *evbase;
@@ -36,7 +37,7 @@ typedef struct {
     evhttp *http;
 } network;
 
-network* network_setup(char *address, char *port);
+network* network_setup(char *address, port_t port);
 int network_loop(network *n);
 
 #endif // __NETWORK_H__

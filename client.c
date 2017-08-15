@@ -27,8 +27,6 @@
 #include "utp_bufferevent.h"
 
 
-typedef uint16_t port_t;
-
 typedef struct {
     in_addr_t ip;
     port_t port;
@@ -831,18 +829,16 @@ void http_request_cb(evhttp_request *req, void *arg)
     submit_request(n, req, evhttp_request_get_evhttp_uri(req));
 }
 
-void client_init()
+void client_init(port_t port)
 {
-    o_debug = 1;
-
-    network *n = network_setup("0.0.0.0", "9390");
+    network *n = network_setup("0.0.0.0", port);
 
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
 
     evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_CONNECT);
     evhttp_set_gencb(n->http, http_request_cb, n);
-    evhttp_bind_socket_with_handle(n->http, "0.0.0.0", 8006);
-    printf("listening on TCP:%s:%d\n", "0.0.0.0", 8006);
+    evhttp_bind_socket_with_handle(n->http, "0.0.0.0", port);
+    printf("listening on TCP:%s:%d\n", "0.0.0.0", port);
 
     timer_callback cb = ^{
         dht_get_peers(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
@@ -865,6 +861,24 @@ int client_run()
 
 int main(int argc, char *argv[])
 {
-    client_init();
+    char *port_s = "8006";
+
+    o_debug = 1;
+
+    for (;;) {
+        int c = getopt(argc, argv, "p:");
+        if (c == -1) {
+            break;
+        }
+        switch (c) {
+        case 'p':
+            port_s = optarg;
+            break;
+        default:
+            die("Unhandled argument: %c\n", c);
+        }
+    }
+
+    client_init(atoi(port_s));
     return client_run();
 }

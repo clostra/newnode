@@ -109,7 +109,7 @@ void evdns_log_cb(int severity, const char *msg)
     debug("[evdns] %d %s\n", severity, msg);
 }
 
-network* network_setup(char *address, char *port)
+network* network_setup(char *address, port_t port)
 {
     signal(SIGPIPE, SIG_IGN);
 
@@ -120,7 +120,9 @@ network* network_setup(char *address, char *port)
     hints.ai_protocol = IPPROTO_UDP;
 
     struct addrinfo *res;
-    int error = getaddrinfo(address, port, &hints, &res);
+    char port_s[6];
+    snprintf(port_s, sizeof(port_s), "%u", port);
+    int error = getaddrinfo(address, port_s, &hints, &res);
     if (error) {
         die("getaddrinfo: %s\n", gai_strerror(error));
     }

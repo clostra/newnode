@@ -350,7 +350,7 @@ void usage(char *name)
 int main(int argc, char *argv[])
 {
     char *address = "0.0.0.0";
-    char *port = NULL;
+    char *port_s = NULL;
 
     o_debug = 1;
 
@@ -361,7 +361,7 @@ int main(int argc, char *argv[])
         }
         switch (c) {
         case 'p':
-            port = optarg;
+            port_s = optarg;
             break;
         case 's':
             address = optarg;
@@ -371,7 +371,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (!port) {
+    if (!port_s) {
         usage(argv[0]);
     }
 
@@ -392,6 +392,7 @@ int main(int argc, char *argv[])
 
     url_table = hash_table_create();
 
+    port_t port = atoi(port_s);
     network *n = network_setup(address, port);
 
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
@@ -408,7 +409,7 @@ int main(int argc, char *argv[])
 
     evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_HEAD | EVHTTP_REQ_CONNECT);
     evhttp_set_gencb(n->http, http_request_cb, n);
-    evhttp_bind_socket_with_handle(n->http, "0.0.0.0", 8005);
+    evhttp_bind_socket_with_handle(n->http, "0.0.0.0", port);
 
     return network_loop(n);
 }

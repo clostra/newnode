@@ -53,7 +53,7 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
         return JNI_ERR;
     }
     start_stdio_thread();
-    client_init();
+    client_init(8006);
     pthread_t t;
     pthread_create(&t, NULL, android_main, NULL);
     return  JNI_VERSION_1_6;

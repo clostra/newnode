@@ -3,9 +3,8 @@
 set -e
 
 LOCAL_ORIGIN=localhost:8000
-INJECTOR_TCP_PORT=8005
-INJECTOR_UTP_PORT=7000
-CLIENT_TCP_PORT=8006
+INJECTOR_PORT=8005
+CLIENT_PORT=8006
 
 HTTP_OK=200
 HTTP_MOVED=301
@@ -39,7 +38,7 @@ python -m SimpleHTTPServer &
 server_pid=$!
 
 echo "$(now) Starting injector."
-$unbuf ./injector -p $INJECTOR_UTP_PORT 2> >(prepend "inject_err") 1> >(prepend "inject_out") &
+$unbuf ./injector -p $INJECTOR_PORT 2> >(prepend "inject_err") 1> >(prepend "inject_out") &
 injector_pid=$!
 
 # Wait for the injector to start
@@ -51,7 +50,7 @@ do_curl $LOCAL_ORIGIN $HTTP_OK
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing curl to injector."
-http_proxy=localhost:$INJECTOR_TCP_PORT do_curl $LOCAL_ORIGIN $HTTP_OK
+http_proxy=localhost:$INJECTOR_PORT do_curl $LOCAL_ORIGIN $HTTP_OK
 
 #-------------------------------------------------------------------------------
 echo "$(now) Starting client."
@@ -62,19 +61,19 @@ sleep 1
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing curl to client."
-http_proxy=localhost:$CLIENT_TCP_PORT do_curl $LOCAL_ORIGIN $HTTP_OK
+http_proxy=localhost:$CLIENT_PORT do_curl $LOCAL_ORIGIN $HTTP_OK
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing HTTPS forwarding."
-http_proxy=localhost:$CLIENT_TCP_PORT do_curl https://www.google.com $HTTP_OK
+http_proxy=localhost:$CLIENT_PORT do_curl https://www.google.com $HTTP_OK
 
 #-------------------------------------------------------------------------------
 echo "$(now) Test indirect."
-http_proxy=localhost:$CLIENT_TCP_PORT do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Peer: 127.0.0.1:$INJECTOR_UTP_PORT"
+http_proxy=localhost:$CLIENT_PORT do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Peer: 127.0.0.1:$INJECTOR_PORT"
 
 #-------------------------------------------------------------------------------
 echo "$(now) Test cache."
-http_proxy=localhost:$CLIENT_TCP_PORT do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Peer: 0.0.0.0:1"
+http_proxy=localhost:$CLIENT_PORT do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Peer: 0.0.0.0:1"
 
 #-------------------------------------------------------------------------------
 echo "$(now) DONE"
