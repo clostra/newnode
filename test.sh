@@ -17,8 +17,8 @@ function now {
     date +'%M:%S'
 }
 
-# XXX Find a stdbuf replacement on OSX
 if `which stdbuf >/dev/null`; then unbuf='stdbuf -i0 -o0 -e0'; fi
+if `which gstdbuf >/dev/null`; then unbuf='gstdbuf -i0 -o0 -e0'; fi
 
 function prepend {
     while read line; do echo "$(now) $1| $line"; done
@@ -54,7 +54,7 @@ http_proxy=localhost:$INJECTOR_PORT do_curl $LOCAL_ORIGIN $HTTP_OK
 
 #-------------------------------------------------------------------------------
 echo "$(now) Starting client."
-$unbuf ./client > >(prepend "client_err") > >(prepend "client_out") &
+$unbuf ./client 2> >(prepend "client_err") 1> >(prepend "client_out") &
 
 # Wait for the client to start
 sleep 1
@@ -73,11 +73,11 @@ http_proxy=localhost:$CLIENT_PORT do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Peer: 127
 
 #-------------------------------------------------------------------------------
 echo "$(now) Test cache."
-http_proxy=localhost:$CLIENT_PORT do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Peer: 0.0.0.0:1"
+http_proxy=localhost:$CLIENT_PORT do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Cache: true"
 
 #-------------------------------------------------------------------------------
 echo "$(now) Starting client 2."
-$unbuf ./client -p 8007 > >(prepend "client_err") > >(prepend "client_out") &
+$unbuf ./client -p 8007 2> >(prepend "client2_err") 1> >(prepend "client2_out") &
 
 # Wait for the client to start
 sleep 1
