@@ -15,7 +15,6 @@
 #include <event2/bufferevent.h>
 
 #include "log.h"
-#include "sha1.h"
 #include "utp.h"
 #include "http.h"
 #include "base64.h"
@@ -61,6 +60,8 @@ typedef struct {
     char cache_name[sizeof(CACHE_NAME)];
     int cache_file;
     peer *peer;
+    bool dht_lookup_running:1;
+    bool dht_lookup_cancelled:1;
     bool injector:1;
     bool dont_free:1;
 } proxy_request;
@@ -144,7 +145,8 @@ void proxy_cache_delete(proxy_request *p)
 void proxy_request_cleanup(proxy_request *p)
 {
     debug("df:%d preq:%p phr:%p dr:%p\n", p->dont_free, p->proxy_req, p->proxy_head_req, p->direct_req);
-    if (p->dont_free || p->proxy_req || p->proxy_head_req || p->direct_req) {
+    p->dht_lookup_cancelled = true;
+    if (p->dont_free || p->proxy_req || p->proxy_head_req || p->direct_req || p->dht_lookup_running) {
         return;
     }
     if (p->server_req) {
@@ -559,36 +561,8 @@ address parse_address(const char *addr)
     return a;
 }
 
-void proxy_submit_request(proxy_request *p, const evhttp_uri *uri)
+void proxy_submit_request_on_con(proxy_request *p, const evhttp_uri *uri, evhttp_connection *evcon)
 {
-    assert(!p->proxy_req);
-
-    evhttp_connection *evcon;
-
-    const char *xpeer = evhttp_find_header(evhttp_request_get_input_headers(p->server_req), "X-Peer");
-    if (xpeer) {
-        // XXX: leaks peer
-        p->peer = alloc(peer);
-        p->peer->addr = parse_address(xpeer);
-        address *a = &p->peer->addr;
-        sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
-        debug("X-Peer %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
-        evcon = evhttp_utp_create(p->n, (sockaddr*)&sin, sizeof(sin));
-    } else {
-        evcon = injector_connection(p->n, &p->peer);
-        p->injector = true;
-        if (!evcon) {
-            p->injector = false;
-            evcon = injector_proxy_connection(p->n, &p->peer);
-        }
-    }
-
-    if (!evcon) {
-        debug("p:%p could not find peers\n", p);
-        proxy_request_cleanup(p);
-        return;
-    }
-
     p->proxy_req = evhttp_request_new(proxy_request_done_cb, p);
     const char *request_header_whitelist[] = {"Referer"};
     for (size_t i = 0; i < lenof(request_header_whitelist); i++) {
@@ -610,6 +584,66 @@ void proxy_submit_request(proxy_request *p, const evhttp_uri *uri)
     evhttp_make_request(evcon, p->proxy_req, EVHTTP_REQ_GET, request_uri);
     evhttp_make_request(evcon, p->proxy_head_req, EVHTTP_REQ_HEAD, request_uri);
     debug("p:%p con:%p proxy request submitted: %s\n", p, evhttp_request_get_connection(p->proxy_req), evhttp_request_get_uri(p->proxy_req));
+}
+
+void proxy_submit_request(proxy_request *p, const evhttp_uri *uri)
+{
+    assert(!p->proxy_req);
+
+    const char *xdht = evhttp_find_header(evhttp_request_get_input_headers(p->server_req), "X-DHT");
+    if (!xdht) {
+        const char *xpeer = evhttp_find_header(evhttp_request_get_input_headers(p->server_req), "X-Peer");
+        if (xpeer) {
+            // XXX: leaks peer
+            p->peer = alloc(peer);
+            p->peer->addr = parse_address(xpeer);
+            address *a = &p->peer->addr;
+            sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
+            debug("X-Peer %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
+            proxy_submit_request_on_con(p, uri, evhttp_utp_create(p->n, (sockaddr*)&sin, sizeof(sin)));
+            return;
+        }
+        evhttp_connection *evcon = injector_connection(p->n, &p->peer);
+        if (evcon) {
+            p->injector = true;
+            proxy_submit_request_on_con(p, uri, evcon);
+            return;
+        }
+        evcon = injector_proxy_connection(p->n, &p->peer);
+        if (evcon) {
+            p->injector = false;
+            proxy_submit_request_on_con(p, uri, evcon);
+            return;
+        }
+    }
+
+    p->dht_lookup_running = true;
+    __block bool dht_lookup_cancelled = p->dht_lookup_cancelled;
+    fetch_url_swarm(p->n, evhttp_request_get_uri(p->server_req), ^(const byte *peers, uint num_peers) {
+        if (dht_lookup_cancelled) {
+            return;
+        }
+        if (p->dht_lookup_cancelled) {
+            p->dht_lookup_running = false;
+            dht_lookup_cancelled = true;
+            return;
+        }
+        // for now, one response is enough
+        p->dht_lookup_running = false;
+        dht_lookup_cancelled = true;
+        if (peers) {
+            // XXX: leaks peer
+            p->peer = alloc(peer);
+            memcpy(&p->peer->addr, peers, 6);
+            address *a = &p->peer->addr;
+            sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
+            debug("DHT peer %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
+            proxy_submit_request_on_con(p, uri, evhttp_utp_create(p->n, (sockaddr*)&sin, sizeof(sin)));
+        } else {
+            debug("p:%p could not find peers\n", p);
+            proxy_request_cleanup(p);
+        }
+    });
 }
 
 void server_error_cb(enum evhttp_request_error error, void *arg)
@@ -652,8 +686,9 @@ void submit_request(network *n, evhttp_request *server_req, const evhttp_uri *ur
     sockaddr_storage ss;
     socklen_t len = sizeof(ss);
     getpeername(fd, (sockaddr *)&ss, &len);
-    const char *peer = evhttp_find_header(evhttp_request_get_input_headers(server_req), "X-Peer");
-    if (!peer && addr_is_localhost((sockaddr *)&ss, len)) {
+    const char *xdht = evhttp_find_header(evhttp_request_get_input_headers(server_req), "X-DHT");
+    const char *xpeer = evhttp_find_header(evhttp_request_get_input_headers(server_req), "X-Peer");
+    if (!xdht && !xpeer && addr_is_localhost((sockaddr *)&ss, len)) {
         direct_submit_request(p, uri);
     }
     proxy_submit_request(p, uri);
@@ -797,35 +832,46 @@ void http_request_cb(evhttp_request *req, void *arg)
         connect_request(n, req);
         return;
     }
-    char *uri = evhttp_encode_uri(evhttp_request_get_uri(req));
-    char cache_path[2048];
-    char cache_headers_path[2048];
-    snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, uri);
-    snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
-    free(uri);
-    int cache_file = open(cache_path, O_RDONLY);
-    int headers_file = open(cache_headers_path, O_RDONLY);
-    debug("check hit:%d,%d cache:%s\n", cache_file != -1, headers_file != -1, cache_path);
-    if (cache_file != -1 && headers_file != -1) {
-        evhttp_request *temp = evhttp_request_new(NULL, NULL);
-        evbuffer *header_buf = evbuffer_new();
-        off_t length = lseek(headers_file, 0, SEEK_END);
-        evbuffer_add_file(header_buf, headers_file, 0, length);
-        evhttp_parse_headers_(temp, header_buf);
-        copy_response_headers(temp, req);
-        evhttp_request_free(temp);
-        evbuffer_free(header_buf);
 
-        evbuffer *content = evbuffer_new();
-        length = lseek(cache_file, 0, SEEK_END);
-        evbuffer_add_file(content, cache_file, 0, length);
-        debug("responding with %d %s %u\n", HTTP_OK, "OK", length);
-        evhttp_send_reply(req, HTTP_OK, "OK", content);
-        evbuffer_free(content);
+    const char *xcache = evhttp_find_header(evhttp_request_get_input_headers(req), "X-Cache");
+    const char *xdht = evhttp_find_header(evhttp_request_get_input_headers(req), "X-DHT");
+    const char *xpeer = evhttp_find_header(evhttp_request_get_input_headers(req), "X-Peer");
+    if (xcache || (!xdht && !xpeer)) {
+        char *uri = evhttp_encode_uri(evhttp_request_get_uri(req));
+        char cache_path[2048];
+        char cache_headers_path[2048];
+        snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, uri);
+        snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
+        free(uri);
+        int cache_file = open(cache_path, O_RDONLY);
+        int headers_file = open(cache_headers_path, O_RDONLY);
+        debug("check hit:%d,%d cache:%s\n", cache_file != -1, headers_file != -1, cache_path);
+        if (cache_file != -1 && headers_file != -1) {
+            evhttp_request *temp = evhttp_request_new(NULL, NULL);
+            evbuffer *header_buf = evbuffer_new();
+            off_t length = lseek(headers_file, 0, SEEK_END);
+            evbuffer_add_file(header_buf, headers_file, 0, length);
+            evhttp_parse_headers_(temp, header_buf);
+            copy_response_headers(temp, req);
+            evhttp_request_free(temp);
+            evbuffer_free(header_buf);
+
+            evbuffer *content = evbuffer_new();
+            length = lseek(cache_file, 0, SEEK_END);
+            evbuffer_add_file(content, cache_file, 0, length);
+            debug("responding with %d %s %u\n", HTTP_OK, "OK", length);
+            evhttp_send_reply(req, HTTP_OK, "OK", content);
+            evbuffer_free(content);
+            return;
+        }
+        close(cache_file);
+        close(headers_file);
+    }
+    if (xcache) {
+        evhttp_send_error(req, 502, "Bad Gateway");
         return;
     }
-    close(cache_file);
-    close(headers_file);
+
     submit_request(n, req, evhttp_request_get_evhttp_uri(req));
 }
 

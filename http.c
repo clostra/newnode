@@ -42,6 +42,13 @@ void join_url_swarm(network *n, const char *url)
     timer_repeating(n, 25 * 60 * 1000, cb);
 }
 
+void fetch_url_swarm(network *n, const char *url, add_nodes_callblock add_nodes)
+{
+    uint8_t url_hash[20];
+    SHA1(url_hash, (const unsigned char *)url, strlen(url));
+    dht_get_peers(n->dht, url_hash, add_nodes);
+}
+
 int get_port_for_scheme(const char *scheme)
 {
     struct addrinfo hints;
