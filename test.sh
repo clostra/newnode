@@ -54,7 +54,7 @@ http_proxy=localhost:$INJECTOR_PORT do_curl $LOCAL_ORIGIN $HTTP_OK
 
 #-------------------------------------------------------------------------------
 echo "$(now) Starting client."
-$unbuf ./client -i 2> >(prepend "client_err") > >(prepend "client_out") &
+$unbuf ./client > >(prepend "client_err") > >(prepend "client_out") &
 
 # Wait for the client to start
 sleep 1
@@ -74,6 +74,18 @@ http_proxy=localhost:$CLIENT_PORT do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Peer: 127
 #-------------------------------------------------------------------------------
 echo "$(now) Test cache."
 http_proxy=localhost:$CLIENT_PORT do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Peer: 0.0.0.0:1"
+
+#-------------------------------------------------------------------------------
+echo "$(now) Starting client 2."
+$unbuf ./client -p 8007 > >(prepend "client_err") > >(prepend "client_out") &
+
+# Wait for the client to start
+sleep 1
+
+#-------------------------------------------------------------------------------
+echo "$(now) Test cache through peer."
+http_proxy=localhost:8007 do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Peer: 127.0.0.1:8006"
+
 
 #-------------------------------------------------------------------------------
 echo "$(now) DONE"
