@@ -25,6 +25,7 @@ install:
 
 script:
   - ${CC:-clang} -v
+  - gcov --version
   - ./build.sh
   - ./test.sh
   - for f in *.c; do gcov -n -o . $f; done
