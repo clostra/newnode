@@ -246,8 +246,16 @@ network* network_setup(char *address, port_t port)
     return n;
 }
 
+void sigterm_cb(evutil_socket_t sig, short events, void *ctx)
+{
+    event_base_loopexit((event_base*)ctx, NULL);
+}
+
 int network_loop(network *n)
 {
+    event *sigterm = evsignal_new(n->evbase, SIGTERM, sigterm_cb, n->evbase);
+    event_add(sigterm, NULL);
+
     event_base_dispatch(n->evbase);
 
     utp_context_stats *stats = utp_get_context_stats(n->utp);
@@ -263,9 +271,13 @@ int network_loop(network *n)
     }
 
     debug("Destroying network context\n");
+    event_free(sigterm);
     utp_destroy(n->utp);
     dht_destroy(n->dht);
     close(n->fd);
+    evdns_base_free(n->evdns, 0);
+    event_base_free(n->evbase);
+    free(n);
 
     return 0;
 }

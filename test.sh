@@ -42,7 +42,7 @@ $unbuf ./injector -p $INJECTOR_PORT 2> >(prepend "inject_err") 1> >(prepend "inj
 injector_pid=$!
 
 # Wait for the injector to start
-sleep 1
+sleep 2
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing curl directly to the server."
@@ -57,7 +57,7 @@ echo "$(now) Starting client."
 $unbuf ./client 2> >(prepend "client_err") 1> >(prepend "client_out") &
 
 # Wait for the client to start
-sleep 1
+sleep 2
 
 #-------------------------------------------------------------------------------
 echo "$(now) Testing curl to client."
@@ -87,8 +87,8 @@ echo "$(now) Test cache through peer."
 http_proxy=localhost:8007 do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Peer: 127.0.0.1:8006"
 
 #-------------------------------------------------------------------------------
-echo "$(now) Test cache through DHT."
-http_proxy=localhost:8007 do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-DHT: true"
+#echo "$(now) Test cache through DHT."
+#http_proxy=localhost:8007 do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-DHT: true"
 
 
 #-------------------------------------------------------------------------------
