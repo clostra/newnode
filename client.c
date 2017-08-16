@@ -71,6 +71,8 @@ peer *injectors;
 uint injectors_len;
 peer *injector_proxies;
 uint injector_proxies_len;
+peer *all_peers;
+uint all_peers_len;
 time_t injector_reachable;
 
 
@@ -99,7 +101,7 @@ void add_addresses(peer **peers, uint *ppeers_len, const byte *addrs, uint num_a
     uint peers_len = *ppeers_len;
     for (uint i = 0; i < num_addrs; i++) {
         for (uint j = 0; j < peers_len; j++) {
-            if (memeq(&addrs[6 * i], (const uint8_t *)&(*peers)[j].addr, 6)) {
+            if (memeq(&addrs[sizeof(address) * i], (const uint8_t *)&(*peers)[j].addr, sizeof(address))) {
                 return;
             }
         }
@@ -107,7 +109,7 @@ void add_addresses(peer **peers, uint *ppeers_len, const byte *addrs, uint num_a
         *ppeers_len = peers_len;
         *peers = realloc(*peers, peers_len * sizeof(peer));
         bzero(&(*peers)[peers_len-1], sizeof(peer));
-        memcpy(&(*peers)[peers_len-1].addr, &addrs[6 * i], 6);
+        memcpy(&(*peers)[peers_len-1].addr, &addrs[sizeof(address) * i], sizeof(address));
         address *a = &(*peers)[peers_len-1].addr;
         debug("new injector%s %s:%d\n", *peers == injectors ? "" : " proxy",
             inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
@@ -594,13 +596,19 @@ void proxy_submit_request(proxy_request *p, const evhttp_uri *uri)
     if (!xdht) {
         const char *xpeer = evhttp_find_header(evhttp_request_get_input_headers(p->server_req), "X-Peer");
         if (xpeer) {
-            // XXX: leaks peer
-            p->peer = alloc(peer);
-            p->peer->addr = parse_address(xpeer);
-            address *a = &p->peer->addr;
-            sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
-            debug("X-Peer %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
-            proxy_submit_request_on_con(p, uri, evhttp_utp_create(p->n, (sockaddr*)&sin, sizeof(sin)));
+            address a = parse_address(xpeer);
+            add_addresses(&all_peers, &all_peers_len, (const byte*)&a, 1);
+            for (size_t i = 0; i < all_peers_len; i++) {
+                if (!memeq((const uint8_t *)&a, (const uint8_t *)&all_peers[i].addr, sizeof(address))) {
+                    continue;
+                }
+                p->peer = &all_peers[i];
+                address *a = &p->peer->addr;
+                sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
+                debug("X-Peer %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
+                proxy_submit_request_on_con(p, uri, evhttp_utp_create(p->n, (sockaddr*)&sin, sizeof(sin)));
+                break;
+            }
             return;
         }
         evhttp_connection *evcon = injector_connection(p->n, &p->peer);
@@ -620,6 +628,9 @@ void proxy_submit_request(proxy_request *p, const evhttp_uri *uri)
     p->dht_lookup_running = true;
     __block bool dht_lookup_cancelled = p->dht_lookup_cancelled;
     fetch_url_swarm(p->n, evhttp_request_get_uri(p->server_req), ^(const byte *peers, uint num_peers) {
+        if (peers) {
+            add_addresses(&all_peers, &all_peers_len, peers, num_peers);
+        }
         if (dht_lookup_cancelled) {
             return;
         }
@@ -632,16 +643,28 @@ void proxy_submit_request(proxy_request *p, const evhttp_uri *uri)
         p->dht_lookup_running = false;
         dht_lookup_cancelled = true;
         if (peers) {
-            // XXX: leaks peer
-            p->peer = alloc(peer);
-            memcpy(&p->peer->addr, peers, 6);
-            address *a = &p->peer->addr;
-            sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
-            debug("DHT peer %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
-            proxy_submit_request_on_con(p, uri, evhttp_utp_create(p->n, (sockaddr*)&sin, sizeof(sin)));
+            for (size_t i = 0; i < all_peers_len; i++) {
+                if (!memeq(peers, (const uint8_t *)&all_peers[i].addr, sizeof(address))) {
+                    continue;
+                }
+                p->peer = &all_peers[i];
+                address *a = &p->peer->addr;
+                sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
+                debug("DHT peer %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
+                proxy_submit_request_on_con(p, uri, evhttp_utp_create(p->n, (sockaddr*)&sin, sizeof(sin)));
+                break;
+            }
         } else {
-            debug("p:%p could not find peers\n", p);
-            proxy_request_cleanup(p);
+            evhttp_connection *evcon = peer_connection(p->n, all_peers, all_peers_len, &p->peer);
+            if (evcon) {
+                address *a = &p->peer->addr;
+                sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
+                debug("DHT peer %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
+                proxy_submit_request_on_con(p, uri, evcon);
+            } else {
+                debug("p:%p could not find peers\n", p);
+                proxy_request_cleanup(p);
+            }
         }
     });
 }
