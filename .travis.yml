@@ -26,6 +26,7 @@ install:
 script:
   - ${CC:-clang} -v
   - gcov --version
+  - llvm-cov gcov --version
   - ./build.sh
   - ./test.sh
   - for f in *.c; do `which llvm-cov 2>/dev/null` gcov -n -o . $f; done
