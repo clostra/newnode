@@ -27,7 +27,7 @@ script:
   - ${CC:-clang} -v
   - ./build.sh
   - ./test.sh
-  - for f in *.c; do gcov -n -o . $f; done
+  - for f in *.c; do `which llvm-cov 2>/dev/null` gcov -n -o . $f; done
   - codecov
 
 after_success:
