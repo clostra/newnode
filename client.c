@@ -45,7 +45,7 @@ typedef struct {
     peer *peer;
 } PACKED peer_sort;
 
-#define CACHE_PATH "/tmp/dcdn/"
+#define CACHE_PATH "cache/"
 #define CACHE_NAME CACHE_PATH "cache.XXXXXXXX"
 #define CACHE_HEADERS_NAME CACHE_NAME ".headers"
 
