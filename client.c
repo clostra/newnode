@@ -596,10 +596,10 @@ void proxy_submit_request(proxy_request *p, const evhttp_uri *uri)
     if (!xdht) {
         const char *xpeer = evhttp_find_header(evhttp_request_get_input_headers(p->server_req), "X-Peer");
         if (xpeer) {
-            address a = parse_address(xpeer);
-            add_addresses(&all_peers, &all_peers_len, (const byte*)&a, 1);
+            address xa = parse_address(xpeer);
+            add_addresses(&all_peers, &all_peers_len, (const byte*)&xa, 1);
             for (size_t i = 0; i < all_peers_len; i++) {
-                if (!memeq((const uint8_t *)&a, (const uint8_t *)&all_peers[i].addr, sizeof(address))) {
+                if (!memeq((const uint8_t *)&xa, (const uint8_t *)&all_peers[i].addr, sizeof(address))) {
                     continue;
                 }
                 p->peer = &all_peers[i];
