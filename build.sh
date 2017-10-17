@@ -58,11 +58,12 @@ FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-paramet
   -fPIC -fblocks -fdata-sections -ffunction-sections \
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
   -D__FAVOR_BSD -D_BSD_SOURCE"
-if [ "$NDEBUG" = "1" ]; then
-    FLAGS="$FLAGS -O3"
-else
+if [ ! -z "$DEBUG" ]; then
     FLAGS="$FLAGS -O0 -DDEBUG=1 -fsanitize=address --coverage"
+else
+    FLAGS="$FLAGS -O3"
 fi
+
 
 CFLAGS="$FLAGS -std=gnu11"
 CPPFLAGS="$FLAGS -std=c++14 -stdlib=libc++"
