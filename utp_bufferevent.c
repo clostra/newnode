@@ -104,7 +104,7 @@ void utp_bufferevent_flush(utp_bufferevent *u)
 
 uint64 utp_on_error(utp_callback_arguments *a)
 {
-    fprintf(stderr, "Error: %s\n", utp_error_code_names[a->error_code]);
+    debug("utp error: %s\n", utp_error_code_names[a->error_code]);
     utp_bufferevent *u = (utp_bufferevent*)utp_get_userdata(a->socket);
     if (u) {
         utp_bufferevent_utp_close(u);
