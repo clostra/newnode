@@ -29,16 +29,19 @@ function build_android {
     cd libsodium
     LIBSODIUM_DIR="$(pwd)/libsodium-android-$CPU_ARCH"
     test -f configure || ./autogen.sh
-    test -f ${LIBSODIUM_DIR}/lib/libsodium.a || ./dist-build/android-$CPU_ARCH.sh
+    test -f ${LIBSODIUM_DIR}/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
     cd ..
     LIBSODIUM_CFLAGS=-I${LIBSODIUM_DIR}/include
     LIBSODIUM="$LIBSODIUM_CFLAGS ${LIBSODIUM_DIR}/lib/libsodium.a"
 
+    if [ "$ABI" = "mips64" ]; then
+        ABI_FLAGS="-fintegrated-as"
+    fi
 
     cd libutp
     if [ ! -f $TRIPLE/libutp.a ]; then
         make clean
-        CC=clang CXX=clang++ make -j3 libutp.a
+        CC=clang CXX=clang++ CPPFLAGS=$ABI_FLAGS make -j3 libutp.a
         mkdir $TRIPLE
         mv libutp.a $TRIPLE
     fi
@@ -54,7 +57,7 @@ function build_android {
     cd libbtdht/btutils
     if [ ! -f $TRIPLE/libbtutils.a ]; then
         for f in src/*.cpp; do
-            clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -fPIC -c $f
+            clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -fPIC $ABI_FLAGS -c $f
         done
         mkdir $TRIPLE
         ar rs $TRIPLE/libbtutils.a *.o
@@ -62,7 +65,7 @@ function build_android {
     cd ..
     if [ ! -f $TRIPLE/libbtdht.a ]; then
         for f in src/*.cpp; do
-            clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -fPIC -I btutils/src -I src -c $f
+            clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -fPIC $ABI_FLAGS -I btutils/src -I src -c $f
         done
         mkdir $TRIPLE
         ar rs $TRIPLE/libbtdht.a *.o
@@ -87,7 +90,7 @@ function build_android {
     FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
-      -D__FAVOR_BSD -D_BSD_SOURCE"
+      -D__FAVOR_BSD -D_BSD_SOURCE $ABI_FLAGS"
     if [ ! -z "$DEBUG" ]; then
         FLAGS="$FLAGS -O0 -DDEBUG=1"
     else
@@ -105,17 +108,43 @@ function build_android {
     if [ -z "$DEBUG" ]; then
         strip -x libdcdn.so
     fi
-    ls -l libdcdn.so
     test -d android/libs/$ABI || mkdir android/libs/$ABI
     cp libdcdn.so android/libs/$ABI
+    ls -ld android/libs/$ABI/*
 }
 
 ARCH=arm
 ABI=armeabi-v7a
 CPU_ARCH=armv7-a
+SODIUM_SCRIPT=$CPU_ARCH
 build_android
 
 ARCH=arm64
 ABI=arm64-v8a
 CPU_ARCH=armv8-a
+SODIUM_SCRIPT=$CPU_ARCH
+build_android
+
+ARCH=x86
+ABI=x86
+CPU_ARCH=i686
+SODIUM_SCRIPT=$ABI
+build_android
+
+ARCH=x86_64
+ABI=x86_64
+CPU_ARCH=westmere
+SODIUM_SCRIPT=$ABI
+build_android
+
+ARCH=mips
+ABI=mips
+CPU_ARCH=mips32
+SODIUM_SCRIPT=$CPU_ARCH
+build_android
+
+ARCH=mips64
+ABI=mips64
+CPU_ARCH=mips64r6
+SODIUM_SCRIPT=$ABI
 build_android
