@@ -1,6 +1,7 @@
 package com.example.webviewsample;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -10,7 +11,6 @@ import android.view.MenuItem;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.WebChromeClient;
-import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -59,9 +59,9 @@ public class MainActivity extends AppCompatActivity {
         mWebView = (WebView) findViewById(R.id.webView);
         mWebView.setWebViewClient(new WebViewClient() {
             @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                mEditText.setText(request.getUrl().toString(), TextView.BufferType.EDITABLE);
-                return false;
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                super.onPageStarted(view, url, favicon);
+                mEditText.setText(url, TextView.BufferType.EDITABLE);
             }
         });
         mWebView.setWebChromeClient(new WebChromeClient() {
