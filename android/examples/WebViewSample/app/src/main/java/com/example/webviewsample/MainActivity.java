@@ -10,19 +10,22 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import com.clostra.dcdn.Dcdn;
 
 public class MainActivity extends AppCompatActivity {
 
-    private WebView mWebView;
     private EditText mEditText;
+    private ProgressBar mProgressBar;
+    private WebView mWebView;
 
     void load() {
         String url = mEditText.getText().toString();
@@ -44,7 +47,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         Dcdn.init();
         setContentView(R.layout.activity_main);
-        mEditText = (EditText) findViewById(R.id.edit);
+        mEditText = (EditText) findViewById(R.id.editText);
         mEditText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
@@ -54,12 +57,24 @@ public class MainActivity extends AppCompatActivity {
                 return false;
             }
         });
-        mWebView = (WebView) findViewById(R.id.activity_main_webview);
+        mProgressBar = (ProgressBar) findViewById(R.id.progressBar);
+        mWebView = (WebView) findViewById(R.id.webView);
         mWebView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 mEditText.setText(request.getUrl().toString(), TextView.BufferType.EDITABLE);
                 return false;
+            }
+        });
+        mWebView.setWebChromeClient(new WebChromeClient() {
+            public void onProgressChanged(WebView view, int progress) {
+                if (progress < 100 && mProgressBar.getVisibility() == ProgressBar.GONE) {
+                    mProgressBar.setVisibility(ProgressBar.VISIBLE);
+                }
+                mProgressBar.setProgress(progress);
+                if (progress == 100) {
+                    mProgressBar.setVisibility(ProgressBar.GONE);
+                }
             }
         });
         WebSettings webSettings = mWebView.getSettings();
