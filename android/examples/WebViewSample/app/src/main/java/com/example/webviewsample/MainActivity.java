@@ -4,7 +4,6 @@ import android.content.Context;
 import android.net.Uri;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -30,7 +29,6 @@ public class MainActivity extends AppCompatActivity {
     void load() {
         String url = mEditText.getText().toString();
         if (!url.isEmpty()) {
-            Uri u = Uri.parse(url);
             if (Uri.parse(url).getScheme() == null) {
                 url = "http://" + url;
                 mEditText.setText(url, TextView.BufferType.EDITABLE);
