@@ -11,6 +11,7 @@
         android:layout_height="wrap_content"
         android:layout_width="0dp"
         android:inputType="textWebEditText"
+        android:selectAllOnFocus="true"
         android:imeOptions="actionGo"
         android:padding = "8dp"
         app:layout_constraintTop_toTopOf="parent"
