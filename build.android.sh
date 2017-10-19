@@ -108,7 +108,7 @@ function build_android {
     if [ -z "$DEBUG" ]; then
         strip -x libdcdn.so
     fi
-    test -d android/libs/$ABI || mkdir android/libs/$ABI
+    test -d android/libs/$ABI || mkdir -p android/libs/$ABI
     cp libdcdn.so android/libs/$ABI
     ls -ld android/libs/$ABI/*
 }
