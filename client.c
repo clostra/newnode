@@ -45,7 +45,7 @@ typedef struct {
     peer *peer;
 } PACKED peer_sort;
 
-#define CACHE_PATH "cache/"
+#define CACHE_PATH "./cache/"
 #define CACHE_NAME CACHE_PATH "cache.XXXXXXXX"
 #define CACHE_HEADERS_NAME CACHE_NAME ".headers"
 
@@ -900,6 +900,8 @@ void http_request_cb(evhttp_request *req, void *arg)
 
 void client_init(port_t port)
 {
+    o_debug = 0;
+
     network *n = network_setup("0.0.0.0", port);
 
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
@@ -931,8 +933,6 @@ int client_run()
 int main(int argc, char *argv[])
 {
     char *port_s = "8006";
-
-    o_debug = 1;
 
     for (;;) {
         int c = getopt(argc, argv, "p:");
