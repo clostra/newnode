@@ -6,6 +6,7 @@
 [![codecov.io](https://codecov.io/github/clostra/dcdn/coverage.svg?branch=master)](https://codecov.io/github/clostra/dcdn?branch=master)
 [![Stories in Ready](https://badge.waffle.io/clostra/dcdn.svg?label=ready&title=Ready)](http://waffle.io/clostra/dcdn)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/fbeb689ec190470a90645fb016cbcfb7)](https://www.codacy.com/app/shalunov/dcdn)
+[ ![Download](https://api.bintray.com/packages/clostra/dcdn/dcdn/images/download.svg) ](https://bintray.com/clostra/dcdn/dcdn/_latestVersion)
 
 ## How to contribute
 
