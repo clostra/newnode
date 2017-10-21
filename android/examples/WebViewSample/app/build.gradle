@@ -24,4 +24,5 @@ dependencies {
     compile 'com.android.support.constraint:constraint-layout:1.0.2'
     // TODO: publish dcdn to jcenter
     compile project(':dcdn')
+    //compile 'com.clostra.dcdn:dcdn:1.0.1'
 }
