@@ -1,6 +1,14 @@
 buildscript {
     repositories.jcenter()
-    dependencies.classpath 'com.android.tools.build:gradle:2.3.3'
+    dependencies {
+        classpath 'com.android.tools.build:gradle:2.3.3'
+        classpath 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.4'
+        classpath 'com.github.dcendents:android-maven-gradle-plugin:1.4.1'
+    }
+}
+
+plugins {
+    id "com.jfrog.bintray" version "1.7.3"
 }
 
 apply plugin: 'com.android.library'
@@ -11,8 +19,8 @@ android {
 
     defaultConfig {
         minSdkVersion 13
-        versionCode 101
         versionName "1.0.1"
+        versionCode versionName.replace(".", "").toInteger()
     }
     sourceSets.main {
         jniLibs.srcDir 'libs'
@@ -29,3 +37,6 @@ android {
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
 }
+
+apply from: 'maven.gradle'
+apply from: 'bintray.gradle'

@@ -1,0 +1,32 @@
+apply plugin: 'com.github.dcendents.android-maven'
+
+group = 'com.clostra.dcdn'
+
+install.repositories.mavenInstaller.pom.project {
+    packaging 'aar'
+    groupId group
+    artifactId 'dcdn'
+
+    name 'dcdn'
+    description ''
+    url 'https://github.com/clostra/dcdn'
+
+    licenses {
+        license {
+            name 'GNU General Public License version 2'
+            url 'https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html'
+        }
+    }
+    developers {
+        developer {
+            id 'clostra'
+            name 'Clostra'
+            email 'contact@clostra.com'
+        }
+    }
+    scm {
+        connection 'https://github.com/clostra/dcdn.git'
+        developerConnection 'https://github.com/clostra/dcdn.git'
+        url 'https://github.com/clostra/dcdn'
+    }
+}
