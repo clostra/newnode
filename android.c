@@ -5,9 +5,10 @@
 #include <jni.h>
 #include <android/log.h>
 
+#include "network.h"
 
-void client_init();
-int client_run();
+network* client_init();
+int client_run(network *n);
 
 int pfd[2];
 
@@ -42,8 +43,15 @@ void start_stdio_thread()
 
 void* android_main(void *userdata)
 {
-    client_run();
+    client_run((network*)userdata);
     return NULL;
+}
+
+JNIEXPORT void JNICALL Java_com_clostra_dcdn_Dcdn_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
+{
+    const char* cCacheDir = (*env)->GetStringUTFChars(env, cacheDir, NULL);
+    chdir(cCacheDir);
+    (*env)->ReleaseStringUTFChars(env, cacheDir, cCacheDir);
 }
 
 jint JNI_OnLoad(JavaVM* vm, void* reserved)
@@ -53,8 +61,8 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
         return JNI_ERR;
     }
     start_stdio_thread();
-    client_init(8006);
+    network *n = client_init(8006);
     pthread_t t;
-    pthread_create(&t, NULL, android_main, NULL);
-    return  JNI_VERSION_1_6;
+    pthread_create(&t, NULL, android_main, n);
+    return JNI_VERSION_1_6;
 }

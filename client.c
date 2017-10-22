@@ -66,7 +66,6 @@ typedef struct {
     bool dont_free:1;
 } proxy_request;
 
-network *g_n;
 peer *injectors;
 uint injectors_len;
 peer *injector_proxies;
@@ -898,7 +897,7 @@ void http_request_cb(evhttp_request *req, void *arg)
     submit_request(n, req, evhttp_request_get_evhttp_uri(req));
 }
 
-void client_init(port_t port)
+network* client_init(port_t port)
 {
     o_debug = 0;
 
@@ -922,12 +921,12 @@ void client_init(port_t port)
     cb();
     timer_repeating(n, 25 * 60 * 1000, cb);
 
-    g_n = n;
+    return n;
 }
 
-int client_run()
+int client_run(network *n)
 {
-    return network_loop(g_n);
+    return network_loop(n);
 }
 
 int main(int argc, char *argv[])
@@ -948,6 +947,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    client_init(atoi(port_s));
-    return client_run();
+    network *n = client_init(atoi(port_s));
+    return client_run(n);
 }
