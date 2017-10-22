@@ -19,7 +19,7 @@ android {
 
     defaultConfig {
         minSdkVersion 13
-        versionName "1.0.1"
+        versionName "1.0.2"
         versionCode versionName.replace(".", "").toInteger()
     }
     sourceSets.main {
