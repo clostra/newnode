@@ -501,7 +501,7 @@ peer* select_peer(peer *peers, uint peers_len)
         c.failed = p->last_connect < p->last_connect_attempt;
         c.last_connect_attempt = p->last_connect_attempt;
         c.never_connected = !p->last_connect;
-        c.salt = rand() & 0xFF;
+        c.salt = random() & 0xFF;
         c.peer = p;
         address *a = &p->addr;
         if (!i || peer_sort_cmp(&c, &best) < 0) {
