@@ -15,6 +15,8 @@ import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Arrays;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 
 public class Dcdn {
@@ -31,10 +33,12 @@ public class Dcdn {
         for (int i = files.length - 1; i >= 0; i++) {
             File f = files[i];
             String name = f.getName();
-            if (!name.startsWith("libdcdn.")) {
+            Pattern p = Pattern.compile("^libdcdn.(v[\\.0-9]*).so$");
+            Matcher m = p.matcher(name);
+            if (!m.find()) {
                 continue;
             }
-            String v2 = name.split("\\.")[1];
+            String v2 = m.group(1);
             if (VERSION.compareTo(v2) >= 0) {
                 break;
             }
