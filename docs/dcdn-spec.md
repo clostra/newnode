@@ -48,6 +48,21 @@ BitTorrent DHT in the *injector swarm*, `SHA1("injectors")`, to make
 itself easier to find.  It SHOULD accept transport connections from peers
 and injector proxies.
 
+### Injector Verification Challenge
+
+A peer may challenge an injector or an injector proxy. Successful response
+to the challenge verifies that the challenged entity can connect to (or is)
+an injector.
+
+To avoid pointlessly fetching external URLs, the `TRACE` method is used.
+The little-used method echoes back its request. Since the injector signs
+its responses with the X-Sign header, the response is guaranteed to have
+come from an injector if the challenge is unique. The challenge includes
+a cryptographically secure random nonce.
+
+The format of the challenge is `TRACE /`⟨uuid⟩` HTTP/1.1`. The response is
+the echoed request with an added X-Sign header.
+
 ## Peer Behavior
 
 A peer performs some actions on start and some actions for each web
