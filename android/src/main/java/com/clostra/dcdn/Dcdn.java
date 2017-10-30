@@ -30,7 +30,7 @@ public class Dcdn {
         }
         File[] files = app.getFilesDir().listFiles();
         Arrays.sort(files);
-        for (int i = files.length - 1; i >= 0; i++) {
+        for (int i = files.length - 1; i >= 0; i--) {
             File f = files[i];
             String name = f.getName();
             Pattern p = Pattern.compile("^libdcdn.(v[\\.0-9]*).so$");
