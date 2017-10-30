@@ -25,5 +25,5 @@ dependencies {
     // compile directly
     compile project(':dcdn')
     // use jcenter
-    //compile 'com.clostra.dcdn:dcdn:1.0.2'
+    //compile 'com.clostra.dcdn:dcdn:+'
 }
