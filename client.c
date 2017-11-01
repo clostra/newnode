@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <uuid/uuid.h>
 
 #include <sodium.h>
 
@@ -33,12 +34,14 @@ typedef struct {
 
 typedef struct {
     address addr;
+    uint32_t last_verified;
     uint32_t last_connect;
     uint32_t last_connect_attempt;
 } peer;
 
 typedef struct {
     bool failed:1;
+    uint32_t time_since_verified;
     uint32_t last_connect_attempt;
     bool never_connected:1;
     uint8_t salt;
@@ -72,6 +75,7 @@ peer *injector_proxies;
 uint injector_proxies_len;
 peer *all_peers;
 uint all_peers_len;
+time_t last_trace;
 time_t injector_reachable;
 
 
@@ -243,10 +247,6 @@ int proxy_header_cb(evhttp_request *req, void *arg)
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p proxy_header_cb %d %s\n", p, evhttp_request_get_response_code(req), evhttp_request_get_response_code_line(req));
 
-    // not the first moment of connection, but does indicate protocol support
-    p->peer->last_connect = time(NULL);
-
-    int code = evhttp_request_get_response_code(req);
     switch(evhttp_request_get_response_code(req)) {
     case HTTP_MOVEPERM:
     case HTTP_MOVETEMP: {
@@ -259,6 +259,9 @@ int proxy_header_cb(evhttp_request *req, void *arg)
     default:
         return -1;
     }
+
+    // not the first moment of connection, but does indicate protocol support
+    p->peer->last_connect = time(NULL);
 
     if (req == p->proxy_head_req) {
         return 0;
@@ -399,6 +402,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
             assert(req == p->proxy_req || !p->proxy_req);
             debug("verifying sig for %s %s\n", evhttp_request_get_uri(p->server_req), sign);
             if (verify_signature(&p->content_state, sign)) {
+                p->peer->last_verified = time(NULL);
                 if (p->injector) {
                     injector_reachable = time(NULL);
                     update_injector_proxy_swarm(p->n);
@@ -495,6 +499,7 @@ peer* select_peer(peer *peers, uint peers_len)
         peer *p = &peers[i];
         peer_sort c;
         c.failed = p->last_connect < p->last_connect_attempt;
+        c.time_since_verified = time(NULL) - p->last_verified;
         c.last_connect_attempt = p->last_connect_attempt;
         c.never_connected = !p->last_connect;
         c.salt = random() & 0xFF;
@@ -713,9 +718,93 @@ void submit_request(network *n, evhttp_request *server_req, const evhttp_uri *ur
     proxy_submit_request(p, uri);
 }
 
+typedef struct {
+    network *n;
+    peer *peer;
+    bool injector:1;
+} trace_request;
+
+void trace_error_cb(enum evhttp_request_error error, void *arg)
+{
+    trace_request *t = (trace_request*)arg;
+    debug("t:%p trace_error_cb %d\n", t, error);
+    if (error != EVREQ_HTTP_REQUEST_CANCEL && t->injector) {
+        injector_reachable = 0;
+    }
+    free(t);
+}
+
+void trace_request_done_cb(evhttp_request *req, void *arg)
+{
+    trace_request *t = (trace_request*)arg;
+    debug("t:%p trace_request_done_cb req:%p\n", t, req);
+    if (!req) {
+        return;
+    }
+    if (!req->evcon) {
+        // connection failed
+        if (t->injector) {
+            injector_reachable = 0;
+        }
+    } else {
+        t->peer->last_connect = time(NULL);
+    }
+    if (evhttp_request_get_response_code(req) == HTTP_OK) {
+        const char *sign = evhttp_find_header(evhttp_request_get_input_headers(req), "X-Sign");
+        if (!sign) {
+            fprintf(stderr, "no signature on TRACE!\n");
+        } else {
+            crypto_generichash_state content_state;
+            crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
+            hash_headers(evhttp_request_get_input_headers(req), &content_state);
+            evbuffer *input = evhttp_request_get_input_buffer(req);
+            unsigned char *body = evbuffer_pullup(input, evbuffer_get_length(input));
+            crypto_generichash_update(&content_state, body, evbuffer_get_length(input));
+            debug("verifying sig for TRACE %s %s\n", evhttp_request_get_uri(req), sign);
+            if (verify_signature(&content_state, sign)) {
+                debug("signature good!\n");
+                t->peer->last_verified = time(NULL);
+                if (t->injector) {
+                    injector_reachable = time(NULL);
+                    update_injector_proxy_swarm(t->n);
+                }
+            }
+        }
+    }
+    free(t);
+}
+
+void trace_submit_request_on_con(trace_request *t, evhttp_connection *evcon)
+{
+    evhttp_request *req = evhttp_request_new(trace_request_done_cb, t);
+    overwrite_header(req, "Proxy-Connection", "Keep-Alive");
+    evhttp_request_set_error_cb(req, trace_error_cb);
+    char request_uri[256];
+    uuid_t uuid;
+    uuid_generate(uuid);
+    uuid_string_t uuid_s;
+    uuid_unparse(uuid, uuid_s);
+    snprintf(request_uri, sizeof(request_uri), "/%s", uuid_s);
+    evhttp_make_request(evcon, req, EVHTTP_REQ_TRACE, request_uri);
+    debug("t:%p con:%p trace request submitted: %s\n", t, evhttp_request_get_connection(req), request_uri);
+}
+
 void submit_trace_request(network *n)
 {
-    // TODO
+    trace_request *t = alloc(trace_request);
+    t->n = n;
+    evhttp_connection *evcon = injector_connection(n, &t->peer);
+    if (evcon) {
+        t->injector = true;
+        trace_submit_request_on_con(t, evcon);
+        return;
+    }
+    evcon = injector_proxy_connection(n, &t->peer);
+    if (evcon) {
+        t->injector = false;
+        trace_submit_request_on_con(t, evcon);
+        return;
+    }
 }
 
 typedef struct {
@@ -916,10 +1005,9 @@ network* client_init(port_t port)
         dht_get_peers(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
             if (peers) {
                 add_addresses(&injectors, &injectors_len, peers, num_peers);
-            } else {
-                submit_trace_request(n);
             }
         });
+        submit_trace_request(n);
         update_injector_proxy_swarm(n);
     };
     cb();
