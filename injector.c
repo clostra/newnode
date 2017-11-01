@@ -5,6 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/socket.h>
+#include <sys/queue.h>
 
 #include <sodium.h>
 
@@ -41,6 +42,20 @@ unsigned char sk[crypto_sign_SECRETKEYBYTES];
 
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri);
 
+void content_sign(content_sig *sig, const uint8_t *content_hash)
+{
+    // base64(sign("sign" + timestamp + hash(headers + content)))
+    time_t now = time(NULL);
+    char ts[sizeof("2011-10-08T07:07:09Z")];
+    strftime(ts, sizeof(ts), "%FT%TZ", gmtime(&now));
+    assert(sizeof(ts) - 1 == strlen(ts));
+
+    memcpy(sig->sign, "sign", sizeof(sig->sign));
+    memcpy(sig->timestamp, ts, sizeof(sig->timestamp));
+    memcpy(sig->content_hash, content_hash, sizeof(sig->content_hash));
+    crypto_sign_detached(sig->signature, NULL, (uint8_t*)sig->sign, sizeof(content_sig) - sizeof(sig->signature), sk);
+}
+
 void request_done_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
@@ -51,10 +66,6 @@ void request_done_cb(evhttp_request *req, void *arg)
     if (p->server_req) {
         debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(p->server_req));
 
-        uint8_t content_hash[crypto_generichash_BYTES];
-        uint8_t *content_hash_p = content_hash;
-        crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
-
         const char *uri = evhttp_request_get_uri(p->server_req);
         content_sig *s = hash_get_or_insert(url_table, uri, ^{
 
@@ -63,18 +74,10 @@ void request_done_cb(evhttp_request *req, void *arg)
             // duplicate the memory because the hash_table owns it now
             p->server_req->uri = strdup(uri);
 
-            // base64(sign("sign" + timestamp + hash(headers + content)))
-            time_t now = time(NULL);
-            char ts[sizeof("2011-10-08T07:07:09Z")];
-            strftime(ts, sizeof(ts), "%FT%TZ", gmtime(&now));
-            assert(sizeof(ts) - 1 == strlen(ts));
-
+            uint8_t content_hash[crypto_generichash_BYTES];
+            crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
             content_sig *sig = alloc(content_sig);
-            memcpy(sig->sign, "sign", sizeof(sig->sign));
-            memcpy(sig->timestamp, ts, sizeof(sig->timestamp));
-            memcpy(sig->content_hash, content_hash_p, sizeof(sig->content_hash));
-
-            crypto_sign_detached(sig->signature, NULL, (uint8_t*)sig->sign, sizeof(content_sig) - sizeof(sig->signature), sk);
+            content_sign(sig, content_hash);
 
             return (void*)sig;
         });
@@ -310,6 +313,37 @@ void http_request_cb(evhttp_request *req, void *arg)
         overwrite_header(req, "Proxy-Connection", "Keep-Alive");
     }
 
+    if (evhttp_request_get_command(req) == EVHTTP_REQ_TRACE) {
+        evbuffer *output = evbuffer_new();
+        evbuffer_add_printf(output, "TRACE %s HTTP/%d.%d\r\n", req->uri, req->major, req->minor);
+        evkeyval *header;
+        TAILQ_FOREACH(header, evhttp_request_get_input_headers(req), next) {
+            evbuffer_add_printf(output, "%s: %s\r\n", header->key, header->value);
+        }
+        evbuffer_add(output, "\r\n", 2);
+        char size[22];
+        snprintf(size, sizeof(size), "%zu", evbuffer_get_length(output));
+        evhttp_add_header(evhttp_request_get_output_headers(req), "Content-Length", size);
+        evhttp_add_header(evhttp_request_get_output_headers(req), "Content-Type", "message/http");
+        crypto_generichash_state content_state;
+        crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
+        hash_headers(evhttp_request_get_output_headers(req), &content_state);
+        unsigned char *out_body = evbuffer_pullup(output, evbuffer_get_length(output));
+        crypto_generichash_update(&content_state, out_body, evbuffer_get_length(output));
+        uint8_t content_hash[crypto_generichash_BYTES];
+        crypto_generichash_final(&content_state, content_hash, sizeof(content_hash));
+        content_sig sig;
+        content_sign(&sig, content_hash);
+        size_t out_len;
+        char *hex_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
+        debug("returning sig for TRACE %s %s\n", req->uri, hex_sig);
+        evhttp_add_header(evhttp_request_get_output_headers(req), "X-Sign", hex_sig);
+        free(hex_sig);
+
+        evhttp_send_reply(req, 200, "OK", output);
+        return;
+    }
+
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(req);
     evhttp_connection *evcon = make_connection(n, uri);
     if (!evcon) {
@@ -407,7 +441,7 @@ int main(int argc, char *argv[])
     cb();
     timer_repeating(n, 25 * 60 * 1000, cb);
 
-    evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_HEAD | EVHTTP_REQ_CONNECT);
+    evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_HEAD | EVHTTP_REQ_CONNECT | EVHTTP_REQ_TRACE);
     evhttp_set_gencb(n->http, http_request_cb, n);
     evhttp_bind_socket_with_handle(n->http, "0.0.0.0", port);
 

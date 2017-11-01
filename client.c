@@ -302,12 +302,8 @@ void proxy_head_error_cb(enum evhttp_request_error error, void *arg)
     proxy_request_cleanup(p);
 }
 
-bool verify_signature(proxy_request *p, const char *sign)
+bool verify_signature(crypto_generichash_state *content_state, const char *sign)
 {
-    const char *uri = evhttp_request_get_uri(p->server_req);
-
-    debug("verifying sig for %s %s\n", uri, sign);
-
     if (strlen(sign) != BASE64_LENGTH(sizeof(content_sig))) {
         fprintf(stderr, "Incorrect length! %zu != %zu\n", strlen(sign), sizeof(content_sig));
         return false;
@@ -331,7 +327,7 @@ bool verify_signature(proxy_request *p, const char *sign)
     }
 
     uint8_t content_hash[crypto_generichash_BYTES];
-    crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
+    crypto_generichash_final(content_state, content_hash, sizeof(content_hash));
 
     if (memcmp(content_hash, sig->content_hash, sizeof(content_hash))) {
         fprintf(stderr, "Incorrect hash!\n");
@@ -401,7 +397,8 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
             }
         } else {
             assert(req == p->proxy_req || !p->proxy_req);
-            if (verify_signature(p, sign)) {
+            debug("verifying sig for %s %s\n", evhttp_request_get_uri(p->server_req), sign);
+            if (verify_signature(&p->content_state, sign)) {
                 if (p->injector) {
                     injector_reachable = time(NULL);
                     update_injector_proxy_swarm(p->n);
@@ -716,6 +713,11 @@ void submit_request(network *n, evhttp_request *server_req, const evhttp_uri *ur
     proxy_submit_request(p, uri);
 }
 
+void submit_trace_request(network *n)
+{
+    // TODO
+}
+
 typedef struct {
     evhttp_request *server_req;
     evhttp_request *proxy;
@@ -905,7 +907,7 @@ network* client_init(port_t port)
 
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
 
-    evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_CONNECT);
+    evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_CONNECT | EVHTTP_REQ_TRACE);
     evhttp_set_gencb(n->http, http_request_cb, n);
     evhttp_bind_socket_with_handle(n->http, "0.0.0.0", port);
     printf("listening on TCP:%s:%d\n", "0.0.0.0", port);
@@ -914,6 +916,8 @@ network* client_init(port_t port)
         dht_get_peers(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
             if (peers) {
                 add_addresses(&injectors, &injectors_len, peers, num_peers);
+            } else {
+                submit_trace_request(n);
             }
         });
         update_injector_proxy_swarm(n);
