@@ -21,13 +21,9 @@ import java.util.zip.GZIPInputStream;
 
 public class Dcdn {
     static String VERSION = "v" + BuildConfig.VERSION_NAME;
-    public static Application app;
+
     static {
-        try {
-            app = (Application) Class.forName("android.app.ActivityThread")
-                    .getMethod("currentApplication").invoke(null, (Object[]) null);
-        } catch (Exception e) {
-        }
+        Application app = app();
         File[] files = app.getFilesDir().listFiles();
         Arrays.sort(files);
         for (int i = files.length - 1; i >= 0; i--) {
@@ -55,7 +51,17 @@ public class Dcdn {
         setCacheDir(app.getCacheDir().getAbsolutePath());
     }
 
+    private static Application app() {
+        try {
+            return (Application) Class.forName("android.app.ActivityThread")
+                    .getMethod("currentApplication").invoke(null, (Object[]) null);
+        } catch (Exception e) {
+        }
+        return null;
+    }
+
     private static void update() throws Exception {
+        Application app = app();
         URL url = new URL("https://api.github.com/repos/clostra/dcdn/releases");
         URLConnection urlConnection = url.openConnection();
         InputStream in = urlConnection.getInputStream();
