@@ -199,11 +199,19 @@ network* network_setup(char *address, port_t port)
         return NULL;
     }
 
-    n->evdns = evdns_base_new(n->evbase, EVDNS_BASE_INITIALIZE_NAMESERVERS);
+    // EVDNS_BASE_INITIALIZE_NAMESERVERS is broken on Android
+    // https://github.com/libevent/libevent/issues/569
+    n->evdns = evdns_base_new(n->evbase, 0);
     if (!n->evdns) {
         fprintf(stderr, "evdns_base_new failed\n");
         return NULL;
     }
+#ifdef _WIN32
+    evdns_base_config_windows_nameservers(n->evdns);
+#else
+    evdns_base_resolv_conf_parse(n->evdns, DNS_OPTION_SEARCH|DNS_OPTION_HOSTSFILE, "/etc/resolv.conf");
+#endif
+
 #ifdef ANDROID
     char buf[PROP_VALUE_MAX];
     if (__system_property_get("net.dns1", buf)) {
@@ -213,6 +221,7 @@ network* network_setup(char *address, port_t port)
         evdns_base_nameserver_ip_add(n->evdns, buf);
     }
 #endif
+
     evdns_base_nameserver_ip_add(n->evdns, "8.8.8.8");
     evdns_base_nameserver_ip_add(n->evdns, "8.8.4.4");
 
