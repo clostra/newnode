@@ -30,7 +30,7 @@ void* stdio_thread(void *useradata)
 void start_stdio_thread()
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
-    setvbuf(stderr, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IOLBF, 0);
     pipe(pfd);
     dup2(pfd[1], 1);
     dup2(pfd[1], 2);
