@@ -8,7 +8,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <uuid/uuid.h>
 
 #include <sodium.h>
 
@@ -780,11 +779,8 @@ void trace_submit_request_on_con(trace_request *t, evhttp_connection *evcon)
     overwrite_header(req, "Proxy-Connection", "Keep-Alive");
     evhttp_request_set_error_cb(req, trace_error_cb);
     char request_uri[256];
-    uuid_t uuid;
-    uuid_generate(uuid);
-    uuid_string_t uuid_s;
-    uuid_unparse(uuid, uuid_s);
-    snprintf(request_uri, sizeof(request_uri), "/%s", uuid_s);
+    snprintf(request_uri, sizeof(request_uri), "/%u%u%u",
+             randombytes_random(), randombytes_random(), randombytes_random());
     evhttp_make_request(evcon, req, EVHTTP_REQ_TRACE, request_uri);
     debug("t:%p con:%p trace request submitted: %s\n", t, evhttp_request_get_connection(req), request_uri);
 }
