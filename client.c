@@ -988,7 +988,7 @@ void http_request_cb(evhttp_request *req, void *arg)
 
 network* client_init(port_t port)
 {
-    o_debug = 1;
+    o_debug = 0;
 
     network *n = network_setup("0.0.0.0", port);
 
