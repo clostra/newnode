@@ -246,14 +246,12 @@ int proxy_header_cb(evhttp_request *req, void *arg)
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p proxy_header_cb %d %s\n", p, evhttp_request_get_response_code(req), evhttp_request_get_response_code_line(req));
 
-    switch(evhttp_request_get_response_code(req)) {
-    case HTTP_MOVEPERM:
-    case HTTP_MOVETEMP: {
+    int klass = evhttp_request_get_response_code(req) / 100 - 1;
+    switch (klass) {
+    case 3:
         // redirects are not allowed
         return -1;
-    }
-    case HTTP_OK:
-    case HTTP_NOCONTENT:
+    case 2:
         break;
     default:
         return -1;
@@ -571,6 +569,10 @@ void proxy_submit_request_on_con(proxy_request *p, const evhttp_uri *uri, evhttp
         copy_header(p->server_req, p->proxy_req, request_header_whitelist[i]);
     }
     overwrite_header(p->proxy_req, "Proxy-Connection", "Keep-Alive");
+
+    // TODO: range requests / partial content handling
+    evhttp_remove_header(evhttp_request_get_output_headers(p->proxy_req), "Range");
+    evhttp_remove_header(evhttp_request_get_output_headers(p->proxy_req), "If-Range");
 
     evhttp_request_set_header_cb(p->proxy_req, proxy_header_cb);
     evhttp_request_set_error_cb(p->proxy_req, proxy_error_cb);
@@ -986,7 +988,7 @@ void http_request_cb(evhttp_request *req, void *arg)
 
 network* client_init(port_t port)
 {
-    o_debug = 0;
+    o_debug = 1;
 
     network *n = network_setup("0.0.0.0", port);
 

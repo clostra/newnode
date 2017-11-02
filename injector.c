@@ -114,10 +114,9 @@ int header_cb(evhttp_request *req, void *arg)
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p header_cb %d %s\n", p, evhttp_request_get_response_code(req), evhttp_request_get_response_code_line(req));
 
-    int code = evhttp_request_get_response_code(req);
-    switch(evhttp_request_get_response_code(req)) {
-    case HTTP_MOVEPERM:
-    case HTTP_MOVETEMP: {
+    int klass = evhttp_request_get_response_code(req) / 100 - 1;
+    switch (klass) {
+    case 3: {
         const char *new_location = evhttp_find_header(evhttp_request_get_input_headers(req), "Location");
         if (new_location) {
             const evhttp_uri *new_uri = evhttp_uri_parse(new_location);
@@ -136,12 +135,11 @@ int header_cb(evhttp_request *req, void *arg)
         }
         return 0;
     }
-    case HTTP_OK:
-    case HTTP_NOCONTENT:
+    case 2:
         break;
     default:
-        // XXX: if the code is not HTTP_OK or HTTP_NOCONTENT, we probably don't want to hash and store the value
-        break;
+        // XXX: if the code is an error, we probably don't want to hash and store the value
+        return -1;
     }
 
     const char *response_header_whitelist[] = {"Content-Length", "Content-Type"};
@@ -197,7 +195,10 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     char *address;
     ev_uint16_t port;
     evhttp_connection_get_peer(evcon, &address, &port);
-    overwrite_header(client_req, "Host", address);
+
+    // TODO: range requests / partial content handling
+    evhttp_remove_header(evhttp_request_get_output_headers(client_req), "Range");
+    evhttp_remove_header(evhttp_request_get_output_headers(client_req), "If-Range");
 
     overwrite_header(client_req, "User-Agent", "dcdn/0.1");
 
