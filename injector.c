@@ -114,7 +114,8 @@ int header_cb(evhttp_request *req, void *arg)
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p header_cb %d %s\n", p, evhttp_request_get_response_code(req), evhttp_request_get_response_code_line(req));
 
-    int klass = evhttp_request_get_response_code(req) / 100 - 1;
+    int code = evhttp_request_get_response_code(req);
+    int klass = code / 100 - 1;
     switch (klass) {
     case 3: {
         const char *new_location = evhttp_find_header(evhttp_request_get_input_headers(req), "Location");
