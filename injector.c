@@ -115,7 +115,7 @@ int header_cb(evhttp_request *req, void *arg)
     debug("p:%p header_cb %d %s\n", p, evhttp_request_get_response_code(req), evhttp_request_get_response_code_line(req));
 
     int code = evhttp_request_get_response_code(req);
-    int klass = code / 100 - 1;
+    int klass = code / 100;
     switch (klass) {
     case 3: {
         const char *new_location = evhttp_find_header(evhttp_request_get_input_headers(req), "Location");
@@ -171,7 +171,11 @@ void error_cb(enum evhttp_request_error error, void *arg)
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p error_cb %d\n", p, error);
     if (p->server_req) {
-        evhttp_send_error(p->server_req, 502, "Bad Gateway");
+        if (error == EVREQ_HTTP_TIMEOUT) {
+            evhttp_send_error(p->server_req, 504, "Gateway Timeout");
+        } else {
+            evhttp_send_error(p->server_req, 502, "Bad Gateway");
+        }
         p->server_req = NULL;
     }
     free(p);
@@ -220,13 +224,17 @@ typedef struct {
     bufferevent *direct;
 } connect_req;
 
-void connect_cleanup(connect_req *c)
+void connect_cleanup(connect_req *c, bool timeout)
 {
     if (c->direct) {
         return;
     }
     if (c->server_req) {
-        evhttp_send_error(c->server_req, 502, "Bad Gateway");
+        if (timeout) {
+            evhttp_send_error(c->server_req, 504, "Gateway Timeout");
+        } else {
+            evhttp_send_error(c->server_req, 502, "Bad Gateway");
+        }
     }
     free(c);
 }
@@ -235,7 +243,7 @@ void connected(connect_req *c, bufferevent *other)
 {
     bufferevent *bev = evhttp_connection_detach_bufferevent(evhttp_request_get_connection(c->server_req));
     c->server_req = NULL;
-    connect_cleanup(c);
+    connect_cleanup(c, false);
     evbuffer_add_printf(bufferevent_get_output(bev), "HTTP/1.0 200 Connection established\r\n\r\n");
     bev_splice(bev, other);
     bufferevent_enable(bev, EV_READ|EV_WRITE);
@@ -246,11 +254,12 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
     connect_req *c = (connect_req *)ctx;
     debug("connect_event_cb events:%x bev:%p req:%s\n", events, bev, evhttp_request_get_uri(c->server_req));
 
-    if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+    if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
         bufferevent_free(bev);
         c->direct = NULL;
-        connect_cleanup(c);
+        connect_cleanup(c, events & BEV_EVENT_TIMEOUT);
     } else if (events & BEV_EVENT_CONNECTED) {
+        bufferevent_set_timeouts(c->direct, NULL, NULL);
         c->direct = NULL;
         connected(c, bev);
     }
@@ -265,7 +274,7 @@ void close_cb(evhttp_connection *evcon, void *ctx)
         bufferevent_free(c->direct);
         c->direct = NULL;
     }
-    connect_cleanup(c);
+    connect_cleanup(c, false);
 }
 
 void connect_request(network *n, evhttp_request *req)
@@ -276,7 +285,7 @@ void connect_request(network *n, evhttp_request *req)
     const char *host = evhttp_uri_get_host(uri);
     if (!host) {
         evhttp_uri_free(uri);
-        evhttp_send_error(req, 502, "Bad Gateway");
+        evhttp_send_error(req, 400, "Invalid Host");
         return;
     }
     int port = evhttp_uri_get_port(uri);
@@ -284,7 +293,7 @@ void connect_request(network *n, evhttp_request *req)
         port = 443;
     } else if (port != 443) {
         evhttp_uri_free(uri);
-        evhttp_send_error(req, 502, "Bad Gateway");
+        evhttp_send_error(req, 403, "Port is not 443");
         return;
     }
 
@@ -295,6 +304,8 @@ void connect_request(network *n, evhttp_request *req)
 
     c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
     bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
+    const struct timeval conn_tv = { 45, 0 };
+    bufferevent_set_timeouts(c->direct, &conn_tv, &conn_tv);
     bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port);
     evhttp_uri_free(uri);
     bufferevent_enable(c->direct, EV_READ);
@@ -349,7 +360,7 @@ void http_request_cb(evhttp_request *req, void *arg)
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(req);
     evhttp_connection *evcon = make_connection(n, uri);
     if (!evcon) {
-        evhttp_send_error(req, 502, "Bad Gateway");
+        evhttp_send_error(req, 503, "Service Unavailable");
         return;
     }
 

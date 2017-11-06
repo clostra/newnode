@@ -155,7 +155,7 @@ void proxy_request_cleanup(proxy_request *p)
     }
     if (p->server_req) {
         if (!p->server_req->response_code) {
-            evhttp_send_error(p->server_req, 502, "Bad Gateway");
+            evhttp_send_error(p->server_req, 504, "Gateway Timeout");
         } else {
             evhttp_send_reply_end(p->server_req);
         }
@@ -246,7 +246,7 @@ int proxy_header_cb(evhttp_request *req, void *arg)
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p proxy_header_cb %d %s\n", p, evhttp_request_get_response_code(req), evhttp_request_get_response_code_line(req));
 
-    int klass = evhttp_request_get_response_code(req) / 100 - 1;
+    int klass = evhttp_request_get_response_code(req) / 100;
     switch (klass) {
     case 3:
         // redirects are not allowed
@@ -818,7 +818,7 @@ void connect_cleanup(connect_req *c)
         return;
     }
     if (c->server_req) {
-        evhttp_send_error(c->server_req, 502, "Bad Gateway");
+        evhttp_send_error(c->server_req, 504, "Gateway Timeout");
     }
     free(c);
 }
@@ -897,7 +897,7 @@ void connect_request(network *n, evhttp_request *req)
     const char *host = evhttp_uri_get_host(uri);
     if (!host) {
         evhttp_uri_free(uri);
-        evhttp_send_error(req, 502, "Bad Gateway");
+        evhttp_send_error(req, 400, "Invalid Host");
         return;
     }
     int port = evhttp_uri_get_port(uri);
@@ -905,7 +905,7 @@ void connect_request(network *n, evhttp_request *req)
         port = 443;
     } else if (port != 443) {
         evhttp_uri_free(uri);
-        evhttp_send_error(req, 502, "Bad Gateway");
+        evhttp_send_error(req, 403, "Port is not 443");
         return;
     }
 
@@ -979,7 +979,7 @@ void http_request_cb(evhttp_request *req, void *arg)
         close(headers_file);
     }
     if (xcache) {
-        evhttp_send_error(req, 502, "Bad Gateway");
+        evhttp_send_error(req, 404, "Not in cache");
         return;
     }
 
