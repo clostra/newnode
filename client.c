@@ -750,7 +750,7 @@ void trace_request_done_cb(evhttp_request *req, void *arg)
     } else {
         t->peer->last_connect = time(NULL);
     }
-    if (evhttp_request_get_response_code(req) == HTTP_OK) {
+    if (evhttp_request_get_response_code(req) == 200) {
         const char *sign = evhttp_find_header(evhttp_request_get_input_headers(req), "X-Sign");
         if (!sign) {
             fprintf(stderr, "no signature on TRACE!\n");
@@ -970,8 +970,8 @@ void http_request_cb(evhttp_request *req, void *arg)
             evbuffer *content = evbuffer_new();
             length = lseek(cache_file, 0, SEEK_END);
             evbuffer_add_file(content, cache_file, 0, length);
-            debug("responding with %d %s %u\n", HTTP_OK, "OK", length);
-            evhttp_send_reply(req, HTTP_OK, "OK", content);
+            debug("responding with %d %s %u\n", 200, "OK", length);
+            evhttp_send_reply(req, 200, "OK", content);
             evbuffer_free(content);
             return;
         }

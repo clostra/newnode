@@ -66,23 +66,28 @@ void request_done_cb(evhttp_request *req, void *arg)
     if (p->server_req) {
         debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(p->server_req));
 
-        const char *uri = evhttp_request_get_uri(p->server_req);
-        content_sig *s = hash_get_or_insert(url_table, uri, ^{
+        if (evhttp_request_get_response_code(req) == 0) {
+            evhttp_send_error(p->server_req, 504, "Gateway Timeout");
+            p->server_req = NULL;
+        } else {
+            const char *uri = evhttp_request_get_uri(p->server_req);
+            content_sig *s = hash_get_or_insert(url_table, uri, ^{
 
-            debug("storing sig for %s\n", uri);
+                debug("storing sig for %s\n", uri);
 
-            // duplicate the memory because the hash_table owns it now
-            p->server_req->uri = strdup(uri);
+                // duplicate the memory because the hash_table owns it now
+                p->server_req->uri = strdup(uri);
 
-            uint8_t content_hash[crypto_generichash_BYTES];
-            crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
-            content_sig *sig = alloc(content_sig);
-            content_sign(sig, content_hash);
+                uint8_t content_hash[crypto_generichash_BYTES];
+                crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
+                content_sig *sig = alloc(content_sig);
+                content_sign(sig, content_hash);
 
-            return (void*)sig;
-        });
-        evhttp_send_reply_end(p->server_req);
-        p->server_req = NULL;
+                return (void*)sig;
+            });
+            evhttp_send_reply_end(p->server_req);
+            p->server_req = NULL;
+        }
     }
 
     free(p);
