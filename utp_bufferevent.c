@@ -28,13 +28,11 @@ typedef struct {
 void ubev_bev_close(utp_bufferevent *u)
 {
     debug("ubev_bev_close %p\n", u);
-    if (u->bev) {
-        assert(!bufferevent_get_enabled(u->bev));
-        assert(!evbuffer_get_length(bufferevent_get_input(u->bev)));
-        assert(!evbuffer_get_length(bufferevent_get_output(u->bev)));
-        bufferevent_free(u->bev);
-        u->bev = NULL;
-    }
+    assert(!bufferevent_get_enabled(u->bev));
+    assert(!evbuffer_get_length(bufferevent_get_input(u->bev)));
+    assert(!evbuffer_get_length(bufferevent_get_output(u->bev)));
+    bufferevent_free(u->bev);
+    u->bev = NULL;
     if (u->utp) {
         return;
     }
