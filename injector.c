@@ -148,9 +148,7 @@ int header_cb(evhttp_request *req, void *arg)
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
     hash_headers(p->server_req->output_headers, &p->content_state);
 
-    if (evhttp_request_get_connection(p->server_req)) {
-        evhttp_send_reply_start(p->server_req, code, req->response_code_line);
-    }
+    evhttp_send_reply_start(p->server_req, code, req->response_code_line);
     evhttp_request_set_chunked_cb(req, chunked_cb);
 
     return 0;
