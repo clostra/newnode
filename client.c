@@ -564,7 +564,7 @@ address parse_address(const char *addr)
 void proxy_submit_request_on_con(proxy_request *p, const evhttp_uri *uri, evhttp_connection *evcon)
 {
     p->proxy_req = evhttp_request_new(proxy_request_done_cb, p);
-    const char *request_header_whitelist[] = {"Referer"};
+    const char *request_header_whitelist[] = {"Referer", "Host"};
     for (size_t i = 0; i < lenof(request_header_whitelist); i++) {
         copy_header(p->server_req, p->proxy_req, request_header_whitelist[i]);
     }

@@ -197,7 +197,7 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     p->n = n;
     p->server_req = server_req;
     evhttp_request *client_req = evhttp_request_new(request_done_cb, p);
-    const char *request_header_whitelist[] = {"Referer"};
+    const char *request_header_whitelist[] = {"Referer", "Host"};
     for (size_t i = 0; i < lenof(request_header_whitelist); i++) {
         copy_header(p->server_req, client_req, request_header_whitelist[i]);
     }
