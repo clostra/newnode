@@ -34,7 +34,7 @@ typedef struct {
 
 typedef struct {
     address addr;
-    int fd;
+    bufferevent *bev;
     evhttp_connection *evcon;
     uint32_t last_verified;
     uint32_t last_connect;
@@ -612,16 +612,30 @@ void on_evcon(network *n, peer *p)
 
 void on_utp_connect(network *n, peer *p)
 {
-    bufferevent *bev = bufferevent_socket_new(n->evbase, p->fd, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
     address *a = &p->addr;
     sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
     char host[NI_MAXHOST];
     char serv[NI_MAXSERV];
     getnameinfo((sockaddr*)&sin, sizeof(sin), host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
     debug("on_utp_connect %s:%s\n", host, serv);
-    p->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, bev, host, atoi(serv));
-    printf("new evcon:%p bev:%p fd:%d\n", p->evcon, bev, p->fd);
+    p->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, p->bev, host, atoi(serv));
     on_evcon(n, p);
+}
+
+void bev_error_cb(struct bufferevent *bufev, short what, void *arg)
+{
+    peer *p = (peer *)arg;
+    debug("bev_error_cb p:%p\n", p);
+    if (what & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+        bufferevent_free(p->bev);
+        p->bev = NULL;
+        for (size_t i = 0; i < lenof(pending_connections); i++) {
+            if (pending_connections[i] == p) {
+                pending_connections[i] = NULL;
+                break;
+            }
+        }
+    }
 }
 
 void evhttp_utp_connect(network *n, peer *p)
@@ -631,11 +645,14 @@ void evhttp_utp_connect(network *n, peer *p)
     sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
     debug("utp_socket_connect_fd %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
     p->last_connect_attempt = time(NULL);
-    p->fd = utp_socket_connect_fd(n->evbase, s, (sockaddr*)&sin, sizeof(sin), ^{
+    int fd = utp_socket_connect_fd(n->evbase, s, (sockaddr*)&sin, sizeof(sin), ^{
         on_utp_connect(n, p);
     });
-    evutil_make_socket_closeonexec(p->fd);
-    evutil_make_socket_nonblocking(p->fd);
+    evutil_make_socket_closeonexec(fd);
+    evutil_make_socket_nonblocking(fd);
+    p->bev = bufferevent_socket_new(n->evbase, fd, BEV_OPT_CLOSE_ON_FREE);
+    bufferevent_setcb(p->bev, NULL, NULL, bev_error_cb, p);
+    bufferevent_enable(p->bev, EV_READ);
 }
 
 int peer_sort_cmp(const peer_sort *pa, const peer_sort *pb)
@@ -649,7 +666,7 @@ peer* select_peer(peer_array *pa)
     for (size_t i = 0; i < pa->length; i++) {
         peer *p = pa->peers[i];
         // XXX: there's no reason the peer couldn't have multiple connections...
-        if (p->fd) {
+        if (p->bev) {
             continue;
         }
         peer_sort c;
@@ -714,7 +731,7 @@ void proxy_submit_request(proxy_request *p)
                 int fd = utp_socket_connect_fd(n->evbase, s, (sockaddr*)&sin, sizeof(sin), NULL);
                 evutil_make_socket_closeonexec(fd);
                 evutil_make_socket_nonblocking(fd);
-                bufferevent *bev = bufferevent_socket_new(n->evbase, p->peer->fd, BEV_OPT_CLOSE_ON_FREE);
+                bufferevent *bev = bufferevent_socket_new(n->evbase, fd, BEV_OPT_CLOSE_ON_FREE);
                 char host[NI_MAXHOST];
                 char serv[NI_MAXSERV];
                 getnameinfo((sockaddr*)&sin, sizeof(sin), host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
