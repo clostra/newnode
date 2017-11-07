@@ -66,7 +66,7 @@ void request_done_cb(evhttp_request *req, void *arg)
     if (p->server_req) {
         debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(p->server_req));
 
-        if (evhttp_request_get_response_code(req) == 0) {
+        if (req->response_code == 0) {
             evhttp_send_error(p->server_req, 504, "Gateway Timeout");
             p->server_req = NULL;
         } else {
@@ -117,54 +117,39 @@ void chunked_cb(evhttp_request *req, void *arg)
 int header_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("p:%p header_cb %d %s\n", p, evhttp_request_get_response_code(req), evhttp_request_get_response_code_line(req));
+    debug("p:%p header_cb %d %s\n", p, req->response_code, req->response_code_line);
 
-    int code = evhttp_request_get_response_code(req);
+    int code = req->response_code;
     int klass = code / 100;
     switch (klass) {
-    case 3: {
-        const char *new_location = evhttp_find_header(evhttp_request_get_input_headers(req), "Location");
-        if (new_location) {
-            const evhttp_uri *new_uri = evhttp_uri_parse(new_location);
-            if (new_uri) {
-                debug("redirect to %s\n", new_location);
-                const char *scheme = evhttp_uri_get_scheme(new_uri);
-                evhttp_connection *evcon = evhttp_request_get_connection(req);
-                if (scheme) {
-                    // XXX: make a new connection for absolute uris. we could reuse the existing one in some cases
-                    evcon = make_connection(p->n, new_uri);
-                }
-                submit_request(p->n, p->server_req, evcon, new_uri);
-                // we made a new proxy_request, so disconnect the original request
-                p->server_req = NULL;
-            }
-        }
-        return 0;
-    }
+    case 3:
     case 2:
         break;
+    case 4:
+    case 5:
+        evhttp_send_error(p->server_req, 502, "Bad Gateway");
     default:
         // XXX: if the code is an error, we probably don't want to hash and store the value
         return -1;
     }
 
-    const char *response_header_whitelist[] = {"Content-Length", "Content-Type"};
+    const char *response_header_whitelist[] = {"Content-Length", "Content-Type", "Location"};
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
         copy_header(req, p->server_req, response_header_whitelist[i]);
     }
     overwrite_header(p->server_req, "Content-Location", evhttp_request_get_uri(p->server_req));
 
     if (evhttp_request_get_command(p->server_req) == EVHTTP_REQ_HEAD) {
-        evhttp_send_reply(p->server_req, 200, "OK", evbuffer_new());
+        evhttp_send_reply(p->server_req, code, req->response_code_line, evbuffer_new());
         p->server_req = NULL;
         return 0;
     }
 
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
-    hash_headers(evhttp_request_get_output_headers(p->server_req), &p->content_state);
+    hash_headers(p->server_req->output_headers, &p->content_state);
 
     if (evhttp_request_get_connection(p->server_req)) {
-        evhttp_send_reply_start(p->server_req, code, evhttp_request_get_response_code_line(req));
+        evhttp_send_reply_start(p->server_req, code, req->response_code_line);
     }
     evhttp_request_set_chunked_cb(req, chunked_cb);
 
@@ -207,8 +192,8 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     evhttp_connection_get_peer(evcon, &address, &port);
 
     // TODO: range requests / partial content handling
-    evhttp_remove_header(evhttp_request_get_output_headers(client_req), "Range");
-    evhttp_remove_header(evhttp_request_get_output_headers(client_req), "If-Range");
+    evhttp_remove_header(client_req->output_headers, "Range");
+    evhttp_remove_header(client_req->output_headers, "If-Range");
 
     overwrite_header(client_req, "User-Agent", "dcdn/0.1");
 
@@ -326,7 +311,7 @@ void http_request_cb(evhttp_request *req, void *arg)
         return;
     }
 
-    const char *connection = evhttp_find_header(evhttp_request_get_input_headers(req), "Proxy-Connection");
+    const char *connection = evhttp_find_header(req->input_headers, "Proxy-Connection");
     if (connection && strcasecmp(connection, "keep-alive") == 0) {
         overwrite_header(req, "Proxy-Connection", "Keep-Alive");
     }
@@ -335,17 +320,17 @@ void http_request_cb(evhttp_request *req, void *arg)
         evbuffer *output = evbuffer_new();
         evbuffer_add_printf(output, "TRACE %s HTTP/%d.%d\r\n", req->uri, req->major, req->minor);
         evkeyval *header;
-        TAILQ_FOREACH(header, evhttp_request_get_input_headers(req), next) {
+        TAILQ_FOREACH(header, req->input_headers, next) {
             evbuffer_add_printf(output, "%s: %s\r\n", header->key, header->value);
         }
         evbuffer_add(output, "\r\n", 2);
         char size[22];
         snprintf(size, sizeof(size), "%zu", evbuffer_get_length(output));
-        evhttp_add_header(evhttp_request_get_output_headers(req), "Content-Length", size);
-        evhttp_add_header(evhttp_request_get_output_headers(req), "Content-Type", "message/http");
+        evhttp_add_header(req->output_headers, "Content-Length", size);
+        evhttp_add_header(req->output_headers, "Content-Type", "message/http");
         crypto_generichash_state content_state;
         crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
-        hash_headers(evhttp_request_get_output_headers(req), &content_state);
+        hash_headers(req->output_headers, &content_state);
         unsigned char *out_body = evbuffer_pullup(output, evbuffer_get_length(output));
         crypto_generichash_update(&content_state, out_body, evbuffer_get_length(output));
         uint8_t content_hash[crypto_generichash_BYTES];
@@ -355,10 +340,9 @@ void http_request_cb(evhttp_request *req, void *arg)
         size_t out_len;
         char *hex_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
         debug("returning sig for TRACE %s %s\n", req->uri, hex_sig);
-        evhttp_add_header(evhttp_request_get_output_headers(req), "X-Sign", hex_sig);
+        evhttp_add_header(req->output_headers, "X-Sign", hex_sig);
         free(hex_sig);
-
-        evhttp_send_reply(req, 200, "OK", output);
+        evhttp_send_reply(req, req->response_code, req->response_code_line, output);
         return;
     }
 
@@ -377,9 +361,10 @@ void http_request_cb(evhttp_request *req, void *arg)
         debug("returning sig for %s %s\n", uri_s, hex_sig);
         overwrite_header(req, "X-Sign", hex_sig);
         free(hex_sig);
-        // XXX: if we had Content-Length, Content-Type and Content-Location, we could respond to HEAD right here
+        // XXX: if we had response_code, responses_code_line, Content-Length, Content-Type, Content-Location, Locattion,
+        // we could respond to HEAD right here
         //copy_headers(old_get, req);
-        //evhttp_send_reply(req, 200, "OK", evbuffer_new());
+        //evhttp_send_reply(req, response_code, response_code_line, evbuffer_new());
         //return;
     }
 
