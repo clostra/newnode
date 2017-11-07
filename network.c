@@ -147,6 +147,9 @@ network* network_setup(char *address, port_t port)
 
     freeaddrinfo(res);
 
+    evutil_make_socket_closeonexec(n->fd);
+    evutil_make_socket_nonblocking(n->fd);
+
     sockaddr_storage sin;
     socklen_t len = sizeof(sin);
     if (getsockname(n->fd, (sockaddr *)&sin, &len) != 0) {
@@ -237,9 +240,6 @@ network* network_setup(char *address, port_t port)
         fprintf(stderr, "evthread_make_base_notifiable failed\n");
         return NULL;
     }
-
-    evutil_make_socket_closeonexec(n->fd);
-    evutil_make_socket_nonblocking(n->fd);
 
     event_assign(&n->udp_event, n->evbase, n->fd, EV_READ|EV_PERSIST, udp_read, n);
     if (event_add(&n->udp_event, NULL) < 0) {
