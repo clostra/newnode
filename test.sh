@@ -87,7 +87,7 @@ echo "$(now) Test cache through peer."
 http_proxy=localhost:8007 do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Peer: 127.0.0.1:8006"
 
 #-------------------------------------------------------------------------------
-#echo "$(now) Test cache through DHT."
+#echo "$(now) Test through DHT."
 #http_proxy=localhost:8007 do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-DHT: true"
 
 
