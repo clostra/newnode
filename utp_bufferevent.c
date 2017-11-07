@@ -21,14 +21,9 @@ typedef struct evbuffer evbuffer;
 typedef struct {
     utp_socket *utp;
     bufferevent *bev;
+    connect_cb connected;
 } utp_bufferevent;
 
-
-void utp_clear_close(utp_socket *s)
-{
-    utp_set_userdata(s, NULL);
-    utp_close(s);
-}
 
 void ubev_bev_close(utp_bufferevent *u)
 {
@@ -56,29 +51,31 @@ void ubev_discard_input(utp_bufferevent *u)
     }
 }
 
-void ubev_bev_check_flush(utp_bufferevent *u)
+void ubev_utp_close(utp_bufferevent *u)
 {
-    if (bufferevent_get_enabled(u->bev) || evbuffer_get_length(bufferevent_get_input(u->bev))) {
-        return;
-    }
-    // utp has no way to tell if the write buffer is flushed. you just have to close and wait for UTP_STATE_DESTROYING
-    utp_clear_close(u->utp);
-    u->utp = NULL;
-    ubev_bev_close(u);
-}
-
-void utp_bufferevent_utp_close(utp_bufferevent *u)
-{
-    utp_clear_close(u->utp);
+    debug("ubev_utp_close %p\n", u);
+    utp_set_userdata(u->utp, NULL);
+    Block_release(u->connected);
+    utp_close(u->utp);
     u->utp = NULL;
     if (u->bev) {
         if (bufferevent_get_enabled(u->bev) & EV_WRITE && !evbuffer_get_length(bufferevent_get_output(u->bev))) {
             bufferevent_disable(u->bev, EV_WRITE);
         }
         ubev_discard_input(u);
-    } else {
-        free(u);
+        return;
     }
+    free(u);
+}
+
+void ubev_bev_check_flush(utp_bufferevent *u)
+{
+    if (bufferevent_get_enabled(u->bev) || evbuffer_get_length(bufferevent_get_input(u->bev))) {
+        return;
+    }
+    // utp has no way to tell if the write buffer is flushed. you just have to close and wait for UTP_STATE_DESTROYING
+    ubev_utp_close(u);
+    ubev_bev_close(u);
 }
 
 void utp_bufferevent_flush(utp_bufferevent *u)
@@ -91,7 +88,7 @@ void utp_bufferevent_flush(utp_bufferevent *u)
         ssize_t r = utp_write(u->utp, buf, len);
         if (r < 0) {
             fprintf(stderr, "utp_write failed\n");
-            utp_bufferevent_utp_close(u);
+            ubev_utp_close(u);
             return;
         }
         if (!r) {
@@ -107,7 +104,7 @@ uint64 utp_on_error(utp_callback_arguments *a)
     debug("utp error: %s\n", utp_error_code_names[a->error_code]);
     utp_bufferevent *u = (utp_bufferevent*)utp_get_userdata(a->socket);
     if (u) {
-        utp_bufferevent_utp_close(u);
+        ubev_utp_close(u);
     }
     return 0;
 }
@@ -130,6 +127,11 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
 
     switch (a->state) {
     case UTP_STATE_CONNECT:
+        if (u->connected) {
+            u->connected();
+            Block_release(u->connected);
+            u->connected = NULL;
+        }
     case UTP_STATE_WRITABLE:
         if (u->bev) {
             utp_bufferevent_flush(u);
@@ -137,7 +139,7 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
         break;
     case UTP_STATE_EOF:
         // XXX: utp does not support half-close. if the other side sent a FIN, they will not read data either
-        utp_bufferevent_utp_close(u);
+        ubev_utp_close(u);
         break;
     case UTP_STATE_DESTROYING: {
         utp_socket_stats *stats = utp_get_stats(a->socket);
@@ -208,8 +210,7 @@ utp_bufferevent* utp_bufferevent_new(event_base *base, utp_socket *s, int fd)
     utp_set_userdata(s, u);
     u->bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
     if (!u->bev) {
-        utp_clear_close(s);
-        free(u);
+        ubev_utp_close(u);
         return NULL;
     }
     bufferevent_setcb(u->bev, ubev_read_cb, ubev_write_cb, ubev_event_cb, u);
@@ -217,7 +218,8 @@ utp_bufferevent* utp_bufferevent_new(event_base *base, utp_socket *s, int fd)
     return u;
 }
 
-int utp_socket_create_fd(event_base *base, utp_socket *s)
+int utp_socket_connect_fd(event_base *base, utp_socket *s,
+                        const sockaddr *addr, socklen_t addrlen, connect_cb connected)
 {
     int fds[2];
     socketpair(PF_LOCAL, SOCK_STREAM, 0, fds);
@@ -229,7 +231,16 @@ int utp_socket_create_fd(event_base *base, utp_socket *s)
         close(fds[1]);
         return -1;
     }
+    if (addr) {
+        u->connected = Block_copy(connected);
+        utp_connect(s, addr, addrlen);
+    }
     return fds[1];
+}
+
+int utp_socket_create_fd(event_base *base, utp_socket *s)
+{
+    return utp_socket_connect_fd(base, s, NULL, 0, NULL);
 }
 
 void utp_connect_tcp(event_base *base, utp_socket *s, const sockaddr *address, socklen_t address_len)
@@ -237,8 +248,8 @@ void utp_connect_tcp(event_base *base, utp_socket *s, const sockaddr *address, s
     utp_bufferevent *u = utp_bufferevent_new(base, s, -1);
     if (bufferevent_socket_connect(u->bev, address, address_len) < 0) {
         bufferevent_free(u->bev);
-        utp_clear_close(s);
-        free(u);
+        u->bev = NULL;
+        ubev_utp_close(u);
         fprintf(stderr, "bufferevent_socket_connect failed");
     }
 }
