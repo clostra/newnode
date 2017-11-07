@@ -209,7 +209,7 @@ network* network_setup(char *address, port_t port)
 #ifdef _WIN32
     evdns_base_config_windows_nameservers(n->evdns);
 #else
-    evdns_base_resolv_conf_parse(n->evdns, DNS_OPTION_SEARCH|DNS_OPTION_HOSTSFILE, "/etc/resolv.conf");
+    evdns_base_resolv_conf_parse(n->evdns, DNS_OPTION_HOSTSFILE, "/etc/resolv.conf");
 #endif
 
 #ifdef ANDROID
