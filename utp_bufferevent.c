@@ -164,7 +164,7 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
 
 void ubev_read_cb(bufferevent *bev, void *ctx)
 {
-    debug("ubev_read_cb %p\n", ctx);
+    //debug("ubev_read_cb %p\n", ctx);
     utp_bufferevent* u = (utp_bufferevent*)ctx;
     assert(u->utp);
     utp_bufferevent_flush(u);
