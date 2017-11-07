@@ -81,7 +81,7 @@ int get_port_for_scheme(const char *scheme)
 
 void overwrite_header(evhttp_request *to, const char *key, const char *value)
 {
-    evkeyvalq *out = evhttp_request_get_output_headers(to);
+    evkeyvalq *out = to->output_headers;
     while (evhttp_find_header(out, key)) {
         evhttp_remove_header(out, key);
     }
@@ -90,7 +90,7 @@ void overwrite_header(evhttp_request *to, const char *key, const char *value)
 
 void copy_header(evhttp_request *from, evhttp_request *to, const char *key)
 {
-    evkeyvalq *in = evhttp_request_get_input_headers(from);
+    evkeyvalq *in = from->input_headers;
     const char *value = evhttp_find_header(in, key);
     if (value) {
         overwrite_header(to, key, value);
@@ -99,7 +99,7 @@ void copy_header(evhttp_request *from, evhttp_request *to, const char *key)
 
 void copy_all_headers(evhttp_request *from, evhttp_request *to)
 {
-    evkeyvalq *in = evhttp_request_get_input_headers(from);
+    evkeyvalq *in = from->input_headers;
     evkeyval *header;
     TAILQ_FOREACH(header, in, next) {
         overwrite_header(to, header->key, header->value);
