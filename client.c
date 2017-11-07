@@ -439,11 +439,11 @@ bool write_header_to_file(int headers_file, evhttp_request *req)
         if (!value) {
             continue;
         }
-        int s = snprintf(buf, sizeof(buf), "%s: %s\r\n", key, value);
+        s = snprintf(buf, sizeof(buf), "%s: %s\r\n", key, value);
         if (s >= (ssize_t)sizeof(buf)) {
             return false;
         }
-        ssize_t w = write(headers_file, buf, s);
+        w = write(headers_file, buf, s);
         if (s != w) {
             return false;
         }
