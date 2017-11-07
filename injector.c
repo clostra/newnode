@@ -96,7 +96,7 @@ void request_done_cb(evhttp_request *req, void *arg)
 void chunked_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    evbuffer *input = evhttp_request_get_input_buffer(req);
+    evbuffer *input = req->input_buffer;
     //debug("p:%p chunked_cb length:%zu\n", p, evbuffer_get_length(input));
 
     struct evbuffer_ptr ptr;
@@ -108,10 +108,7 @@ void chunked_cb(evhttp_request *req, void *arg)
             break;
         }
     }
-
-    if (evhttp_request_get_connection(p->server_req)) {
-        evhttp_send_reply_chunk(p->server_req, input);
-    }
+    evhttp_send_reply_chunk(p->server_req, input);
 }
 
 int header_cb(evhttp_request *req, void *arg)
@@ -139,7 +136,7 @@ int header_cb(evhttp_request *req, void *arg)
     }
     overwrite_header(p->server_req, "Content-Location", evhttp_request_get_uri(p->server_req));
 
-    if (evhttp_request_get_command(p->server_req) == EVHTTP_REQ_HEAD) {
+    if (p->server_req->type == EVHTTP_REQ_HEAD) {
         evhttp_send_reply(p->server_req, code, req->response_code_line, evbuffer_new());
         p->server_req = NULL;
         return 0;
@@ -203,8 +200,8 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     char request_uri[2048];
     const char *q = evhttp_uri_get_query(uri);
     snprintf(request_uri, sizeof(request_uri), "%s%s%s", evhttp_uri_get_path(uri), q?"?":"", q?q:"");
-    evhttp_make_request(evcon, client_req, evhttp_request_get_command(p->server_req), request_uri);
-    debug("p:%p con:%p request submitted: %s\n", p, evhttp_request_get_connection(client_req), evhttp_request_get_uri(client_req));
+    evhttp_make_request(evcon, client_req, p->server_req->type, request_uri);
+    debug("p:%p con:%p request submitted: %s\n", p, client_req->evcon, evhttp_request_get_uri(client_req));
 }
 
 typedef struct {
@@ -229,7 +226,7 @@ void connect_cleanup(connect_req *c, bool timeout)
 
 void connected(connect_req *c, bufferevent *other)
 {
-    bufferevent *bev = evhttp_connection_detach_bufferevent(evhttp_request_get_connection(c->server_req));
+    bufferevent *bev = evhttp_connection_detach_bufferevent(c->server_req->evcon);
     c->server_req = NULL;
     connect_cleanup(c, false);
     evbuffer_add_printf(bufferevent_get_output(bev), "HTTP/1.0 200 Connection established\r\n\r\n");
@@ -288,7 +285,7 @@ void connect_request(network *n, evhttp_request *req)
     connect_req *c = alloc(connect_req);
     c->server_req = req;
 
-    evhttp_connection_set_closecb(evhttp_request_get_connection(req), close_cb, c);
+    evhttp_connection_set_closecb(req->evcon, close_cb, c);
 
     c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
     bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
@@ -302,9 +299,9 @@ void connect_request(network *n, evhttp_request *req)
 void http_request_cb(evhttp_request *req, void *arg)
 {
     network *n = (network*)arg;
-    debug("con:%p request received: %d %s\n", evhttp_request_get_connection(req), evhttp_request_get_command(req), evhttp_request_get_uri(req));
+    debug("con:%p request received: %d %s\n", req->evcon, req->type, evhttp_request_get_uri(req));
 
-    if (evhttp_request_get_command(req) == EVHTTP_REQ_CONNECT) {
+    if (req->type == EVHTTP_REQ_CONNECT) {
         connect_request(n, req);
         return;
     }
@@ -314,7 +311,7 @@ void http_request_cb(evhttp_request *req, void *arg)
         overwrite_header(req, "Proxy-Connection", "Keep-Alive");
     }
 
-    if (evhttp_request_get_command(req) == EVHTTP_REQ_TRACE) {
+    if (req->type == EVHTTP_REQ_TRACE) {
         evbuffer *output = evbuffer_new();
         evbuffer_add_printf(output, "TRACE %s HTTP/%d.%d\r\n", req->uri, req->major, req->minor);
         evkeyval *header;
