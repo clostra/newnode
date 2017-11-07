@@ -304,7 +304,7 @@ void connect_request(network *n, evhttp_request *req)
 void http_request_cb(evhttp_request *req, void *arg)
 {
     network *n = (network*)arg;
-    debug("con:%p request received: %s\n", evhttp_request_get_connection(req), evhttp_request_get_uri(req));
+    debug("con:%p request received: %d %s\n", evhttp_request_get_connection(req), evhttp_request_get_command(req), evhttp_request_get_uri(req));
 
     if (evhttp_request_get_command(req) == EVHTTP_REQ_CONNECT) {
         connect_request(n, req);
