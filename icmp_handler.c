@@ -77,12 +77,8 @@ void icmp_handler(network *n)
                 continue;
             }
 
-            debug("    ee_errno:  %d\n", e->ee_errno);
-            debug("    ee_origin: %d\n", e->ee_origin);
-            debug("    ee_type:   %d\n", e->ee_type);
-            debug("    ee_code:   %d\n", e->ee_code);
-            debug("    ee_info:   %d\n", e->ee_info); // discovered MTU for EMSGSIZE errors
-            debug("    ee_data:   %d\n", e->ee_data);
+            debug(" errno:%d origin:%d type:%d code:%d info:%d data:%d\n",
+                e->ee_errno, e->ee_origin, e->ee_type, e->ee_code, e->ee_info, e->ee_data);
 
             // "Node that caused the error"
             // "Node that generated the error"
