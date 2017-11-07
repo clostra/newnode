@@ -234,7 +234,7 @@ network* network_setup(char *address, port_t port)
         return NULL;
     }
     // don't add any content type automatically
-    evhttp_set_default_content_type(http, NULL);
+    evhttp_set_default_content_type(n->http, NULL);
 
     debug("libevent method: %s\n", event_base_get_method(n->evbase));
 
