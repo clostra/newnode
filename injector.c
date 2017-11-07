@@ -342,7 +342,7 @@ void http_request_cb(evhttp_request *req, void *arg)
         debug("returning sig for TRACE %s %s\n", req->uri, hex_sig);
         evhttp_add_header(req->output_headers, "X-Sign", hex_sig);
         free(hex_sig);
-        evhttp_send_reply(req, req->response_code, req->response_code_line, output);
+        evhttp_send_reply(req, 200, "OK", output);
         return;
     }
 
