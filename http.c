@@ -23,6 +23,8 @@
 #include "http.h"
 
 
+evhttp_connection *connections[10];
+
 void join_url_swarm(network *n, const char *url)
 {
     __block struct {
@@ -132,12 +134,37 @@ evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
     if (port == -1) {
         port = get_port_for_scheme(scheme);
     }
-    debug("connecting to %s %d\n", host, port);
+    for (size_t i = 0; i < lenof(connections); i++) {
+        evhttp_connection *evcon = connections[i];
+        if (evcon) {
+            char *e_host;
+            ev_uint16_t e_port;
+            evhttp_connection_get_peer(evcon, &e_host, &e_port);
+            printf("considering %s:%d ?= %s:%d\n", host, port, e_host, e_port);
+            if (port == e_port && strcasecmp(host, e_host) == 0) {
+                connections[i] = NULL;
+                printf("re-using %s:%d evcon:%p\n", e_host, e_port, evcon);
+                return evcon;
+            }
+        }
+    }
+    debug("connecting to %s:%d\n", host, port);
     // XXX: doesn't handle SSL
     evhttp_connection *evcon = evhttp_connection_base_new(n->evbase, n->evdns, host, port);
     // XXX: disable IPv6, since evdns waits for *both* and the v6 request often times out
     evhttp_connection_set_family(evcon, AF_INET);
     return evcon;
+}
+
+void return_connection(evhttp_connection *evcon)
+{
+    for (size_t i = 0; i < lenof(connections); i++) {
+        if (!connections[i]) {
+            connections[i] = evcon;
+            return;
+        }
+    }
+    evhttp_connection_free(evcon);
 }
 
 uint64 utp_on_accept(utp_callback_arguments *a)
