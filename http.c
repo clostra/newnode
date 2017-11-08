@@ -140,10 +140,9 @@ evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
             char *e_host;
             ev_uint16_t e_port;
             evhttp_connection_get_peer(evcon, &e_host, &e_port);
-            printf("considering %s:%d ?= %s:%d\n", host, port, e_host, e_port);
             if (port == e_port && strcasecmp(host, e_host) == 0) {
                 connections[i] = NULL;
-                printf("re-using %s:%d evcon:%p\n", e_host, e_port, evcon);
+                debug("re-using %s:%d evcon:%p\n", e_host, e_port, evcon);
                 return evcon;
             }
         }
