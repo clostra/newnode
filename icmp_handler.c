@@ -14,6 +14,8 @@
 #include "dht.h"
 #include "network.h"
 
+#define o_debug 0
+#define debug(...)
 
 #ifdef __linux__
 void icmp_handler(network *n)
