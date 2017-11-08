@@ -164,6 +164,8 @@ void evcon_close_cb(evhttp_connection *evcon, void *ctx)
             break;
         }
     }
+    evhttp_connection_free_on_completion(evcon);
+    evhttp_connection_set_closecb(evcon, NULL, NULL);
 }
 
 void return_connection(evhttp_connection *evcon)
