@@ -33,6 +33,7 @@ void copy_all_headers(evhttp_request *from, evhttp_request *to);
 void hash_headers(evkeyvalq *in, crypto_generichash_state *content_state);
 
 evhttp_connection *make_connection(network *n, const evhttp_uri *uri);
+void return_connection(evhttp_connection *evcon);
 
 uint64 utp_on_accept(utp_callback_arguments *a);
 
