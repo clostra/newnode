@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <string.h>
+#include <assert.h>
 #include <errno.h>
 
 
@@ -31,10 +33,8 @@ void debug(const char *fmt, ...)
 
 void pdie(const char *err)
 {
-    debug("errno %d\n", errno);
-    fflush(stdout);
-    perror(err);
-    exit(1);
+    debug("%s: (%d) %s\n", err, errno, strerror(errno));
+    assert(0);
 }
 
 void hexdump(const void *p, size_t len)
