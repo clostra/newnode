@@ -114,7 +114,7 @@ uint64 utp_on_read(utp_callback_arguments *a)
 {
     utp_bufferevent *u = (utp_bufferevent*)utp_get_userdata(a->socket);
     if (u->bev && bufferevent_get_enabled(u->bev) & EV_WRITE) {
-        debug("writing utp>bev %d bytes\n", a->len);
+        //debug("writing utp>bev %d bytes\n", a->len);
         bufferevent_write(u->bev, a->buf, a->len);
     }
     return 0;
@@ -172,7 +172,7 @@ void ubev_read_cb(bufferevent *bev, void *ctx)
 
 void ubev_write_cb(struct bufferevent *bev, void *ctx)
 {
-    debug("ubev_write_cb %p\n", ctx);
+    //debug("ubev_write_cb %p\n", ctx);
     utp_bufferevent* u = (utp_bufferevent*)ctx;
     // the output buffer is flushed
     assert(!evbuffer_get_length(bufferevent_get_output(u->bev)));
