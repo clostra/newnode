@@ -28,6 +28,7 @@
 typedef struct {
     network *n;
     evhttp_request *server_req;
+    evhttp_connection *evcon;
     crypto_generichash_state content_state;
 } proxy_request;
 
