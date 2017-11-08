@@ -56,6 +56,15 @@ void content_sign(content_sig *sig, const uint8_t *content_hash)
     crypto_sign_detached(sig->signature, NULL, (uint8_t*)sig->sign, sizeof(content_sig) - sizeof(sig->signature), sk);
 }
 
+void request_cleanup(proxy_request *p)
+{
+    if (p->evcon) {
+        evhttp_connection_free(p->evcon);
+        p->evcon = NULL;
+    }
+    free(p);
+}
+
 void request_done_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
@@ -87,10 +96,11 @@ void request_done_cb(evhttp_request *req, void *arg)
             });
             evhttp_send_reply_end(p->server_req);
             p->server_req = NULL;
+            return_connection(p->evcon);
+            p->evcon = NULL;
         }
     }
-
-    free(p);
+    request_cleanup(p);
 }
 
 void chunked_cb(evhttp_request *req, void *arg)
@@ -163,12 +173,7 @@ void error_cb(enum evhttp_request_error error, void *arg)
         }
         p->server_req = NULL;
     }
-    free(p);
-}
-
-void conn_close_cb(evhttp_connection *evcon, void *ctx)
-{
-    debug("conn_close_cb\n");
+    request_cleanup(p);
 }
 
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri)
@@ -176,15 +181,12 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     proxy_request *p = alloc(proxy_request);
     p->n = n;
     p->server_req = server_req;
+    p->evcon = evcon;
     evhttp_request *client_req = evhttp_request_new(request_done_cb, p);
     const char *request_header_whitelist[] = {"Referer", "Host"};
     for (size_t i = 0; i < lenof(request_header_whitelist); i++) {
         copy_header(p->server_req, client_req, request_header_whitelist[i]);
     }
-
-    char *address;
-    ev_uint16_t port;
-    evhttp_connection_get_peer(evcon, &address, &port);
 
     // TODO: range requests / partial content handling
     evhttp_remove_header(client_req->output_headers, "Range");
@@ -194,8 +196,6 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
 
     evhttp_request_set_header_cb(client_req, header_cb);
     evhttp_request_set_error_cb(client_req, error_cb);
-
-    evhttp_connection_set_closecb(evcon, conn_close_cb, NULL);
 
     char request_uri[2048];
     const char *q = evhttp_uri_get_query(uri);
