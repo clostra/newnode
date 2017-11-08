@@ -72,7 +72,8 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
         unsigned char buf[4096];
         ssize_t len = recvfrom(n->fd, buf, sizeof(buf), MSG_DONTWAIT, (sockaddr *)&src_addr, &addrlen);
         if (len < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNREFUSED || errno == ECONNRESET || errno == EHOSTUNREACH) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNREFUSED ||
+                errno == ECONNRESET || errno == EHOSTUNREACH || errno == ENETUNREACH) {
                 utp_issue_deferred_acks(n->utp);
                 break;
             }
