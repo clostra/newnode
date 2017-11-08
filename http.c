@@ -156,11 +156,22 @@ evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
     return evcon;
 }
 
+void evcon_close_cb(evhttp_connection *evcon, void *ctx)
+{
+    for (size_t i = 0; i < lenof(connections); i++) {
+        if (connections[i] == evcon) {
+            connections[i] = NULL;
+            break;
+        }
+    }
+}
+
 void return_connection(evhttp_connection *evcon)
 {
     for (size_t i = 0; i < lenof(connections); i++) {
         if (!connections[i]) {
             connections[i] = evcon;
+            evhttp_connection_set_closecb(evcon, evcon_close_cb, NULL);
             return;
         }
     }
