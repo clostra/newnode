@@ -97,9 +97,11 @@ void request_done_cb(evhttp_request *req, void *arg)
             });
             evhttp_send_reply_end(p->server_req);
             p->server_req = NULL;
-            return_connection(p->evcon);
-            p->evcon = NULL;
         }
+    }
+    if (req->response_code != 0) {
+        return_connection(p->evcon);
+        p->evcon = NULL;
     }
     request_cleanup(p);
 }
