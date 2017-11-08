@@ -122,9 +122,8 @@ uint64 utp_on_read(utp_callback_arguments *a)
 
 uint64 utp_on_state_change(utp_callback_arguments *a)
 {
-    debug("state %d: %s\n", a->state, utp_state_names[a->state]);
-
     utp_bufferevent *u = (utp_bufferevent*)utp_get_userdata(a->socket);
+    //debug("state %d: %s\n", a->state, utp_state_names[a->state]);
 
     switch (a->state) {
     case UTP_STATE_CONNECT:
