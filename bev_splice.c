@@ -21,20 +21,13 @@ void bev_splice_read_cb(bufferevent *bev, void *ctx)
     }
 }
 
-void bev_splice_write_cb(bufferevent *bev, void *ctx)
-{
-    bufferevent *other = (bufferevent *)ctx;
-    //debug("bev_splice_write_cb bev:%p other:%p\n", bev, other);
-    bufferevent_write_buffer(bev, bufferevent_get_input(other));
-}
-
 void bev_splice_free_cb(bufferevent *bev, void *ctx)
 {
-    debug("bev_splice_free_cb bev:%p\n");
+    //debug("bev_splice_free_cb bev:%p\n");
     bufferevent_free(bev);
 }
 
-void bev_splice_free_after_write(bufferevent *bev)
+void bev_splice_graceful_close(bufferevent *bev)
 {
     if (evbuffer_get_length(bufferevent_get_output(bev))) {
         bufferevent_setcb(bev, NULL, bev_splice_free_cb, bev_splice_event_cb, NULL);
@@ -43,28 +36,28 @@ void bev_splice_free_after_write(bufferevent *bev)
     bufferevent_free(bev);
 }
 
-void bev_splice_shutdown_write_cb(bufferevent *bev, void *ctx)
+void bev_splice_stop_writing(bufferevent *bev, bufferevent *other)
 {
-    bufferevent *other = (bufferevent *)ctx;
-    debug("bev_splice_shutdown_write_cb bev:%p other:%p\n", bev, other);
-    assert(!evbuffer_get_length(bufferevent_get_output(bev)));
-    assert(!(bufferevent_get_enabled(other) & EV_READ));
     if (bufferevent_get_enabled(bev) & EV_READ) {
         bufferevent_disable(bev, EV_WRITE);
         shutdown(bufferevent_getfd(bev), SHUT_WR);
         return;
     }
     assert(!evbuffer_get_length(bufferevent_get_input(bev)));
-    bev_splice_free_after_write(other);
+    bev_splice_graceful_close(other);
     bufferevent_free(bev);
 }
 
-void evbuffer_clear(evbuffer *buf)
+void bev_splice_write_cb(bufferevent *bev, void *ctx)
 {
-    evbuffer_unfreeze(buf, 1);
-    evbuffer_drain(buf, evbuffer_get_length(buf));
-    evbuffer_freeze(buf, 1);
-    assert(!evbuffer_get_length(buf));
+    bufferevent *other = (bufferevent *)ctx;
+    //debug("bev_splice_write_cb bev:%p other:%p\n", bev, other);
+    assert(!evbuffer_get_length(bufferevent_get_output(bev)));
+    if (bufferevent_get_enabled(other) & EV_READ) {
+        bufferevent_write_buffer(bev, bufferevent_get_input(other));
+        return;
+    }
+    bev_splice_stop_writing(bev, other);
 }
 
 void bev_splice_stop_reading(bufferevent *bev)
@@ -84,32 +77,29 @@ void bev_splice_event_cb(bufferevent *bev, short events, void *ctx)
     if (other) {
         bufferevent_write_buffer(other, bufferevent_get_input(bev));
     }
-    if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
-        if (events & BEV_EVENT_READING) assert(!(bufferevent_get_enabled(bev) & EV_READ));
-        if (events & BEV_EVENT_WRITING) assert(!(bufferevent_get_enabled(bev) & EV_WRITE));
-    }
     if (events & BEV_EVENT_ERROR) {
         if (other) {
             bev_splice_stop_reading(other);
-            bev_splice_free_after_write(other);
+            bev_splice_graceful_close(other);
         }
         bufferevent_free(bev);
     } else if (events & BEV_EVENT_EOF) {
-        if (other) {
-            if (events & BEV_EVENT_WRITING) {
-                evbuffer_clear(bufferevent_get_output(bev));
+        if (events & BEV_EVENT_WRITING) {
+            if (other) {
                 bev_splice_stop_reading(other);
-                if (!(bufferevent_get_enabled(bev) & EV_READ)) {
-                    bev_splice_free_after_write(other);
-                    bufferevent_free(bev);
-                    return;
-                }
             }
-            if (events & BEV_EVENT_READING) {
-                bufferevent_setcb(other, bev_splice_read_cb, bev_splice_shutdown_write_cb, bev_splice_event_cb, bev);
-                if (!evbuffer_get_length(bufferevent_get_output(other))) {
-                    bev_splice_shutdown_write_cb(other, bev);
+            if (!(bufferevent_get_enabled(bev) & EV_READ)) {
+                if (other) {
+                    bev_splice_graceful_close(other);
                 }
+                bufferevent_free(bev);
+                return;
+            }
+            evbuffer_clear(bufferevent_get_output(bev));
+        }
+        if (events & BEV_EVENT_READING) {
+            if (!evbuffer_get_length(bufferevent_get_output(other))) {
+                bev_splice_stop_writing(other, bev);
             }
         }
     }

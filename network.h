@@ -37,6 +37,7 @@ typedef struct {
     evhttp *http;
 } network;
 
+void evbuffer_clear(evbuffer *buf);
 network* network_setup(char *address, port_t port);
 int network_loop(network *n);
 

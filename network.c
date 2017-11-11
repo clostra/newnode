@@ -15,7 +15,9 @@
 #include <signal.h>
 
 #include <event2/thread.h>
+#include <event2/buffer.h>
 #include <event2/event-config.h>
+#include <event2/bufferevent.h>
 
 #ifdef ANDROID
 #include <sys/system_properties.h>
@@ -100,6 +102,14 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
     }
 }
 
+void evbuffer_clear(evbuffer *buf)
+{
+    evbuffer_unfreeze(buf, 1);
+    evbuffer_drain(buf, evbuffer_get_length(buf));
+    evbuffer_freeze(buf, 1);
+    assert(!evbuffer_get_length(buf));
+}
+
 void libevent_log_cb(int severity, const char *msg)
 {
     debug("[libevent] %d %s\n", severity, msg);
@@ -108,6 +118,11 @@ void libevent_log_cb(int severity, const char *msg)
 void evdns_log_cb(int severity, const char *msg)
 {
     debug("[evdns] %d %s\n", severity, msg);
+}
+
+bufferevent* create_bev(event_base *base, void *userdata)
+{
+    return bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 }
 
 network* network_setup(char *address, port_t port)
@@ -236,6 +251,7 @@ network* network_setup(char *address, port_t port)
     }
     // don't add any content type automatically
     evhttp_set_default_content_type(n->http, NULL);
+    evhttp_set_bevcb(n->http, create_bev, NULL);
 
     debug("libevent method: %s\n", event_base_get_method(n->evbase));
 
