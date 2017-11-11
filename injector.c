@@ -240,7 +240,7 @@ void connected(connect_req *c, bufferevent *other)
 void connect_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("connect_event_cb events:%x bev:%p req:%s\n", events, bev, evhttp_request_get_uri(c->server_req));
+    debug("connect_event_cb events:0x%x bev:%p req:%s\n", events, bev, evhttp_request_get_uri(c->server_req));
 
     if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
         bufferevent_free(bev);
