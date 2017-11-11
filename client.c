@@ -922,7 +922,7 @@ void submit_request(network *n, evhttp_request *server_req)
     const char *xdht = evhttp_find_header(server_req->input_headers, "X-DHT");
     const char *xpeer = evhttp_find_header(server_req->input_headers, "X-Peer");
     if (!xdht && !xpeer && addr_is_localhost((sockaddr *)&ss, len)) {
-#define NO_DIRECT
+//#define NO_DIRECT
 #ifndef NO_DIRECT
         direct_submit_request(p);
 #endif
