@@ -104,7 +104,11 @@ uint64 utp_on_error(utp_callback_arguments *a)
     debug("utp error: %s\n", utp_error_code_names[a->error_code]);
     utp_bufferevent *u = (utp_bufferevent*)utp_get_userdata(a->socket);
     if (u) {
-        ubev_utp_close(u);
+        u->utp = NULL;
+        if (u->other_bev) {
+            bufferevent_decref(u->other_bev);
+            u->other_bev = NULL;
+        }
         ubev_bev_graceful_close(u);
     }
     return 0;
