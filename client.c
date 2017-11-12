@@ -412,8 +412,10 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
         return;
     }
     debug("p:%p (%.2fms) direct server_request_done_cb %s\n", p, pdelta(p), evhttp_request_get_uri(p->server_req));
-    return_connection(p->direct_req_evcon);
-    p->direct_req_evcon = NULL;
+    if (req->response_code != 0) {
+        return_connection(p->direct_req_evcon);
+        p->direct_req_evcon = NULL;
+    }
     p->direct_req = NULL;
     proxy_request_cleanup(p);
 }
