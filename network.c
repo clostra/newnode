@@ -207,7 +207,9 @@ network* network_setup(char *address, port_t port)
 #endif
 
     event_enable_debug_mode();
-    //event_enable_debug_logging(EVENT_DBG_ALL);
+    if (o_debug >= 2) {
+        event_enable_debug_logging(EVENT_DBG_ALL);
+    }
 
     event_set_log_callback(libevent_log_cb);
     evdns_set_log_fn(evdns_log_cb);
