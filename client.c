@@ -143,7 +143,7 @@ void on_utp_connect(network *n, peer_connection *pc)
     char host[NI_MAXHOST];
     char serv[NI_MAXSERV];
     getnameinfo((sockaddr*)&sin, sizeof(sin), host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-    debug("on_utp_connect %s:%s\n", host, serv);
+    debug("on_utp_connect %s:%s bev:%p\n", host, serv, pc->bev);
     bufferevent_disable(pc->bev, EV_READ|EV_WRITE);
     pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, pc->bev, host, atoi(serv));
     pc->bev = NULL;
@@ -810,53 +810,55 @@ void on_connect(pending_request *r, peer_connected connected)
     TAILQ_INSERT_TAIL(&pending_requests, r, next);
 }
 
+void connect_more_injectors(network *n)
+{
+    for (uint i = 0; i < lenof(peer_connections); i++) {
+        if (peer_connections[i]) {
+            continue;
+        }
+        peer_array *o[2] = {injectors, injector_proxies};
+        if (random() & 1) {
+            o[0] = injector_proxies;
+            o[1] = injectors;
+        }
+        peer_connections[i] = start_peer_connection(n, o[0]);
+        if (!peer_connections[i]) {
+            peer_connections[i] = start_peer_connection(n, o[1]);
+        }
+    }
+}
+
 void proxy_submit_request(proxy_request *p)
 {
     assert(!p->proxy_req);
 
     const char *xdht = evhttp_find_header(p->server_req->input_headers, "X-DHT");
-    if (!xdht) {
-        const char *xpeer = evhttp_find_header(p->server_req->input_headers, "X-Peer");
-        if (xpeer) {
-            address xa = parse_address(xpeer);
-            add_addresses(p->n, &all_peers, (const byte*)&xa, 1);
-            for (uint i = 0; i < all_peers->length; i++) {
-                if (!memeq((const uint8_t *)&xa, (const uint8_t *)&all_peers->peers[i]->addr, sizeof(address))) {
-                    continue;
-                }
-                p->pc->peer = all_peers->peers[i];
-                address *a = &p->pc->peer->addr;
-                sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
-                debug("X-Peer %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
-                network *n = p->n;
-                utp_socket *s = utp_create_socket(n->utp);
-                p->pc->peer->last_connect_attempt = time(NULL);
-                bufferevent *bev = utp_socket_create_bev(n->evbase, s);
-                utp_connect(s, (sockaddr*)&sin, sizeof(sin));
-                char host[NI_MAXHOST];
-                char serv[NI_MAXSERV];
-                getnameinfo((sockaddr*)&sin, sizeof(sin), host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-                p->pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, bev, host, atoi(serv));
-                p->pc->bev = NULL;
-                proxy_submit_request_on_con(p, p->pc->evcon);
-                break;
-            }
-            return;
-        }
-        for (uint i = 0; i < lenof(peer_connections); i++) {
-            if (peer_connections[i]) {
+    const char *xpeer = evhttp_find_header(p->server_req->input_headers, "X-Peer");
+    if (!xdht && xpeer) {
+        address xa = parse_address(xpeer);
+        add_addresses(p->n, &all_peers, (const byte*)&xa, 1);
+        for (uint i = 0; i < all_peers->length; i++) {
+            if (!memeq((const uint8_t *)&xa, (const uint8_t *)&all_peers->peers[i]->addr, sizeof(address))) {
                 continue;
             }
-            peer_array *o[2] = {injectors, injector_proxies};
-            if (random() & 1) {
-                o[0] = injector_proxies;
-                o[1] = injectors;
-            }
-            peer_connections[i] = start_peer_connection(p->n, o[0]);
-            if (!peer_connections[i]) {
-                peer_connections[i] = start_peer_connection(p->n, o[1]);
-            }
+            p->pc->peer = all_peers->peers[i];
+            address *a = &p->pc->peer->addr;
+            sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
+            debug("X-Peer %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
+            network *n = p->n;
+            utp_socket *s = utp_create_socket(n->utp);
+            p->pc->peer->last_connect_attempt = time(NULL);
+            bufferevent *bev = utp_socket_create_bev(n->evbase, s);
+            utp_connect(s, (sockaddr*)&sin, sizeof(sin));
+            char host[NI_MAXHOST];
+            char serv[NI_MAXSERV];
+            getnameinfo((sockaddr*)&sin, sizeof(sin), host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+            p->pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, bev, host, atoi(serv));
+            p->pc->bev = NULL;
+            proxy_submit_request_on_con(p, p->pc->evcon);
+            break;
         }
+        return;
     }
 
     for (uint i = 0; i < lenof(peer_connections); i++) {
@@ -1136,7 +1138,7 @@ void connect_request(network *n, evhttp_request *req)
     c->server_req = req;
 
 #ifndef NO_DIRECT
-    c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+    c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
     bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
     bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port);
     evhttp_uri_free(uri);
@@ -1166,6 +1168,9 @@ void http_request_cb(evhttp_request *req, void *arg)
 {
     network *n = (network*)arg;
     debug("con:%p request received: %d %s\n", req->evcon, req->type, evhttp_request_get_uri(req));
+
+    connect_more_injectors(n);
+
     if (req->type == EVHTTP_REQ_CONNECT) {
         connect_request(n, req);
         return;
