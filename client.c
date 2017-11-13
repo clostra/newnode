@@ -1069,6 +1069,7 @@ int connect_header_cb(evhttp_request *req, void *arg)
     }
 
     c->pc->peer->last_connect = time(NULL);
+    c->pc = NULL;
 
     if (c->direct) {
         bufferevent_free(c->direct);
@@ -1105,9 +1106,6 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
         }
         if (!c->pc) {
             abort_connect(&c->r);
-        } else {
-            peer_disconnect(c->pc);
-            c->pc = NULL;
         }
         c->direct = NULL;
         connected(c, bev);
