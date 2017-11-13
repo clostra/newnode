@@ -72,7 +72,6 @@ typedef struct {
     evhttp_request *proxy_req;
     evhttp_request *proxy_head_req;
     evhttp_request *server_req;
-    void (*evhttp_handle_request)(evhttp_request *, void *);
     crypto_generichash_state content_state;
     char cache_name[sizeof(CACHE_NAME)];
     int cache_file;
@@ -159,6 +158,7 @@ void on_utp_connect(network *n, peer_connection *pc)
             }
         }
         assert(found);
+        debug("using new pc:%p for request:%p\n", pc, r);
         r->connected(pc);
         Block_release(r->connected);
         r->connected = NULL;
@@ -169,8 +169,8 @@ void bev_event_cb(bufferevent *bufev, short events, void *arg)
 {
     peer_connection *pc = (peer_connection *)arg;
     assert(pc->bev == bufev);
-    debug("bev_error_cb pc:%p peer:%p\n", pc, pc->peer);
-    if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+    debug("bev_event_cb pc:%p peer:%p events:0x%x\n", pc, pc->peer, events);
+    if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
         bufferevent_free(pc->bev);
         pc->bev = NULL;
         if (peer_is_injector(pc->peer)) {
@@ -183,7 +183,6 @@ void bev_event_cb(bufferevent *bufev, short events, void *arg)
             }
         }
         assert(!pc->evcon);
-        printf("%s %d free(%p)\n", __func__, __LINE__, pc);
         free(pc);
     } else if (events & BEV_EVENT_CONNECTED) {
         on_utp_connect(pc->n, pc);
@@ -259,24 +258,20 @@ void update_injector_proxy_swarm(network *n)
     }
 }
 
-void remove_server_req_cb(proxy_request *p)
-{
-    p->server_req->cb = p->evhttp_handle_request;
-    p->server_req->cb_arg = p->n->http;
-    evhttp_request_set_error_cb(p->server_req, NULL);
-}
-
 void abort_connect(pending_request *r)
 {
-    if (r->connected) {
-        Block_release(r->connected);
-        r->connected = NULL;
-        TAILQ_REMOVE(&pending_requests, r, next);
+    if (!r->connected) {
+        return;
     }
+    debug("aborting request:%p\n", r);
+    Block_release(r->connected);
+    r->connected = NULL;
+    TAILQ_REMOVE(&pending_requests, r, next);
 }
 
 void peer_disconnect(peer_connection *pc)
 {
+    debug("disconnecting pc:%p\n", pc);
     if (pc->evcon) {
         evhttp_connection_free(pc->evcon);
         pc->evcon = NULL;
@@ -285,7 +280,6 @@ void peer_disconnect(peer_connection *pc)
         bufferevent_free(pc->bev);
         pc->bev = NULL;
     }
-    printf("%s %d free(%p)\n", __func__, __LINE__, pc);
     free(pc);
 }
 
@@ -302,12 +296,14 @@ void proxy_request_cleanup(proxy_request *p)
         return;
     }
     if (p->server_req) {
+        if (p->server_req->evcon) {
+            evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+        }
         if (!p->server_req->response_code) {
             evhttp_send_error(p->server_req, 504, "Gateway Timeout");
         } else {
             evhttp_send_reply_end(p->server_req);
         }
-        remove_server_req_cb(p);
         p->server_req = NULL;
     }
     if (p->pc) {
@@ -328,6 +324,7 @@ void peer_reuse(network *n, peer_connection *pc)
     if (!TAILQ_EMPTY(&pending_requests)) {
         pending_request *r = TAILQ_FIRST(&pending_requests);
         TAILQ_REMOVE(&pending_requests, r, next);
+        debug("reusing pc:%p for request:%p\n", pc, r);
         r->connected(pc);
         Block_release(r->connected);
         r->connected = NULL;
@@ -336,6 +333,7 @@ void peer_reuse(network *n, peer_connection *pc)
     // add to the pool if there's a slot
     for (uint i = 0; i < lenof(peer_connections); i++) {
         if (!peer_connections[i]) {
+            debug("saving pc:%p for reuse\n", pc);
             peer_connections[i] = pc;
             return;
         }
@@ -344,6 +342,7 @@ void peer_reuse(network *n, peer_connection *pc)
     for (uint i = 0; i < lenof(peer_connections); i++) {
         peer_connection *old_pc = peer_connections[i];
         if (!old_pc->evcon) {
+            debug("replaceing old_pc:%p with pc:%p\n", old_pc, pc);
             peer_disconnect(old_pc);
             peer_connections[i] = pc;
             return;
@@ -457,8 +456,10 @@ int proxy_header_cb(evhttp_request *req, void *arg)
     case 4:
     case 5:
         if (p->server_req) {
+            if (p->server_req->evcon) {
+                evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+            }
             evhttp_send_error(p->server_req, code, req->response_code_line);
-            remove_server_req_cb(p);
             p->server_req = NULL;
         }
         if (req != p->proxy_head_req && p->proxy_head_req) {
@@ -636,8 +637,10 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
             assert(req == p->proxy_req || !p->proxy_req);
             debug("verifying sig for %s %s\n", evhttp_request_get_uri(p->server_req), sign);
             if (!verify_signature(&p->content_state, sign)) {
+                if (p->server_req->evcon) {
+                    evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+                }
                 evhttp_send_error(p->server_req, 502, "Bad Gateway Signature");
-                remove_server_req_cb(p);
                 p->server_req = NULL;
             } else {
                 p->pc->peer->last_verified = time(NULL);
@@ -674,11 +677,13 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
                     p->direct_req = NULL;
                 }
                 copy_response_headers(req, p->server_req);
+                if (p->server_req->evcon) {
+                    evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+                }
                 evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, content);
                 if (content) {
                     evbuffer_free(content);
                 }
-                remove_server_req_cb(p);
                 p->server_req = NULL;
                 join_url_swarm(p->n, content_location);
                 peer_reuse(p->n, p->pc);
@@ -723,6 +728,15 @@ address parse_address(const char *addr)
     return a;
 }
 
+void append_via(evhttp_request *from, evhttp_request *to)
+{
+    const char *via = evhttp_find_header(from->input_headers, "Via");
+    char viab[1024];
+    assert(!via || strlen(via) < sizeof(viab)/2);
+    snprintf(viab, sizeof(viab), "%s%s0.1 dcdn", via?:"", via ? ", " : "");
+    overwrite_header(to, "Via", viab);
+}
+
 void proxy_submit_request_on_con(proxy_request *p, evhttp_connection *evcon)
 {
     assert(!p->proxy_req);
@@ -733,11 +747,7 @@ void proxy_submit_request_on_con(proxy_request *p, evhttp_connection *evcon)
     }
     overwrite_header(p->proxy_req, "Proxy-Connection", "Keep-Alive");
 
-    const char *via = evhttp_find_header(p->server_req->input_headers, "Via");
-    printf("Via: %s\n", via);
-    char viab[1024];
-    snprintf(viab, sizeof(viab), "%s%s0.1 dcdn", via?:"", via ? ", " : "");
-    overwrite_header(p->proxy_req, "Via", viab);
+    append_via(p->server_req, p->proxy_req);
 
     // TODO: range requests / partial content handling
     evhttp_remove_header(p->proxy_req->output_headers, "Range");
@@ -802,10 +812,12 @@ void on_connect(pending_request *r, peer_connected connected)
         peer_connection *pc = peer_connections[i];
         if (pc && pc->evcon) {
             peer_connections[i] = NULL;
+            debug("using pc:%p for request:%p\n", pc, r);
             connected(pc);
             return;
         }
     }
+    debug("queuing request:%p\n", r);
     r->connected = Block_copy(connected);
     TAILQ_INSERT_TAIL(&pending_requests, r, next);
 }
@@ -884,10 +896,11 @@ void proxy_submit_request(proxy_request *p)
     });
 }
 
-void server_error_cb(enum evhttp_request_error error, void *arg)
+void server_close_cb(evhttp_connection *evcon, void *ctx)
 {
-    proxy_request *p = (proxy_request*)arg;
-    debug("p:%p server_error_cb %d\n", p, error);
+    proxy_request *p = (proxy_request*)ctx;
+    debug("p:%p server_close_cb\n", p);
+    evhttp_connection_set_closecb(evcon, NULL, NULL);
     p->server_req = NULL;
     p->dont_free = true;
     if (p->direct_req) {
@@ -899,12 +912,6 @@ void server_error_cb(enum evhttp_request_error error, void *arg)
     proxy_request_cleanup(p);
 }
 
-void server_handle_request(evhttp_request *req, void *arg)
-{
-    proxy_request *p = (proxy_request*)arg;
-    p->evhttp_handle_request(req, p->n->http);
-}
-
 void submit_request(network *n, evhttp_request *server_req)
 {
     proxy_request *p = alloc(proxy_request);
@@ -913,10 +920,7 @@ void submit_request(network *n, evhttp_request *server_req)
     snprintf(p->cache_name, sizeof(p->cache_name), CACHE_NAME);
     p->cache_file = -1;
     p->server_req = server_req;
-    p->evhttp_handle_request = p->server_req->cb;
-    p->server_req->cb = server_handle_request;
-    p->server_req->cb_arg = p;
-    evhttp_request_set_error_cb(p->server_req, server_error_cb);
+    evhttp_connection_set_closecb(p->server_req->evcon, server_close_cb, p);
 
     // https://github.com/libevent/libevent/issues/510
     int fd = bufferevent_getfd(evhttp_connection_get_bufferevent(server_req->evcon));
@@ -1030,7 +1034,11 @@ void connect_cleanup(connect_req *c)
         return;
     }
     if (c->server_req) {
+        if (c->server_req->evcon) {
+            evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
+        }
         evhttp_send_error(c->server_req, 504, "Gateway Timeout");
+        c->server_req = NULL;
     }
     if (c->pc) {
         peer_disconnect(c->pc);
@@ -1041,17 +1049,12 @@ void connect_cleanup(connect_req *c)
 
 void connected(connect_req *c, bufferevent *other)
 {
-    debug("c:%p connected %p\n", c, other);
+    debug("c:%p connected other:%p\n", c, other);
     evhttp_connection *evcon = c->server_req->evcon;
-    if (!evcon) {
-        // XXX: could remove this case by using the error_cb hack
-        c->server_req = NULL;
-        bufferevent_free(other);
-        return;
-    }
-    debug("c:%p detach from evcon:%p\n", c, evcon);
     bufferevent *bev = evhttp_connection_detach_bufferevent(evcon);
+    debug("c:%p detach from server evcon:%p bev:%p\n", c, evcon, bev);
     bufferevent_setcb(bev, NULL, NULL, NULL, NULL);
+    evhttp_connection_set_closecb(evcon, NULL, NULL);
     c->server_req = NULL;
     connect_cleanup(c);
     evbuffer_add_printf(bufferevent_get_output(bev), "HTTP/1.0 200 Connection established\r\n\r\n");
@@ -1076,7 +1079,7 @@ int connect_header_cb(evhttp_request *req, void *arg)
         c->direct = NULL;
     }
 
-    debug("c:%p detach from evcon:%p\n", c, req->evcon);
+    debug("c:%p detach from client evcon:%p\n", c, req->evcon);
     connected(c, evhttp_connection_detach_bufferevent(req->evcon));
     return -1;
 }
@@ -1095,7 +1098,7 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
     connect_req *c = (connect_req *)ctx;
     debug("c:%p connect_event_cb events:0x%x bev:%p req:%s\n", c, events, bev, evhttp_request_get_uri(c->server_req));
 
-    if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+    if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
         bufferevent_free(bev);
         c->direct = NULL;
         connect_cleanup(c);
@@ -1110,6 +1113,25 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
         c->direct = NULL;
         connected(c, bev);
     }
+}
+
+void connect_evcon_close_cb(evhttp_connection *evcon, void *ctx)
+{
+    connect_req *c = (connect_req *)ctx;
+    debug("c:%p connect_evcon_close_cb\n", c);
+    evhttp_connection_set_closecb(evcon, NULL, NULL);
+    if (c->proxy_req) {
+        evhttp_cancel_request(c->proxy_req);
+        c->proxy_req = NULL;
+    }
+    if (!c->pc) {
+        abort_connect(&c->r);
+    }
+    if (c->direct) {
+        bufferevent_free(c->direct);
+        c->direct = NULL;
+    }
+    connect_cleanup(c);
 }
 
 void connect_request(network *n, evhttp_request *req)
@@ -1135,6 +1157,8 @@ void connect_request(network *n, evhttp_request *req)
     connect_req *c = alloc(connect_req);
     c->server_req = req;
 
+    evhttp_connection_set_closecb(c->server_req->evcon, connect_evcon_close_cb, c);
+
 #ifndef NO_DIRECT
     c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
     bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
@@ -1147,11 +1171,7 @@ void connect_request(network *n, evhttp_request *req)
         c->pc = pc;
         c->proxy_req = evhttp_request_new(NULL, c);
 
-        const char *via = evhttp_find_header(c->server_req->input_headers, "Via");
-        printf("Via: %s\n", via);
-        char viab[1024];
-        snprintf(viab, sizeof(viab), "%s%s0.1 dcdn", via?:"", via ? ", " : "");
-        overwrite_header(c->proxy_req, "Via", viab);
+        append_via(c->server_req, c->proxy_req);
 
         evhttp_request_set_header_cb(c->proxy_req, connect_header_cb);
         evhttp_request_set_error_cb(c->proxy_req, connect_error_cb);
@@ -1165,7 +1185,7 @@ int evhttp_parse_headers_(evhttp_request *, evbuffer*);
 void http_request_cb(evhttp_request *req, void *arg)
 {
     network *n = (network*)arg;
-    debug("con:%p request received: %d %s\n", req->evcon, req->type, evhttp_request_get_uri(req));
+    debug("req:%p evcon:%p received method:%d %s\n", req, req->evcon, req->type, evhttp_request_get_uri(req));
 
     connect_more_injectors(n);
 
@@ -1219,7 +1239,7 @@ void http_request_cb(evhttp_request *req, void *arg)
 
 network* client_init(port_t port)
 {
-    o_debug = 1;
+    o_debug = 0;
 
     injectors = alloc(peer_array);
     injector_proxies = alloc(peer_array);
