@@ -4,8 +4,9 @@
 #include <string.h>
 #include <assert.h>
 #include <errno.h>
+#ifndef ANDROID
 #include <execinfo.h>
-
+#endif
 
 int o_debug = 0;
 
@@ -60,6 +61,7 @@ void hexdump(const void *p, size_t len)
     }
 }
 
+#ifndef ANDROID
 void print_trace()
 {
     void *array[100];
@@ -70,3 +72,4 @@ void print_trace()
     }
     free(strings);
 }
+#endif
