@@ -10,5 +10,6 @@ void die(const char *fmt, ...);
 void debug(const char *fmt, ...);
 void pdie(const char *err);
 void hexdump(const void *p, size_t len);
+void print_trace();
 
 #endif // __LOG_H__

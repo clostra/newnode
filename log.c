@@ -4,6 +4,7 @@
 #include <string.h>
 #include <assert.h>
 #include <errno.h>
+#include <execinfo.h>
 
 
 int o_debug = 0;
@@ -57,4 +58,15 @@ void hexdump(const void *p, size_t len)
     if (count != 1) {
         fprintf(stderr, "\n");
     }
+}
+
+void print_trace()
+{
+    void *array[100];
+    size_t size = backtrace(array, sizeof(array) / sizeof(array[0]));
+    char **strings = backtrace_symbols(array, size);
+    for (size_t i = 0; i < size; i++) {
+        printf("%s\n", strings[i]);
+    }
+    free(strings);
 }
