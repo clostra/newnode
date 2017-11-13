@@ -218,6 +218,9 @@ void connect_cleanup(connect_req *c, bool timeout)
         return;
     }
     if (c->server_req) {
+        if (c->server_req->evcon) {
+            evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
+        }
         if (timeout) {
             evhttp_send_error(c->server_req, 504, "Gateway Timeout");
         } else {
@@ -230,6 +233,7 @@ void connect_cleanup(connect_req *c, bool timeout)
 void connected(connect_req *c, bufferevent *other)
 {
     bufferevent *bev = evhttp_connection_detach_bufferevent(c->server_req->evcon);
+    evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
     c->server_req = NULL;
     connect_cleanup(c, false);
     evbuffer_add_printf(bufferevent_get_output(bev), "HTTP/1.0 200 Connection established\r\n\r\n");
@@ -240,7 +244,7 @@ void connected(connect_req *c, bufferevent *other)
 void connect_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("connect_event_cb events:0x%x bev:%p req:%s\n", events, bev, evhttp_request_get_uri(c->server_req));
+    debug("c:%p connect_event_cb events:0x%x bev:%p req:%s\n", c, events, bev, evhttp_request_get_uri(c->server_req));
 
     if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
         bufferevent_free(bev);
@@ -257,6 +261,7 @@ void close_cb(evhttp_connection *evcon, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
     debug("c:%p close_cb\n", c);
+    evhttp_connection_set_closecb(evcon, NULL, NULL);
     c->server_req = NULL;
     if (c->direct) {
         bufferevent_free(c->direct);
@@ -290,7 +295,7 @@ void connect_request(network *n, evhttp_request *req)
 
     evhttp_connection_set_closecb(req->evcon, close_cb, c);
 
-    c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+    c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
     bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
     const struct timeval conn_tv = { 45, 0 };
     bufferevent_set_timeouts(c->direct, &conn_tv, &conn_tv);
