@@ -165,7 +165,7 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
         break;
     case UTP_STATE_DESTROYING: {
         utp_socket_stats *stats = utp_get_stats(a->socket);
-        if (stats) {
+        if (o_debug >= 2 && stats) {
             debug("Socket Statistics:\n");
             debug("    Bytes sent:          %d\n", stats->nbytes_xmit);
             debug("    Bytes received:      %d\n", stats->nbytes_recv);
