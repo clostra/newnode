@@ -1,16 +1,31 @@
 #!/bin/bash
 set -e
 
+cd openssl
+OPENSSL_DIR="$(pwd)/native"
+if [ ! -d .native ]; then
+    CC=clang ./config no-shared -no-ssl2 -no-ssl3 -no-comp -no-hw -no-engine --prefix="$OPENSSL_DIR"
+    make clean
+    make depend
+    make -j3 all
+    make install_sw
+fi
+cd ..
+OPENSSL_CFLAGS=-I$OPENSSL_DIR/include
+# static libraries would be preferable. that would require libtool -static
+OPENSSL="-L$OPENSSL_DIR/lib -lssl -lcrypto"
+
+
 cd Libevent
 if [ ! -d .libs ]; then
     ./autogen.sh
-    ./configure --disable-shared --disable-openssl
+    ./configure --disable-shared CFLAGS="-g $OPENSSL_CFLAGS" LDFLAGS="$OPENSSL"
     make clean
     make -j3
 fi
 cd ..
 LIBEVENT_CFLAGS=-ILibevent/include
-LIBEVENT="$LIBEVENT_CFLAGS Libevent/.libs/libevent.a Libevent/.libs/libevent_pthreads.a"
+LIBEVENT="$LIBEVENT_CFLAGS Libevent/.libs/libevent.a Libevent/.libs/libevent_pthreads.a Libevent/.libs/libevent_openssl.a"
 
 
 cd libsodium
@@ -74,10 +89,10 @@ echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblock
 
 clang++ $CPPFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c dht.cpp
 for file in client.c injector.c bev_splice.c base64.c http.c log.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c; do
-    clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS -c $file
+    clang $CFLAGS $OPENSSL_CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS -c $file
 done
 mv client.o client.o.tmp
-clang++ $FLAGS -o injector *.o -stdlib=libc++ $LRT $LM $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -lpthread
+clang++ $FLAGS -o injector *.o -stdlib=libc++ $LRT $LM $OPENSSL $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -lpthread
 mv injector.o injector.o.tmp
 mv client.o.tmp client.o
-clang++ $FLAGS -o client *.o -stdlib=libc++ $LRT $LM $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -lpthread
+clang++ $FLAGS -o client *.o -stdlib=libc++ $LRT $LM $OPENSSL $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -lpthread
