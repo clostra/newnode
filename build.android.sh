@@ -19,15 +19,13 @@ function build_android {
     if [ ! -d $OPENSSL_DIR ]; then
         export SYSTEM=android
         export SYSROOT="$TOOLCHAIN/sysroot"
-		export CROSS_SYSROOT="$SYSROOT"
+        export CROSS_SYSROOT="$SYSROOT"
         export ANDROID_DEV="$SYSROOT/usr"
         export MACHINE=$CPU_ARCH
         export CROSS_COMPILE=$TRIPLE-
         CFLAGS="-isystem$SYSROOT/usr/include/$TRIPLE -I$SYSROOT/usr/include -I$SYSROOT/usr/include/$TRIPLE"
         perl -pi -e 's/install: all install_docs install_sw/install: install_docs install_sw/g' Makefile.org
-        #./config -v no-shared -no-ssl2 -no-ssl3 -no-comp -no-hw -no-engine --prefix=$OPENSSL_DIR $CFLAGS
-        echo "./Configure no-shared no-ssl2 no-ssl3 no-comp no-hw no-engine --prefix=$OPENSSL_DIR $OPENSSL_TARGET $CFLAGS"
-        ./Configure no-shared no-ssl2 no-ssl3 no-comp no-hw no-engine --prefix=""$OPENSSL_DIR"" $OPENSSL_TARGET $CFLAGS
+        ./Configure no-shared no-ssl2 no-ssl3 no-comp no-hw no-engine --prefix=$OPENSSL_DIR $OPENSSL_TARGET $CFLAGS
         make clean
         make depend
         make -j3 all
@@ -41,15 +39,15 @@ function build_android {
     cd Libevent
     if [ ! -f $TRIPLE/libevent.a ]; then
         ./autogen.sh
-	    export OPENSSL_LIBS="$OPEN_SSL"
-        ./configure --disable-shared --host=$TRIPLE CFLAGS="-g $OPENSSL_CFLAGS" LDFLAGS="$OPENSSL"
+        export OPENSSL_LIBS="$OPEN_SSL"
+        ./configure --disable-shared --host=$TRIPLE --prefix="$(pwd)/$TRIPLE" CFLAGS="-g $OPENSSL_CFLAGS" LDFLAGS="$OPENSSL"
         make clean
         make -j3
-        mv .libs $TRIPLE
+        make install
     fi
     cd ..
-    LIBEVENT_CFLAGS=-ILibevent/include
-    LIBEVENT="Libevent/$TRIPLE/libevent.a Libevent/$TRIPLE/libevent_pthreads.a"
+    LIBEVENT_CFLAGS=-ILibevent/$TRIPLE/include
+    LIBEVENT="Libevent/$TRIPLE/lib/libevent.a Libevent/$TRIPLE/lib/libevent_pthreads.a"
 
 
     cd libsodium
@@ -126,7 +124,7 @@ function build_android {
     CFLAGS="$FLAGS -std=gnu11"
     CPPFLAGS="$FLAGS -std=c++14"
 
-    clang++ $CPPFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c dht.cpp
+    clang++ $CPPFLAGS $OPENSSL_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c dht.cpp
     for file in android.c bev_splice.c base64.c client.c http.c log.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c; do
         clang $CFLAGS $OPENSSL_CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
     done
