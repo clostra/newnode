@@ -5,7 +5,7 @@ set -e
 cd Libevent
 if [ ! -d native ]; then
     ./autogen.sh
-    ./configure --disable-shared --prefix="$(pwd)/native"
+    ./configure --disable-shared --disable-openssl --prefix="$(pwd)/native"
     make clean
     make -j3
     make install
