@@ -81,6 +81,7 @@ void request_done_cb(evhttp_request *req, void *arg)
             p->server_req = NULL;
         } else {
             const char *uri = evhttp_request_get_uri(p->server_req);
+            // XXX: HEAD is deprecated, remove the table after the upgrade
             content_sig *s = hash_get_or_insert(url_table, uri, ^{
 
                 debug("storing sig for %s\n", uri);
@@ -95,7 +96,13 @@ void request_done_cb(evhttp_request *req, void *arg)
 
                 return (void*)sig;
             });
-            evhttp_send_reply_end(p->server_req);
+            evkeyvalq trailers;
+            TAILQ_INIT(&trailers);
+            size_t out_len;
+            char *hex_sig = base64_urlsafe_encode((uint8_t*)s, sizeof(content_sig), &out_len);
+            evhttp_add_header(&trailers, "X-Sign", hex_sig);
+            evhttp_send_reply_end_trailers(p->server_req, &trailers);
+            evhttp_clear_headers(&trailers);
             p->server_req = NULL;
         }
     }
@@ -143,12 +150,14 @@ int header_cb(evhttp_request *req, void *arg)
         return -1;
     }
 
-    const char *response_header_whitelist[] = {"Content-Length", "Content-Type", "Location"};
+    const char *response_header_whitelist[] = {"Content-Type", "Location"};
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
         copy_header(req, p->server_req, response_header_whitelist[i]);
     }
     overwrite_header(p->server_req, "Content-Location", evhttp_request_get_uri(p->server_req));
+    overwrite_header(p->server_req, "Trailer", "X-Sign");
 
+    // XXX: HEAD is deprecated. removee after the upgrade
     if (p->server_req->type == EVHTTP_REQ_HEAD) {
         evhttp_send_reply(p->server_req, code, req->response_code_line, evbuffer_new());
         p->server_req = NULL;
@@ -356,19 +365,17 @@ void http_request_cb(evhttp_request *req, void *arg)
         return;
     }
 
-    const char *uri_s = evhttp_request_get_uri(req);
-    const content_sig *sig = hash_get(url_table, uri_s);
-    if (sig) {
-        size_t out_len;
-        char *hex_sig = base64_urlsafe_encode((uint8_t*)sig, sizeof(content_sig), &out_len);
-        debug("returning sig for %s %s\n", uri_s, hex_sig);
-        overwrite_header(req, "X-Sign", hex_sig);
-        free(hex_sig);
-        // XXX: if we had response_code, responses_code_line, Content-Length, Content-Type, Content-Location, Locattion,
-        // we could respond to HEAD right here
-        //copy_headers(old_get, req);
-        //evhttp_send_reply(req, response_code, response_code_line, evbuffer_new());
-        //return;
+    // XXX: HEAD is deprecated. remove the table after the upgrade
+    if (req->type == EVHTTP_REQ_HEAD) {
+        const char *uri_s = evhttp_request_get_uri(req);
+        const content_sig *sig = hash_get(url_table, uri_s);
+        if (sig) {
+            size_t out_len;
+            char *hex_sig = base64_urlsafe_encode((uint8_t*)sig, sizeof(content_sig), &out_len);
+            debug("returning sig for %s %s\n", uri_s, hex_sig);
+            overwrite_header(req, "X-Sign", hex_sig);
+            free(hex_sig);
+        }
     }
 
     submit_request(n, req, evcon, uri);

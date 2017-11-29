@@ -70,7 +70,6 @@ typedef struct {
     evhttp_request *direct_req;
     evhttp_connection *direct_req_evcon;
     evhttp_request *proxy_req;
-    evhttp_request *proxy_head_req;
     evhttp_request *server_req;
     crypto_generichash_state content_state;
     char cache_name[sizeof(CACHE_NAME)];
@@ -292,7 +291,7 @@ void proxy_cache_delete(proxy_request *p)
 
 void proxy_request_cleanup(proxy_request *p)
 {
-    if (p->dont_free || p->proxy_req || p->proxy_head_req || p->direct_req || p->r.connected) {
+    if (p->dont_free || p->proxy_req || p->direct_req || p->r.connected) {
         return;
     }
     if (p->server_req) {
@@ -357,10 +356,6 @@ void proxy_cancel_proxy(proxy_request *p)
     if (p->proxy_req) {
         evhttp_cancel_request(p->proxy_req);
         p->proxy_req = NULL;
-    }
-    if (p->proxy_head_req) {
-        evhttp_cancel_request(p->proxy_head_req);
-        p->proxy_head_req = NULL;
     }
     if (!p->pc) {
         abort_connect(&p->r);
@@ -462,28 +457,12 @@ int proxy_header_cb(evhttp_request *req, void *arg)
             evhttp_send_error(p->server_req, code, req->response_code_line);
             p->server_req = NULL;
         }
-        if (req != p->proxy_head_req && p->proxy_head_req) {
-            evhttp_cancel_request(p->proxy_head_req);
-            p->proxy_head_req = NULL;
-        }
     default:
         return -1;
     }
 
     // not the first moment of connection, but does indicate protocol support
     p->pc->peer->last_connect = time(NULL);
-
-    if (req == p->proxy_head_req) {
-        return 0;
-    }
-
-    if (p->proxy_head_req) {
-        const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
-        if (sign) {
-            evhttp_cancel_request(p->proxy_head_req);
-            p->proxy_head_req = NULL;
-        }
-    }
 
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
     hash_headers(req->input_headers, &p->content_state);
@@ -504,14 +483,6 @@ void proxy_error_cb(enum evhttp_request_error error, void *arg)
         injector_reachable = 0;
     }
     p->proxy_req = NULL;
-    proxy_request_cleanup(p);
-}
-
-void proxy_head_error_cb(enum evhttp_request_error error, void *arg)
-{
-    proxy_request *p = (proxy_request*)arg;
-    debug("p:%p proxy_head_error_cb %d\n", p, error);
-    p->proxy_head_req = NULL;
     proxy_request_cleanup(p);
 }
 
@@ -691,11 +662,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
             }
         }
     }
-    if (req == p->proxy_head_req) {
-        p->proxy_head_req = NULL;
-    } else {
-        p->proxy_req = NULL;
-    }
+    p->proxy_req = NULL;
     proxy_request_cleanup(p);
 }
 
@@ -746,6 +713,7 @@ void proxy_submit_request_on_con(proxy_request *p, evhttp_connection *evcon)
         copy_header(p->server_req, p->proxy_req, request_header_whitelist[i]);
     }
     overwrite_header(p->proxy_req, "Proxy-Connection", "Keep-Alive");
+    overwrite_header(p->proxy_req, "TE", "trailers");
 
     append_via(p->server_req, p->proxy_req);
 
@@ -756,19 +724,9 @@ void proxy_submit_request_on_con(proxy_request *p, evhttp_connection *evcon)
     evhttp_request_set_header_cb(p->proxy_req, proxy_header_cb);
     evhttp_request_set_error_cb(p->proxy_req, proxy_error_cb);
 
-    p->proxy_head_req = evhttp_request_new(proxy_request_done_cb, p);
-    evkeyval *header;
-    TAILQ_FOREACH(header, p->proxy_req->output_headers, next) {
-        overwrite_header(p->proxy_head_req, header->key, header->value);
-    }
-
-    evhttp_request_set_header_cb(p->proxy_head_req, proxy_header_cb);
-    evhttp_request_set_error_cb(p->proxy_head_req, proxy_head_error_cb);
-
     char request_uri[2048];
     evhttp_uri_join(evhttp_request_get_evhttp_uri(p->server_req), request_uri, sizeof(request_uri));
     evhttp_make_request(evcon, p->proxy_req, EVHTTP_REQ_GET, request_uri);
-    evhttp_make_request(evcon, p->proxy_head_req, EVHTTP_REQ_HEAD, request_uri);
     debug("p:%p con:%p proxy request submitted: %s\n", p, evhttp_request_get_connection(p->proxy_req), evhttp_request_get_uri(p->proxy_req));
 }
 
