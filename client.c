@@ -599,15 +599,17 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
     if (p->server_req) {
         const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
         if (!sign) {
-            if (req == p->proxy_req) {
-                debug("no signature; waiting for HEAD request.\n");
-            } else {
-                fprintf(stderr, "no signature!\n");
+            fprintf(stderr, "no signature!\n");
+            if (p->server_req->evcon) {
+                evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
             }
+            evhttp_send_error(p->server_req, 502, "Bad Gateway Signature");
+            p->server_req = NULL;
         } else {
             assert(req == p->proxy_req || !p->proxy_req);
             debug("verifying sig for %s %s\n", evhttp_request_get_uri(p->server_req), sign);
             if (!verify_signature(&p->content_state, sign)) {
+                fprintf(stderr, "signature failed!\n");
                 if (p->server_req->evcon) {
                     evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
                 }
