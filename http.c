@@ -92,8 +92,7 @@ void overwrite_header(evhttp_request *to, const char *key, const char *value)
 
 void copy_header(evhttp_request *from, evhttp_request *to, const char *key)
 {
-    evkeyvalq *in = from->input_headers;
-    const char *value = evhttp_find_header(in, key);
+    const char *value = evhttp_find_header(from->input_headers, key);
     if (value) {
         overwrite_header(to, key, value);
     }
