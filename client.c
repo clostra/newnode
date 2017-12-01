@@ -351,6 +351,14 @@ void peer_reuse(network *n, peer_connection *pc)
     peer_disconnect(pc);
 }
 
+void proxy_cancel_direct(proxy_request *p)
+{
+    if (p->direct_req) {
+        evhttp_cancel_request(p->direct_req);
+        p->direct_req = NULL;
+    }
+}
+
 void proxy_cancel_proxy(proxy_request *p)
 {
     if (p->proxy_req) {
@@ -437,6 +445,18 @@ void proxy_chunked_cb(evhttp_request *req, void *arg)
     }
 }
 
+void proxy_send_error(proxy_request *p, int error, const char *reason)
+{
+    if (p->direct_req) {
+        return;
+    }
+    if (p->server_req->evcon) {
+        evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+    }
+    evhttp_send_error(p->server_req, error, reason);
+    p->server_req = NULL;
+}
+
 int proxy_header_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
@@ -445,18 +465,13 @@ int proxy_header_cb(evhttp_request *req, void *arg)
     int code = req->response_code;
     int klass = code / 100;
     switch (klass) {
-    case 3:
+    case 1:
     case 2:
+    case 3:
         break;
     case 4:
     case 5:
-        if (p->server_req) {
-            if (p->server_req->evcon) {
-                evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
-            }
-            evhttp_send_error(p->server_req, code, req->response_code_line);
-            p->server_req = NULL;
-        }
+        proxy_send_error(p, code, req->response_code_line);
     default:
         return -1;
     }
@@ -596,74 +611,63 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
     if (!req) {
         return;
     }
-    if (p->server_req) {
-        const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
-        if (!sign) {
-            fprintf(stderr, "no signature!\n");
-            if (p->server_req->evcon) {
-                evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
-            }
-            evhttp_send_error(p->server_req, 502, "Bad Gateway Signature");
-            p->server_req = NULL;
-        } else {
-            assert(req == p->proxy_req || !p->proxy_req);
-            debug("verifying sig for %s %s\n", evhttp_request_get_uri(p->server_req), sign);
-            if (!verify_signature(&p->content_state, sign)) {
-                fprintf(stderr, "signature failed!\n");
-                if (p->server_req->evcon) {
-                    evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
-                }
-                evhttp_send_error(p->server_req, 502, "Bad Gateway Signature");
-                p->server_req = NULL;
-            } else {
-                p->pc->peer->last_verified = time(NULL);
-                if (peer_is_injector(p->pc->peer)) {
-                    injector_reachable = time(NULL);
-                    update_injector_proxy_swarm(p->n);
-                }
-                char headers_name[] = CACHE_HEADERS_NAME;
-                int headers_file = mkstemps(headers_name, sizeof(headers_name) - sizeof(p->cache_name));
-                if (!write_header_to_file(headers_file, req)) {
-                    unlink(headers_name);
-                }
-                close(headers_file);
-                close(p->cache_file);
-                p->cache_file = -1;
-                const char *content_location = evhttp_find_header(req->input_headers, "Content-Location");
-                char *uri = evhttp_encode_uri(content_location);
-                char cache_path[2048];
-                char cache_headers_path[2048];
-                snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, uri);
-                snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
-                free(uri);
-                debug("store cache:%s headers:%s\n", cache_path, cache_headers_path);
-                rename(p->cache_name, cache_path);
-                rename(headers_name, cache_headers_path);
-                int fd = open(cache_path, O_RDONLY);
-                off_t length = lseek(fd, 0, SEEK_END);
-                evbuffer *content = evbuffer_new();
-                evbuffer_add_file(content, fd, 0, length);
-                debug("p:%p (%.2fms) server_request_done_cb %d %s length:%u\n", p, pdelta(p),
-                    req->response_code, req->response_code_line, length);
-                if (p->direct_req) {
-                    evhttp_cancel_request(p->direct_req);
-                    p->direct_req = NULL;
-                }
-                copy_response_headers(req, p->server_req);
-                if (p->server_req->evcon) {
-                    evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
-                }
-                evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, content);
-                if (content) {
-                    evbuffer_free(content);
-                }
-                p->server_req = NULL;
-                join_url_swarm(p->n, content_location);
-                peer_reuse(p->n, p->pc);
-                p->pc = NULL;
-            }
-        }
+    assert(p->server_req);
+    const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
+    if (!sign) {
+        fprintf(stderr, "no signature!\n");
+        proxy_send_error(p, 502, "Missing Gateway Signature");
+        p->proxy_req = NULL;
+        proxy_request_cleanup(p);
+        return;
     }
+    debug("verifying sig for %s %s\n", evhttp_request_get_uri(p->server_req), sign);
+    if (!verify_signature(&p->content_state, sign)) {
+        fprintf(stderr, "signature failed!\n");
+        proxy_send_error(p, 502, "Bad Gateway Signature");
+        p->proxy_req = NULL;
+        proxy_request_cleanup(p);
+        return;
+    }
+    p->pc->peer->last_verified = time(NULL);
+    if (peer_is_injector(p->pc->peer)) {
+        injector_reachable = time(NULL);
+        update_injector_proxy_swarm(p->n);
+    }
+    char headers_name[] = CACHE_HEADERS_NAME;
+    int headers_file = mkstemps(headers_name, sizeof(headers_name) - sizeof(p->cache_name));
+    if (!write_header_to_file(headers_file, req)) {
+        unlink(headers_name);
+    }
+    close(headers_file);
+    close(p->cache_file);
+    p->cache_file = -1;
+    const char *content_location = evhttp_find_header(req->input_headers, "Content-Location");
+    char *uri = evhttp_encode_uri(content_location);
+    char cache_path[2048];
+    char cache_headers_path[2048];
+    snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, uri);
+    snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
+    free(uri);
+    debug("store cache:%s headers:%s\n", cache_path, cache_headers_path);
+    rename(p->cache_name, cache_path);
+    rename(headers_name, cache_headers_path);
+    int fd = open(cache_path, O_RDONLY);
+    off_t length = lseek(fd, 0, SEEK_END);
+    evbuffer *content = evbuffer_new();
+    evbuffer_add_file(content, fd, 0, length);
+    debug("p:%p (%.2fms) server_request_done_cb %d %s length:%u\n", p, pdelta(p),
+        req->response_code, req->response_code_line, length);
+    proxy_cancel_direct(p);
+    copy_response_headers(req, p->server_req);
+    if (p->server_req->evcon) {
+        evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+    }
+    evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, content);
+    p->server_req = NULL;
+    evbuffer_free(content);
+    join_url_swarm(p->n, content_location);
+    peer_reuse(p->n, p->pc);
+    p->pc = NULL;
     p->proxy_req = NULL;
     proxy_request_cleanup(p);
 }
@@ -863,10 +867,7 @@ void server_close_cb(evhttp_connection *evcon, void *ctx)
     evhttp_connection_set_closecb(evcon, NULL, NULL);
     p->server_req = NULL;
     p->dont_free = true;
-    if (p->direct_req) {
-        evhttp_cancel_request(p->direct_req);
-        p->direct_req = NULL;
-    }
+    proxy_cancel_direct(p);
     proxy_cancel_proxy(p);
     p->dont_free = false;
     proxy_request_cleanup(p);
@@ -1023,6 +1024,25 @@ void connected(connect_req *c, bufferevent *other)
     bufferevent_enable(other, EV_READ|EV_WRITE);
 }
 
+void connect_proxy_cancel(connect_req *c)
+{
+    if (c->proxy_req) {
+        evhttp_cancel_request(c->proxy_req);
+        c->proxy_req = NULL;
+    }
+    if (!c->pc) {
+        abort_connect(&c->r);
+    }
+}
+
+void connect_direct_cancel(connect_req *c)
+{
+    if (c->direct) {
+        bufferevent_free(c->direct);
+        c->direct = NULL;
+    }
+}
+
 int connect_header_cb(evhttp_request *req, void *arg)
 {
     connect_req *c = (connect_req *)arg;
@@ -1034,10 +1054,7 @@ int connect_header_cb(evhttp_request *req, void *arg)
     c->pc->peer->last_connect = time(NULL);
     c->pc = NULL;
 
-    if (c->direct) {
-        bufferevent_free(c->direct);
-        c->direct = NULL;
-    }
+    connect_direct_cancel(c);
 
     debug("c:%p detach from client evcon:%p\n", c, req->evcon);
     connected(c, evhttp_connection_detach_bufferevent(req->evcon));
@@ -1063,13 +1080,7 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
         c->direct = NULL;
         connect_cleanup(c);
     } else if (events & BEV_EVENT_CONNECTED) {
-        if (c->proxy_req) {
-            evhttp_cancel_request(c->proxy_req);
-            c->proxy_req = NULL;
-        }
-        if (!c->pc) {
-            abort_connect(&c->r);
-        }
+        connect_proxy_cancel(c);
         c->direct = NULL;
         connected(c, bev);
     }
@@ -1080,17 +1091,8 @@ void connect_evcon_close_cb(evhttp_connection *evcon, void *ctx)
     connect_req *c = (connect_req *)ctx;
     debug("c:%p connect_evcon_close_cb\n", c);
     evhttp_connection_set_closecb(evcon, NULL, NULL);
-    if (c->proxy_req) {
-        evhttp_cancel_request(c->proxy_req);
-        c->proxy_req = NULL;
-    }
-    if (!c->pc) {
-        abort_connect(&c->r);
-    }
-    if (c->direct) {
-        bufferevent_free(c->direct);
-        c->direct = NULL;
-    }
+    connect_proxy_cancel(c);
+    connect_direct_cancel(c);
     connect_cleanup(c);
 }
 
