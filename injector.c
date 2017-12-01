@@ -178,7 +178,7 @@ int header_cb(evhttp_request *req, void *arg)
         char *hex_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
         const char *uri_s = evhttp_request_get_uri(req);
         debug("returning sig for %s %s\n", uri_s, hex_sig);
-        overwrite_header(req, "X-Sign", hex_sig);
+        overwrite_header(p->server_req, "X-Sign", hex_sig);
         free(hex_sig);
         evhttp_send_reply(p->server_req, code, req->response_code_line, evbuffer_new());
         p->server_req = NULL;
