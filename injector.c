@@ -101,6 +101,7 @@ void request_done_cb(evhttp_request *req, void *arg)
             size_t out_len;
             char *hex_sig = base64_urlsafe_encode((uint8_t*)s, sizeof(content_sig), &out_len);
             evhttp_add_header(&trailers, "X-Sign", hex_sig);
+            free(hex_sig);
             evhttp_send_reply_end_trailers(p->server_req, &trailers);
             evhttp_clear_headers(&trailers);
             p->server_req = NULL;
@@ -139,8 +140,9 @@ int header_cb(evhttp_request *req, void *arg)
     int code = req->response_code;
     int klass = code / 100;
     switch (klass) {
-    case 3:
+    case 1:
     case 2:
+    case 3:
         break;
     case 4:
     case 5:
@@ -155,9 +157,8 @@ int header_cb(evhttp_request *req, void *arg)
         copy_header(req, p->server_req, response_header_whitelist[i]);
     }
     overwrite_header(p->server_req, "Content-Location", evhttp_request_get_uri(p->server_req));
-    overwrite_header(p->server_req, "Trailer", "X-Sign");
 
-    // XXX: HEAD is deprecated. removee after the upgrade
+    // XXX: HEAD is deprecated. remove after the upgrade
     if (p->server_req->type == EVHTTP_REQ_HEAD) {
         evhttp_send_reply(p->server_req, code, req->response_code_line, evbuffer_new());
         p->server_req = NULL;
@@ -166,6 +167,25 @@ int header_cb(evhttp_request *req, void *arg)
 
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
     hash_headers(p->server_req->output_headers, &p->content_state);
+
+    // unfortunately, responses with no body also can't use chunking, so we can't send trailers
+    if (klass == 1 || code == 204) {
+        uint8_t content_hash[crypto_generichash_BYTES];
+        crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
+        content_sig sig;
+        content_sign(&sig, content_hash);
+        size_t out_len;
+        char *hex_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
+        const char *uri_s = evhttp_request_get_uri(req);
+        debug("returning sig for %s %s\n", uri_s, hex_sig);
+        overwrite_header(req, "X-Sign", hex_sig);
+        free(hex_sig);
+        evhttp_send_reply(p->server_req, code, req->response_code_line, evbuffer_new());
+        p->server_req = NULL;
+        return 0;
+    }
+
+    overwrite_header(p->server_req, "Trailer", "X-Sign");
 
     evhttp_send_reply_start(p->server_req, code, req->response_code_line);
     evhttp_request_set_chunked_cb(req, chunked_cb);
