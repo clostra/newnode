@@ -73,39 +73,34 @@ void request_done_cb(evhttp_request *req, void *arg)
     if (!req) {
         return;
     }
-    if (p->server_req) {
+    if (req->response_code != 0 && p->server_req) {
         debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(p->server_req));
 
-        if (req->response_code == 0) {
-            evhttp_send_error(p->server_req, 504, "Gateway Timeout");
-            p->server_req = NULL;
-        } else {
-            const char *uri = evhttp_request_get_uri(p->server_req);
-            // XXX: HEAD is deprecated, remove the table after the upgrade
-            content_sig *s = hash_get_or_insert(url_table, uri, ^{
+        const char *uri = evhttp_request_get_uri(p->server_req);
+        // XXX: HEAD is deprecated, remove the table after the upgrade
+        content_sig *s = hash_get_or_insert(url_table, uri, ^{
 
-                debug("storing sig for %s\n", uri);
+            debug("storing sig for %s\n", uri);
 
-                // duplicate the memory because the hash_table owns it now
-                p->server_req->uri = strdup(uri);
+            // duplicate the memory because the hash_table owns it now
+            p->server_req->uri = strdup(uri);
 
-                uint8_t content_hash[crypto_generichash_BYTES];
-                crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
-                content_sig *sig = alloc(content_sig);
-                content_sign(sig, content_hash);
+            uint8_t content_hash[crypto_generichash_BYTES];
+            crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
+            content_sig *sig = alloc(content_sig);
+            content_sign(sig, content_hash);
 
-                return (void*)sig;
-            });
-            evkeyvalq trailers;
-            TAILQ_INIT(&trailers);
-            size_t out_len;
-            char *hex_sig = base64_urlsafe_encode((uint8_t*)s, sizeof(content_sig), &out_len);
-            evhttp_add_header(&trailers, "X-Sign", hex_sig);
-            free(hex_sig);
-            evhttp_send_reply_end_trailers(p->server_req, &trailers);
-            evhttp_clear_headers(&trailers);
-            p->server_req = NULL;
-        }
+            return (void*)sig;
+        });
+        evkeyvalq trailers;
+        TAILQ_INIT(&trailers);
+        size_t out_len;
+        char *hex_sig = base64_urlsafe_encode((uint8_t*)s, sizeof(content_sig), &out_len);
+        evhttp_add_header(&trailers, "X-Sign", hex_sig);
+        free(hex_sig);
+        evhttp_send_reply_end_trailers(p->server_req, &trailers);
+        evhttp_clear_headers(&trailers);
+        p->server_req = NULL;
     }
     if (req->response_code != 0) {
         return_connection(p->evcon);
@@ -328,9 +323,9 @@ void connect_request(network *n, evhttp_request *req)
     bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
     const struct timeval conn_tv = { 45, 0 };
     bufferevent_set_timeouts(c->direct, &conn_tv, &conn_tv);
+    bufferevent_enable(c->direct, EV_READ);
     bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port);
     evhttp_uri_free(uri);
-    bufferevent_enable(c->direct, EV_READ);
 }
 
 void http_request_cb(evhttp_request *req, void *arg)
