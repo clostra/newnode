@@ -132,6 +132,7 @@ dht* dht_setup(int fd)
 
     add_bootstrap(d, "router.utorrent.com", "6881");
     add_bootstrap(d, "router.bittorrent.com", "6881");
+    add_bootstrap(d, "dht.libtorrent.org", "25401");
 
     d->idht->Enable(true, 8000);
 
