@@ -27,6 +27,9 @@
 #include "utp_bufferevent.h"
 
 
+//#define NO_DIRECT
+//#define NO_CACHE
+
 typedef struct {
     in_addr_t ip;
     port_t port;
@@ -94,6 +97,7 @@ peer_connection *peer_connections[10];
 time_t last_trace;
 time_t injector_reachable;
 
+size_t pending_requests_len;
 TAILQ_HEAD(, pending_request) pending_requests;
 
 
@@ -149,6 +153,7 @@ void on_utp_connect(network *n, peer_connection *pc)
     if (!TAILQ_EMPTY(&pending_requests)) {
         pending_request *r = TAILQ_FIRST(&pending_requests);
         TAILQ_REMOVE(&pending_requests, r, next);
+        pending_requests_len--;
         bool found = false;
         for (uint i = 0; i < lenof(peer_connections); i++) {
             if (peer_connections[i] == pc) {
@@ -266,6 +271,7 @@ void abort_connect(pending_request *r)
     Block_release(r->connected);
     r->connected = NULL;
     TAILQ_REMOVE(&pending_requests, r, next);
+    pending_requests_len--;
 }
 
 void peer_disconnect(peer_connection *pc)
@@ -323,6 +329,7 @@ void peer_reuse(network *n, peer_connection *pc)
     if (!TAILQ_EMPTY(&pending_requests)) {
         pending_request *r = TAILQ_FIRST(&pending_requests);
         TAILQ_REMOVE(&pending_requests, r, next);
+        pending_requests_len--;
         debug("reusing pc:%p for request:%p\n", pc, r);
         r->connected(pc);
         Block_release(r->connected);
@@ -612,6 +619,11 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
         return;
     }
     assert(p->server_req);
+    if (req->response_code == 0) {
+        p->proxy_req = NULL;
+        proxy_request_cleanup(p);
+        return;
+    }
     const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
     if (!sign) {
         fprintf(stderr, "no signature!\n");
@@ -628,6 +640,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
         proxy_request_cleanup(p);
         return;
     }
+    fprintf(stderr, "signature good!\n");
     p->pc->peer->last_verified = time(NULL);
     if (peer_is_injector(p->pc->peer)) {
         injector_reachable = time(NULL);
@@ -754,7 +767,14 @@ peer* select_peer(peer_array *pa)
         c.salt = random() & 0xFF;
         c.peer = p;
         address *a = &p->addr;
+        sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
+        /*
+        debug("peer %s:%d failed:%d verified_ago:%d last_connect:%d never_connected:%d salt:%d p:%p\n",
+            inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port),
+            c.failed, c.time_since_verified, c.last_connect_attempt, c.never_connected, c.salt, c.peer);
+        */
         if (!i || peer_sort_cmp(&c, &best) < 0) {
+            //debug("better p:%p\n", p);
             best = c;
         }
     }
@@ -781,9 +801,10 @@ void on_connect(pending_request *r, peer_connected connected)
             return;
         }
     }
-    debug("queuing request:%p\n", r);
+    debug("queuing request:%p (outstanding:%zu)\n", r, pending_requests_len);
     r->connected = Block_copy(connected);
     TAILQ_INSERT_TAIL(&pending_requests, r, next);
+    pending_requests_len++;
 }
 
 void connect_more_injectors(network *n)
@@ -891,7 +912,6 @@ void submit_request(network *n, evhttp_request *server_req)
     const char *xdht = evhttp_find_header(server_req->input_headers, "X-DHT");
     const char *xpeer = evhttp_find_header(server_req->input_headers, "X-Peer");
     if (!xdht && !xpeer && addr_is_localhost((sockaddr *)&ss, len)) {
-//#define NO_DIRECT
 #ifndef NO_DIRECT
         direct_submit_request(p);
 #endif
@@ -1043,6 +1063,16 @@ void connect_direct_cancel(connect_req *c)
     }
 }
 
+void connect_done_cb(evhttp_request *req, void *arg)
+{
+    connect_req *c = (connect_req *)arg;
+    if (!req) {
+        return;
+    }
+    c->proxy_req = NULL;
+    connect_cleanup(c);
+}
+
 int connect_header_cb(evhttp_request *req, void *arg)
 {
     connect_req *c = (connect_req *)arg;
@@ -1121,17 +1151,9 @@ void connect_request(network *n, evhttp_request *req)
 
     evhttp_connection_set_closecb(c->server_req->evcon, connect_evcon_close_cb, c);
 
-#ifndef NO_DIRECT
-    c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
-    bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
-    bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port);
-    evhttp_uri_free(uri);
-    bufferevent_enable(c->direct, EV_READ);
-#endif
-
     on_connect(&c->r, ^(peer_connection *pc) {
         c->pc = pc;
-        c->proxy_req = evhttp_request_new(NULL, c);
+        c->proxy_req = evhttp_request_new(connect_done_cb, c);
 
         append_via(c->server_req, c->proxy_req);
 
@@ -1139,6 +1161,14 @@ void connect_request(network *n, evhttp_request *req)
         evhttp_request_set_error_cb(c->proxy_req, connect_error_cb);
         evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, evhttp_request_get_uri(c->server_req));
     });
+
+#ifndef NO_DIRECT
+    c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
+    bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
+    bufferevent_enable(c->direct, EV_READ);
+    bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port);
+    evhttp_uri_free(uri);
+#endif
 }
 
 int evhttp_parse_firstline_(evhttp_request *, evbuffer*);
@@ -1147,7 +1177,11 @@ int evhttp_parse_headers_(evhttp_request *, evbuffer*);
 void http_request_cb(evhttp_request *req, void *arg)
 {
     network *n = (network*)arg;
-    debug("req:%p evcon:%p received method:%d %s\n", req, req->evcon, req->type, evhttp_request_get_uri(req));
+    char *e_host;
+    ev_uint16_t e_port;
+    evhttp_connection_get_peer(req->evcon, &e_host, &e_port);
+    debug("req:%p evcon:%p %s:%u received %s %s\n", req, req->evcon, e_host, e_port,
+        evhttp_method(req->type), evhttp_request_get_uri(req));
 
     connect_more_injectors(n);
 
@@ -1166,8 +1200,13 @@ void http_request_cb(evhttp_request *req, void *arg)
         snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, uri);
         snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
         free(uri);
+#ifdef NO_CACHE
+        int cache_file = -1;
+        int headers_file = -1;
+#else
         int cache_file = open(cache_path, O_RDONLY);
         int headers_file = open(cache_headers_path, O_RDONLY);
+#endif
         debug("check hit:%d,%d cache:%s\n", cache_file != -1, headers_file != -1, cache_path);
         if (cache_file != -1 && headers_file != -1) {
             evhttp_request *temp = evhttp_request_new(NULL, NULL);
@@ -1190,10 +1229,10 @@ void http_request_cb(evhttp_request *req, void *arg)
         }
         close(cache_file);
         close(headers_file);
-    }
-    if (xcache) {
-        evhttp_send_error(req, 404, "Not in cache");
-        return;
+        if (xcache) {
+            evhttp_send_error(req, 404, "Not in cache");
+            return;
+        }
     }
 
     submit_request(n, req);
