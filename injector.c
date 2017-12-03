@@ -331,7 +331,11 @@ void connect_request(network *n, evhttp_request *req)
 void http_request_cb(evhttp_request *req, void *arg)
 {
     network *n = (network*)arg;
-    debug("con:%p request received: %d %s\n", req->evcon, req->type, evhttp_request_get_uri(req));
+    char *e_host;
+    ev_uint16_t e_port;
+    evhttp_connection_get_peer(req->evcon, &e_host, &e_port);
+    debug("con:%p %s request received %s:%u %s\n", req->evcon, e_host, e_port,
+        evhttp_method(req->type), evhttp_request_get_uri(req));
 
     if (req->type == EVHTTP_REQ_CONNECT) {
         connect_request(n, req);
