@@ -51,22 +51,6 @@ void fetch_url_swarm(network *n, const char *url, add_nodes_callblock add_nodes)
     dht_get_peers(n->dht, url_hash, add_nodes);
 }
 
-const char *evhttp_method(enum evhttp_cmd_type type)
-{
-    switch (type) {
-    case EVHTTP_REQ_GET: return "GET";
-    case EVHTTP_REQ_POST: return "POST";
-    case EVHTTP_REQ_HEAD: return "HEAD";
-    case EVHTTP_REQ_PUT: return "PUT";
-    case EVHTTP_REQ_DELETE: return "DELETE";
-    case EVHTTP_REQ_OPTIONS: return "OPTIONS";
-    case EVHTTP_REQ_TRACE: return "TRACE";
-    case EVHTTP_REQ_CONNECT: return "CONNECT";
-    case EVHTTP_REQ_PATCH: return "PATCH";
-    }
-    return NULL;
-}
-
 int get_port_for_scheme(const char *scheme)
 {
     struct addrinfo hints;

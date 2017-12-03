@@ -9,9 +9,6 @@ if [ ! -d native ]; then
     make clean
     make -j3
     make install
-else
-    make -j3
-    make install
 fi
 cd ..
 LIBEVENT_CFLAGS=-ILibevent/native/include
@@ -66,8 +63,9 @@ FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-paramet
 if [ ! -z "$DEBUG" ]; then
     FLAGS="$FLAGS -O0 -DDEBUG=1 -fsanitize=address --coverage"
 else
-    FLAGS="$FLAGS -O0 -fsanitize=address"
+    FLAGS="$FLAGS -O3"
 fi
+
 
 CFLAGS="$FLAGS -std=gnu11"
 CPPFLAGS="$FLAGS -std=c++14 -stdlib=libc++"
@@ -76,7 +74,7 @@ echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
 echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LIBBLOCKSRUNTIME="-lBlocksRuntime"
 
-clang++ $CPPFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS -c dht.cpp
+clang++ $CPPFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c dht.cpp
 for file in client.c injector.c bev_splice.c base64.c http.c log.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c; do
     clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS -c $file
 done
