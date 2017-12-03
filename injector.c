@@ -334,7 +334,7 @@ void http_request_cb(evhttp_request *req, void *arg)
     char *e_host;
     ev_uint16_t e_port;
     evhttp_connection_get_peer(req->evcon, &e_host, &e_port);
-    debug("con:%p %s request received %s:%u %s\n", req->evcon, e_host, e_port,
+    debug("con:%p %s:%u request received %s %s\n", req->evcon, e_host, e_port,
         evhttp_method(req->type), evhttp_request_get_uri(req));
 
     if (req->type == EVHTTP_REQ_CONNECT) {
