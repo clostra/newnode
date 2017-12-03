@@ -476,6 +476,7 @@ int main(int argc, char *argv[])
     evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_HEAD | EVHTTP_REQ_CONNECT | EVHTTP_REQ_TRACE);
     evhttp_set_gencb(n->http, http_request_cb, n);
     evhttp_bind_socket_with_handle(n->http, "0.0.0.0", port);
+    printf("listening on TCP:%s:%d\n", "0.0.0.0", port);
 
     return network_loop(n);
 }
