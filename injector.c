@@ -96,6 +96,7 @@ void request_done_cb(evhttp_request *req, void *arg)
         TAILQ_INIT(&trailers);
         size_t out_len;
         char *hex_sig = base64_urlsafe_encode((uint8_t*)s, sizeof(content_sig), &out_len);
+        debug("returning sig for %s %s\n", uri, hex_sig);
         evhttp_add_header(&trailers, "X-Sign", hex_sig);
         free(hex_sig);
         evhttp_send_reply_end_trailers(p->server_req, &trailers);
@@ -171,8 +172,7 @@ int header_cb(evhttp_request *req, void *arg)
         content_sign(&sig, content_hash);
         size_t out_len;
         char *hex_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
-        const char *uri_s = evhttp_request_get_uri(req);
-        debug("returning sig for %s %s\n", uri_s, hex_sig);
+        debug("returning sig for %s %s\n", evhttp_request_get_uri(req), hex_sig);
         overwrite_header(p->server_req, "X-Sign", hex_sig);
         free(hex_sig);
         evhttp_send_reply(p->server_req, code, req->response_code_line, evbuffer_new());
