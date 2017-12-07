@@ -197,13 +197,16 @@ void return_connection(evhttp_connection *evcon)
 
 uint64 utp_on_accept(utp_callback_arguments *a)
 {
-    debug("Accepted inbound socket %p\n", a->socket);
     network *n = (network*)utp_context_get_userdata(a->context);
     sockaddr_storage addr;
     socklen_t addrlen = sizeof(addr);
     if (utp_getpeername(a->socket, (sockaddr *)&addr, &addrlen) == -1) {
         debug("utp_getpeername failed\n");
     }
+    char host[NI_MAXHOST];
+    char serv[NI_MAXSERV];
+    getnameinfo((sockaddr *)&addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+    debug("Accepted inbound socket %p %s:%s\n", a->socket, host, serv);
     int fd = utp_socket_create_fd(n->evbase, a->socket);
     evutil_make_socket_closeonexec(fd);
     evutil_make_socket_nonblocking(fd);
