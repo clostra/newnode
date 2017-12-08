@@ -9,11 +9,14 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/queue.h>
+#include <Block.h>
 
 #include <sodium.h>
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
+
+#include "dht/dht.h"
 
 #include "log.h"
 #include "utp.h"
@@ -210,7 +213,7 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
     return pc;
 }
 
-void add_addresses(network *n, peer_array **pa, const byte *addrs, uint num_addrs)
+void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_addrs)
 {
     for (uint i = 0; i < num_addrs; i++) {
         for (uint j = 0; j < (*pa)->length; j++) {
@@ -248,17 +251,49 @@ void add_addresses(network *n, peer_array **pa, const byte *addrs, uint num_addr
     }
 }
 
+void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
+{
+    network *n = (network*)closure;
+    debug("dht_event_callback event:%d\n", event);
+    // TODO: DHT_EVENT_VALUES6
+    if (event != DHT_EVENT_VALUES) {
+        return;
+    }
+    const uint8_t* peers = data;
+    size_t num_peers = data_len / 6;
+    debug("dht_event_callback num_peers:%zu\n", num_peers);
+    if (memeq(info_hash, injector_swarm, sizeof(injector_swarm))) {
+        add_addresses(n, &injectors, peers, num_peers);
+    } else if (memeq(info_hash, injector_proxy_swarm, sizeof(injector_proxy_swarm))) {
+        add_addresses(n, &injector_proxies, peers, num_peers);
+    } else {
+        add_addresses(n, &all_peers, peers, num_peers);
+    }
+    printf("Received %d values.\n", (int)(data_len / 6));
+    printf("{\"");
+    for (int j = 0; j < 20; j++) {
+        printf("%02x", info_hash[j]);
+    }
+    printf("\": [");
+    for (uint i = 0; i < data_len / 6; i++) {
+        address *a = (address *)&data[i * 6];
+        printf("\"%s:%d\"", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
+        if (i + 1 != data_len / 6) {
+            printf(", ");
+        }
+    }
+    printf("]}\n");
+    if (data_len / 6 == 7) {
+        dht_dump_tables(stdout);
+    }
+}
+
 void update_injector_proxy_swarm(network *n)
 {
-    add_nodes_callblock c = ^(const byte *peers, uint num_peers) {
-        if (peers) {
-            add_addresses(n, &injector_proxies, peers, num_peers);
-        }
-    };
     if (injector_reachable) {
-        dht_announce(n->dht, injector_proxy_swarm, c);
+        dht_announce(n->dht, injector_proxy_swarm);
     } else {
-        dht_get_peers(n->dht, injector_proxy_swarm, c);
+        dht_get_peers(n->dht, injector_proxy_swarm);
     }
 }
 
@@ -869,11 +904,7 @@ void proxy_submit_request(proxy_request *p)
     }
 
     network *n = p->n;
-    fetch_url_swarm(p->n, evhttp_request_get_uri(p->server_req), ^(const byte *peers, uint num_peers) {
-        if (peers) {
-            add_addresses(n, &all_peers, peers, num_peers);
-        }
-    });
+    fetch_url_swarm(p->n, evhttp_request_get_uri(p->server_req));
 
     on_connect(&p->r, ^(peer_connection *pc) {
         p->pc = pc;
@@ -1257,11 +1288,7 @@ network* client_init(port_t port)
     printf("listening on TCP:%s:%d\n", "127.0.0.1", port);
 
     timer_callback cb = ^{
-        dht_get_peers(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
-            if (peers) {
-                add_addresses(n, &injectors, peers, num_peers);
-            }
-        });
+        dht_get_peers(n->dht, injector_swarm);
         submit_trace_request(n);
         update_injector_proxy_swarm(n);
     };

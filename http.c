@@ -34,21 +34,17 @@ void join_url_swarm(network *n, const char *url)
 
     // TODO: stop after 24hr
     timer_callback cb = ^{
-        dht_announce(n->dht, hash_state.url_hash, ^(const byte *peers, uint num_peers) {
-            if (!peers) {
-                //printf("announce complete\n");
-            }
-        });
+        dht_announce(n->dht, hash_state.url_hash);
     };
     cb();
     timer_repeating(n, 25 * 60 * 1000, cb);
 }
 
-void fetch_url_swarm(network *n, const char *url, add_nodes_callblock add_nodes)
+void fetch_url_swarm(network *n, const char *url)
 {
     uint8_t url_hash[20];
     SHA1(url_hash, (const unsigned char *)url, strlen(url));
-    dht_get_peers(n->dht, url_hash, add_nodes);
+    dht_get_peers(n->dht, url_hash);
 }
 
 const char *evhttp_method(enum evhttp_cmd_type type)
