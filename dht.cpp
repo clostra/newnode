@@ -93,33 +93,51 @@ sha1_hash sha1(const byte* buf, int len)
 struct dht {
     dht() : external_ip(sha1) {}
     smart_ptr<IDht> idht;
+    network *n;
     udp_socket udp_socket;
     ExternalIPCounter external_ip;
 };
 
-void add_bootstrap(dht *d, const char* address, const char* port)
+void dht_add_bootstrap_cb(int result, evutil_addrinfo *ai, void *arg)
 {
-    struct addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_DGRAM;
-    hints.ai_protocol = IPPROTO_UDP;
+    dht *d = (dht*)arg;
+    if (!ai) {
+        return;
+    }
+    for (evutil_addrinfo* i = ai; i; i = i->ai_next) {
+        d->idht->AddBootstrapNode(SockAddr(i->ai_addr));
+    }
+    evutil_freeaddrinfo(ai);
+}
 
-    struct addrinfo *res;
-    int error = getaddrinfo(address, port, &hints, &res);
+void dht_add_bootstrap(dht *d, const char *host, port_t port)
+{
+    char portbuf[7];
+    evutil_addrinfo hint = {
+        .ai_family = AF_INET,
+        .ai_protocol = IPPROTO_UDP,
+        .ai_socktype = SOCK_DGRAM
+    };
+    snprintf(portbuf, sizeof(portbuf), "%u", port);
+
+    // XXX: disable async resolution for now, because find_nodes before there are nodes fails (too) fast
+    //evdns_getaddrinfo(d->n->evdns, host, portbuf, &hint, dht_add_bootstrap_cb, d);
+    addrinfo *ai;
+    int error = getaddrinfo(host, portbuf, &hint, &ai);
     if (error) {
         printf("getaddrinfo: %s\n", gai_strerror(error));
         return;
     }
-    for (struct addrinfo* i = res; i; i = i->ai_next) {
+    for (addrinfo* i = ai; i; i = i->ai_next) {
         d->idht->AddBootstrapNode(SockAddr(i->ai_addr));
     }
-    freeaddrinfo(res);
+    freeaddrinfo(ai);
 }
 
-dht* dht_setup(int fd)
+dht* dht_setup(network *n, int fd)
 {
     dht *d = new dht();
+    d->n = n;
     d->udp_socket.sock = fd;
     d->udp_socket.RefreshBindAddr();
     d->idht = create_dht(&d->udp_socket, &d->udp_socket, &save_dht_state, &load_dht_state, &d->external_ip);
@@ -130,9 +148,9 @@ dht* dht_setup(int fd)
     // ping 6 nodes at a time, whenever we wake up
     d->idht->SetPingBatching(6);
 
-    add_bootstrap(d, "router.utorrent.com", "6881");
-    add_bootstrap(d, "router.bittorrent.com", "6881");
-    add_bootstrap(d, "dht.libtorrent.org", "25401");
+    dht_add_bootstrap(d, "router.utorrent.com", 6881);
+    dht_add_bootstrap(d, "router.bittorrent.com", 6881);
+    dht_add_bootstrap(d, "dht.libtorrent.org", 25401);
 
     d->idht->Enable(true, 8000);
 
