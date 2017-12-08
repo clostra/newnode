@@ -1,6 +1,8 @@
 #ifndef __TIMER_H__
 #define __TIMER_H__
 
+#include <Block.h>
+
 #include <event2/event_struct.h>
 
 #include "network.h"
