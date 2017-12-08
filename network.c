@@ -181,25 +181,6 @@ network* network_setup(char *address, port_t port)
 
     printf("listening on UDP:%s:%s\n", host, serv);
 
-    n->dht = dht_setup(n->fd);
-
-    n->utp = utp_init(2);
-
-    utp_context_set_userdata(n->utp, n);
-
-    utp_set_callback(n->utp, UTP_LOG, &utp_callback_log);
-    utp_set_callback(n->utp, UTP_SENDTO, &utp_callback_sendto);
-    utp_set_callback(n->utp, UTP_ON_FIREWALL, &utp_on_firewall);
-    utp_set_callback(n->utp, UTP_ON_ERROR, &utp_on_error);
-    utp_set_callback(n->utp, UTP_ON_STATE_CHANGE, &utp_on_state_change);
-    utp_set_callback(n->utp, UTP_ON_READ, &utp_on_read);
-
-    if (o_debug >= 2) {
-        utp_context_set_option(n->utp, UTP_LOG_NORMAL, 1);
-        utp_context_set_option(n->utp, UTP_LOG_MTU, 1);
-        utp_context_set_option(n->utp, UTP_LOG_DEBUG, 1);
-    }
-
 #ifdef EVTHREAD_USE_PTHREADS_IMPLEMENTED
     evthread_use_pthreads();
 #elif defined(EVTHREAD_USE_WINDOWS_THREADS_IMPLEMENTED)
@@ -260,6 +241,24 @@ network* network_setup(char *address, port_t port)
     if (evthread_make_base_notifiable(n->evbase)) {
         fprintf(stderr, "evthread_make_base_notifiable failed\n");
         return NULL;
+    }
+
+    n->dht = dht_setup(n, n->fd);
+    n->utp = utp_init(2);
+
+    utp_context_set_userdata(n->utp, n);
+
+    utp_set_callback(n->utp, UTP_LOG, &utp_callback_log);
+    utp_set_callback(n->utp, UTP_SENDTO, &utp_callback_sendto);
+    utp_set_callback(n->utp, UTP_ON_FIREWALL, &utp_on_firewall);
+    utp_set_callback(n->utp, UTP_ON_ERROR, &utp_on_error);
+    utp_set_callback(n->utp, UTP_ON_STATE_CHANGE, &utp_on_state_change);
+    utp_set_callback(n->utp, UTP_ON_READ, &utp_on_read);
+
+    if (o_debug >= 2) {
+        utp_context_set_option(n->utp, UTP_LOG_NORMAL, 1);
+        utp_context_set_option(n->utp, UTP_LOG_MTU, 1);
+        utp_context_set_option(n->utp, UTP_LOG_DEBUG, 1);
     }
 
     event_assign(&n->udp_event, n->evbase, n->fd, EV_READ|EV_PERSIST, udp_read, n);
