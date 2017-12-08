@@ -24,6 +24,7 @@ typedef struct evbuffer evbuffer;
 typedef struct bufferevent bufferevent;
 typedef struct sockaddr sockaddr;
 typedef struct sockaddr_in sockaddr_in;
+typedef struct sockaddr_in6 sockaddr_in6;
 typedef struct sockaddr_storage sockaddr_storage;
 typedef in_port_t port_t;
 
