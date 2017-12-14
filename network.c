@@ -58,6 +58,17 @@ uint64 utp_callback_log(utp_callback_arguments *a)
     return 0;
 }
 
+void dht_schedule(network *n, time_t tosleep)
+{
+    if (n->dht_timer) {
+        timer_cancel(n->dht_timer);
+    }
+    n->dht_timer = timer_start(n, tosleep * 1000, ^{
+        n->dht_timer = NULL;
+        dht_schedule(n, dht_tick(n->dht));
+    });
+}
+
 void udp_read(evutil_socket_t fd, short events, void *arg)
 {
     network *n = (network*)arg;
@@ -96,7 +107,10 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
         if (utp_process_udp(n->utp, buf, len, (sockaddr *)&src_addr, addrlen)) {
             continue;
         }
-        if (dht_process_udp(n->dht, buf, len, (sockaddr *)&src_addr, addrlen)) {
+        time_t tosleep;
+        bool r = dht_process_udp(n->dht, buf, len, (sockaddr *)&src_addr, addrlen, &tosleep);
+        dht_schedule(n, tosleep);
+        if (r) {
             continue;
         }
     }
@@ -269,8 +283,9 @@ network* network_setup(char *address, port_t port)
 
     timer_repeating(n, 500, ^{
         utp_check_timeouts(n->utp);
-        dht_tick(n->dht);
     });
+
+    dht_schedule(n, 0);
 
     return n;
 }

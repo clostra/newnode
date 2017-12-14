@@ -1,9 +1,6 @@
 [submodule "libutp"]
 	path = libutp
 	url = ../libutp
-[submodule "libbtdht"]
-	path = libbtdht
-	url = ../libbtdht
 [submodule "Libevent"]
 	path = Libevent
 	url = ../Libevent
@@ -17,3 +14,6 @@
 [submodule "blocksruntime"]
 	path = blocksruntime
 	url = https://github.com/mackyle/blocksruntime.git
+[submodule "dht"]
+	path = dht
+	url = https://github.com/clostra/dht

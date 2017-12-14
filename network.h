@@ -15,8 +15,10 @@ typedef struct network network;
 
 
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
+#define MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
 #define lenof(x) (sizeof(x)/sizeof(x[0]))
 #define alloc(type) calloc(1, sizeof(type))
+#define memeq(a, b, len) (memcmp(a, b, len) == 0)
 
 
 typedef struct event_base event_base;
@@ -33,6 +35,9 @@ typedef struct sockaddr_in6 sockaddr_in6;
 typedef struct sockaddr_storage sockaddr_storage;
 typedef in_port_t port_t;
 
+#include "timer.h"
+
+
 struct network {
     event_base *evbase;
     evdns_base *evdns;
@@ -40,6 +45,7 @@ struct network {
     event udp_event;
     utp_context *utp;
     dht *dht;
+    timer *dht_timer;
     evhttp *http;
 };
 

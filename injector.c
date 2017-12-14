@@ -41,6 +41,10 @@ unsigned char sk[crypto_sign_SECRETKEYBYTES];
 #endif
 
 
+void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
+{
+}
+
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri);
 
 void content_sign(content_sig *sig, const uint8_t *content_hash)
@@ -464,11 +468,7 @@ int main(int argc, char *argv[])
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
 
     timer_callback cb = ^{
-        dht_announce(n->dht, injector_swarm, ^(const byte *peers, uint num_peers) {
-            if (!peers) {
-                printf("announce complete\n");
-            }
-        });
+        dht_announce(n->dht, (const uint8_t *)injector_swarm);
     };
     cb();
     timer_repeating(n, 25 * 60 * 1000, cb);
