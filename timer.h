@@ -5,15 +5,17 @@
 
 #include <event2/event_struct.h>
 
+typedef struct timer timer;
+
 #include "network.h"
 
 
 typedef void (^timer_callback)();
 
-typedef struct {
+struct timer {
     event event;
     timer_callback cb;
-} timer;
+};
 
 timer* timer_start(network *n, uint64_t timeout_ms, timer_callback cb);
 timer* timer_repeating(network *n, uint64_t timeout_ms, timer_callback cb);

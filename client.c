@@ -111,11 +111,6 @@ uint64_t us_clock()
     return (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
 }
 
-bool memeq(const uint8_t *a, const uint8_t *b, size_t len)
-{
-    return memcmp(a, b, len) == 0;
-}
-
 int mkpath(char *file_path)
 {
     for (char *p = strchr(file_path + 1, '/'); p; p = strchr(p + 1, '/')) {
@@ -269,31 +264,33 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
     } else {
         add_addresses(n, &all_peers, peers, num_peers);
     }
-    printf("Received %d values.\n", (int)(data_len / 6));
-    printf("{\"");
-    for (int j = 0; j < 20; j++) {
-        printf("%02x", info_hash[j]);
-    }
-    printf("\": [");
-    for (uint i = 0; i < data_len / 6; i++) {
-        address *a = (address *)&data[i * 6];
-        printf("\"%s:%d\"", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
-        if (i + 1 != data_len / 6) {
-            printf(", ");
+    if (o_debug >= 2) {
+        printf("Received %d values.\n", (int)(data_len / 6));
+        printf("{\"");
+        for (int j = 0; j < 20; j++) {
+            printf("%02x", info_hash[j]);
         }
-    }
-    printf("]}\n");
-    if (data_len / 6 == 7) {
-        dht_dump_tables(stdout);
+        printf("\": [");
+        for (uint i = 0; i < data_len / 6; i++) {
+            address *a = (address *)&data[i * 6];
+            printf("\"%s:%d\"", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
+            if (i + 1 != data_len / 6) {
+                printf(", ");
+            }
+        }
+        printf("]}\n");
+        if (data_len / 6 == 7) {
+            dht_dump_tables(stdout);
+        }
     }
 }
 
 void update_injector_proxy_swarm(network *n)
 {
     if (injector_reachable) {
-        dht_announce(n->dht, injector_proxy_swarm);
+        dht_announce(n->dht, (const uint8_t *)injector_proxy_swarm);
     } else {
-        dht_get_peers(n->dht, injector_proxy_swarm);
+        dht_get_peers(n->dht, (const uint8_t *)injector_proxy_swarm);
     }
 }
 
@@ -1288,7 +1285,7 @@ network* client_init(port_t port)
     printf("listening on TCP:%s:%d\n", "127.0.0.1", port);
 
     timer_callback cb = ^{
-        dht_get_peers(n->dht, injector_swarm);
+        dht_get_peers(n->dht, (const uint8_t *)injector_swarm);
         submit_trace_request(n);
         update_injector_proxy_swarm(n);
     };

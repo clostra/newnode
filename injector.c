@@ -468,7 +468,7 @@ int main(int argc, char *argv[])
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
 
     timer_callback cb = ^{
-        dht_announce(n->dht, injector_swarm);
+        dht_announce(n->dht, (const uint8_t *)injector_swarm);
     };
     cb();
     timer_repeating(n, 25 * 60 * 1000, cb);
