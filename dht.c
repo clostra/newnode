@@ -123,7 +123,7 @@ void dht_save(dht *d)
     }
     memcpy(d->save_hash, hash, sizeof(hash));
 
-    debug("dht saving num:%d num6:%d\n", num, num6);
+    ddebug("dht saving num:%d num6:%d\n", num, num6);
     FILE *f = fopen("dht.dat", "wb");
     fwrite(sin, sizeof(sockaddr_in), num, f);
     fclose(f);
