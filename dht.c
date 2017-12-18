@@ -22,8 +22,28 @@ struct dht {
     int fd;
     time_t save_time;
     unsigned char save_hash[crypto_generichash_BYTES];
-    sockaddr_storage *peer_sa;
+    sockaddr_storage *peer_ss;
 };
+
+uint8_t rand_hash[20];
+sockaddr_storage **blacklist;
+uint blacklist_len;
+
+
+void dht_filter_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
+{
+    network *n = (network*)closure;
+    assert(n->dht->peer_ss);
+    if (memeq(rand_hash, info_hash, sizeof(rand_hash))) {
+        debug("ban!\n");
+        blacklist_len++;
+        blacklist = realloc(blacklist, blacklist_len * sizeof(sockaddr_storage*));
+        blacklist[blacklist_len - 1] = memdup(n->dht->peer_ss,
+            n->dht->peer_ss->ss_family == AF_INET6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in));
+        return;
+    }
+    dht_event_callback(closure, event, info_hash, data, data_len);
+}
 
 void dht_add_bootstrap_cb(int result, evutil_addrinfo *ai, void *arg)
 {
@@ -99,6 +119,9 @@ dht* dht_setup(network *n, int fd)
     dht_add_bootstrap(d, "router.bittorrent.com", 6881);
     dht_add_bootstrap(d, "dht.libtorrent.org", 25401);
 
+    dht_random_bytes(rand_hash, sizeof(rand_hash));
+    dht_get_peers(d, rand_hash);
+
     return d;
 }
 
@@ -145,10 +168,10 @@ bool dht_process_udp(dht *d, const uint8_t *buffer, size_t len, const sockaddr *
     // XXX: ACK; dht require NULL terminate packet -- I just happen to know there's enough space in the buffer...
     ((uint8_t*)buffer)[len] = '\0';
 
-    d->peer_sa = (sockaddr_storage*)to;
+    d->peer_ss = (sockaddr_storage*)to;
     int r = dht_periodic(buffer, len, to, tolen, tosleep, dht_event_callback, d->n);
     dht_save(d);
-    d->peer_sa = NULL;
+    d->peer_ss = NULL;
     return r != -1;
 }
 
@@ -194,6 +217,14 @@ void dht_destroy(dht *d)
 
 int dht_blacklisted(const sockaddr *sa, int salen)
 {
+    for (uint i = 0; i < blacklist_len; i++) {
+        if (sa->sa_family != blacklist[i]->ss_family) {
+            continue;
+        }
+        if (memeq(sa, blacklist[i], salen)) {
+            return 1;
+        }
+    }
     return 0;
 }
 
