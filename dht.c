@@ -146,7 +146,6 @@ bool dht_process_udp(dht *d, const uint8_t *buffer, size_t len, const sockaddr *
     ((uint8_t*)buffer)[len] = '\0';
 
     d->peer_sa = (sockaddr_storage*)to;
-    assert(d->peer_sa->ss_len == tolen);
     int r = dht_periodic(buffer, len, to, tolen, tosleep, dht_event_callback, d->n);
     dht_save(d);
     d->peer_sa = NULL;
