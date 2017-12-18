@@ -19,6 +19,7 @@ typedef struct network network;
 #define lenof(x) (sizeof(x)/sizeof(x[0]))
 #define alloc(type) calloc(1, sizeof(type))
 #define memeq(a, b, len) (memcmp(a, b, len) == 0)
+#define memdup(m, len) memcpy(malloc(len), m, len)
 
 
 typedef struct event_base event_base;
