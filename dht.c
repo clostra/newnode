@@ -33,13 +33,16 @@ uint blacklist_len;
 void dht_filter_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
 {
     network *n = (network*)closure;
-    assert(n->dht->peer_ss);
-    if (memeq(rand_hash, info_hash, sizeof(rand_hash))) {
-        debug("ban!\n");
+    if (n->dht->peer_ss && memeq(rand_hash, info_hash, sizeof(rand_hash))) {
+        socklen_t ss_len = n->dht->peer_ss->ss_family == AF_INET6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in);
+        char host[NI_MAXHOST];
+        char serv[NI_MAXSERV];
+        getnameinfo((sockaddr*)n->dht->peer_ss, ss_len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+        debug("banned %s:%s\n", host, serv);
         blacklist_len++;
         blacklist = realloc(blacklist, blacklist_len * sizeof(sockaddr_storage*));
-        blacklist[blacklist_len - 1] = memdup(n->dht->peer_ss,
-            n->dht->peer_ss->ss_family == AF_INET6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in));
+        blacklist[blacklist_len - 1] = memdup(n->dht->peer_ss, ss_len);
+        dht_blacklist_address((sockaddr*)n->dht->peer_ss, ss_len);
         return;
     }
     dht_event_callback(closure, event, info_hash, data, data_len);
@@ -158,7 +161,7 @@ void dht_save(dht *d)
 time_t dht_tick(dht *d)
 {
     time_t tosleep;
-    dht_periodic(NULL, 0, NULL, 0, &tosleep, dht_event_callback, d->n);
+    dht_periodic(NULL, 0, NULL, 0, &tosleep, dht_filter_event_callback, d->n);
     dht_save(d);
     return tosleep;
 }
@@ -169,7 +172,7 @@ bool dht_process_udp(dht *d, const uint8_t *buffer, size_t len, const sockaddr *
     ((uint8_t*)buffer)[len] = '\0';
 
     d->peer_ss = (sockaddr_storage*)to;
-    int r = dht_periodic(buffer, len, to, tolen, tosleep, dht_event_callback, d->n);
+    int r = dht_periodic(buffer, len, to, tolen, tosleep, dht_filter_event_callback, d->n);
     dht_save(d);
     d->peer_ss = NULL;
     return r != -1;
@@ -195,7 +198,7 @@ void dht_announce(dht *d, const uint8_t *info_hash)
     } else if (sa.ss_family == AF_INET6) {
         port = ntohs(((sockaddr_in6*)&sa)->sin6_port);
     }
-    dht_search(info_hash, port, sa.ss_family, dht_event_callback, d->n);
+    dht_search(info_hash, port, sa.ss_family, dht_filter_event_callback, d->n);
 }
 
 void dht_get_peers(dht *d, const uint8_t *info_hash)
@@ -206,7 +209,7 @@ void dht_get_peers(dht *d, const uint8_t *info_hash)
         fprintf(stderr, "dht getsockname failed %d (%s)\n", errno, strerror(errno));
         return;
     }
-    dht_search(info_hash, 0, sa.ss_family, dht_event_callback, d->n);
+    dht_search(info_hash, 0, sa.ss_family, dht_filter_event_callback, d->n);
 }
 
 void dht_destroy(dht *d)
@@ -222,6 +225,7 @@ int dht_blacklisted(const sockaddr *sa, int salen)
             continue;
         }
         if (memeq(sa, blacklist[i], salen)) {
+            debug("ignoring blacklisted node\n");
             return 1;
         }
     }
