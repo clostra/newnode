@@ -45,7 +45,8 @@ void icmp_handler(network *n)
             pdie("recvmsg");
         }
 
-        dht_process_icmp(n->dht, (const byte*) &msg, sizeof(msg), (sockaddr *)&remote, sizeof(remote));
+        time_t tosleep;
+        dht_process_icmp(n->dht, (const byte*) &msg, sizeof(msg), (sockaddr *)&remote, sizeof(remote), &tosleep);
 
         for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
             if (cmsg->cmsg_type != IP_RECVERR) {
