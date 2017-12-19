@@ -1284,7 +1284,7 @@ network* client_init(port_t port)
     all_peers = alloc(peer_array);
     TAILQ_INIT(&pending_requests);
 
-    network *n = network_setup("0.0.0.0", port);
+    network *n = network_setup("0.0.0.0", 0);
 
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
 
