@@ -50,31 +50,6 @@ function build_android {
     LIBUTP=libutp/$TRIPLE/libutp.a
 
 
-    BTFLAGS="-D_UNICODE -DLINUX -DANDROID"
-    if [ ! -z "$DEBUG" ]; then
-        BTFLAGS="$BTFLAGS -D_DEBUG"
-    fi
-    cd libbtdht/btutils
-    if [ ! -f $TRIPLE/libbtutils.a ]; then
-        for f in src/*.cpp; do
-            clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -fPIC $ABI_FLAGS -c $f
-        done
-        mkdir $TRIPLE
-        ar rs $TRIPLE/libbtutils.a *.o
-    fi
-    cd ..
-    if [ ! -f $TRIPLE/libbtdht.a ]; then
-        for f in src/*.cpp; do
-            clang++ -MD -g -pipe -Wall -O0 $BTFLAGS -std=c++14 -fPIC $ABI_FLAGS -I btutils/src -I src -c $f
-        done
-        mkdir $TRIPLE
-        ar rs $TRIPLE/libbtdht.a *.o
-    fi
-    cd ..
-    LIBBTDHT_CFLAGS="-Ilibbtdht/src -Ilibbtdht/btutils/src $BTFLAGS"
-    LIBBTDHT="libbtdht/$TRIPLE/libbtdht.a libbtdht/btutils/$TRIPLE/libbtutils.a"
-
-
     cd blocksruntime
     LIBBLOCKSRUNTIME_DIR="$(pwd)/blocksruntime-$TRIPLE"
     if [ ! -f ${LIBBLOCKSRUNTIME_DIR}/libBlocksRuntime.a ]; then
@@ -90,7 +65,7 @@ function build_android {
     FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
-      -D__FAVOR_BSD -D_BSD_SOURCE $ABI_FLAGS"
+      -D__FAVOR_BSD -D_BSD_SOURCE -DANDROID $ABI_FLAGS"
     if [ ! -z "$DEBUG" ]; then
         FLAGS="$FLAGS -O0 -DDEBUG=1"
     else
@@ -100,8 +75,8 @@ function build_android {
     CFLAGS="$FLAGS -std=gnu11"
     CPPFLAGS="$FLAGS -std=c++14"
 
-    clang++ $CPPFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c dht.cpp
-    for file in android.c bev_splice.c base64.c client.c http.c log.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c; do
+    clang $CFLAGS -c dht/dht.c -o dht_dht.o
+    for file in android.c bev_splice.c base64.c client.c dht.c http.c log.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
     done
     clang++ $FLAGS -shared -o libdcdn.so *.o -static-libstdc++ -lm $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -llog

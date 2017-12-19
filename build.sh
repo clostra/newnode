@@ -52,7 +52,7 @@ echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
 echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LIBBLOCKSRUNTIME="-lBlocksRuntime"
 
-clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS -c dht/dht.c -o dht_dht.o
+clang $CFLAGS -c dht/dht.c -o dht_dht.o
 for file in client.c injector.c dht.c bev_splice.c base64.c http.c log.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c; do
     clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS -c $file
 done
