@@ -25,24 +25,6 @@
 
 evhttp_connection *connections[10];
 
-#ifdef HASH_LOGGING
-int crypto_generichash_update_logged(crypto_generichash_state *state,
-                                     const unsigned char *in,
-                                     unsigned long long inlen)
-{
-    printf("state:%p\n", state);
-    hexdump(in, inlen);
-    char name[256];
-    snprintf(name, sizeof(name), "%p", state);
-    FILE *f = fopen(name, "a");
-    fwrite(in, inlen, 1, f);
-    fclose(f);
-#undef crypto_generichash_update
-    return crypto_generichash_update(state, in, inlen);
-#define crypto_generichash_update crypto_generichash_update_logged
-}
-#endif
-
 void join_url_swarm(network *n, const char *url)
 {
     __block struct {
