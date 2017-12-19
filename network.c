@@ -143,6 +143,8 @@ network* network_setup(char *address, port_t port)
 {
     signal(SIGPIPE, SIG_IGN);
 
+    srandomdev();
+
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
