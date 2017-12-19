@@ -235,6 +235,11 @@ void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_a
         }
         debug("new %s %s:%d\n", label, inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
 
+        sockaddr_in sin;
+        sin.sin_addr.s_addr = a->ip;
+        sin.sin_port = a->port;
+        dht_ping_node((const sockaddr *)&sin, sizeof(sin));
+
         if (!TAILQ_EMPTY(&pending_requests)) {
             for (uint k = 0; k < lenof(peer_connections); k++) {
                 if (peer_connections[k]) {
