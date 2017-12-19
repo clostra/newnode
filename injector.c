@@ -43,6 +43,11 @@ unsigned char sk[crypto_sign_SECRETKEYBYTES];
 
 void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
 {
+    debug("dht_event_callback event:%d ", event);
+    for (uint i = 0; i < 20; i++) {
+        debug("%02X", info_hash[i]);
+    }
+    debug("\n");
 }
 
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri);
