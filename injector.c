@@ -81,25 +81,24 @@ void request_done_cb(evhttp_request *req, void *arg)
         debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(p->server_req));
 
         const char *uri = evhttp_request_get_uri(p->server_req);
+
+        uint8_t content_hash[crypto_generichash_BYTES];
+        crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
+        content_sig sig;
+        content_sign(&sig, content_hash);
+
         // XXX: HEAD is deprecated, remove the table after the upgrade
-        content_sig *s = hash_get_or_insert(url_table, uri, ^{
+        debug("storing sig for %s\n", uri);
+        // duplicate the memory because the hash_table owns it now
+        p->server_req->uri = strdup(uri);
+        content_sig *s = memdup(&sig, sizeof(sig));
+        content_sig *old = hash_set(url_table, uri, s);
+        free(old);
 
-            debug("storing sig for %s\n", uri);
-
-            // duplicate the memory because the hash_table owns it now
-            p->server_req->uri = strdup(uri);
-
-            uint8_t content_hash[crypto_generichash_BYTES];
-            crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
-            content_sig *sig = alloc(content_sig);
-            content_sign(sig, content_hash);
-
-            return (void*)sig;
-        });
         evkeyvalq trailers;
         TAILQ_INIT(&trailers);
         size_t out_len;
-        char *hex_sig = base64_urlsafe_encode((uint8_t*)s, sizeof(content_sig), &out_len);
+        char *hex_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
         debug("returning sig for %s %s\n", uri, hex_sig);
         evhttp_add_header(&trailers, "X-Sign", hex_sig);
         free(hex_sig);
