@@ -6,7 +6,15 @@
 #include "network.h"
 
 
-#define PACKED __attribute__((__packed__))
+//#define HASH_LOGGING
+
+#ifdef HASH_LOGGING
+int crypto_generichash_update_logged(crypto_generichash_state *state,
+                                     const unsigned char *in,
+                                     unsigned long long inlen);
+#define crypto_generichash_update crypto_generichash_update_logged
+#endif
+
 
 typedef struct {
     uint8_t signature[crypto_sign_BYTES];
