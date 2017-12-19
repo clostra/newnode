@@ -34,11 +34,13 @@ void* hash_get_or_insert(hash_table *h, const char *key, create_fn c)
     return kh_val(h, k);
 }
 
-void hash_set(hash_table *h, const char *key, void *val)
+void* hash_set(hash_table *h, const char *key, void *val)
 {
     int absent;
     khint_t k = kh_put(hash_table_val, h, key, &absent);
+    void *old = absent ? NULL : kh_val(h, k);
     kh_val(h, k) = val;
+    return old;
 }
 
 void hash_table_free(hash_table *h)
