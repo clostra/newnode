@@ -90,10 +90,10 @@ dht* dht_setup(network *n, int fd)
         long fsize = ftell(f);
         fseek(f, 0, SEEK_SET);
         sockaddr_in sin[2048];
-        int num = MIN(lenof(sin), fsize / sizeof(sockaddr_in));
+        uint num = MIN(lenof(sin), fsize / sizeof(sockaddr_in));
         num = fread(sin, sizeof(sockaddr_in), num, f);
         fclose(f);
-        for (int i = 0; i < num; i++) {
+        for (uint i = 0; i < num; i++) {
             dht_ping_node((const sockaddr *)&sin[i], sizeof(sockaddr_in));
         }
         if (num) {
@@ -107,10 +107,10 @@ dht* dht_setup(network *n, int fd)
         long fsize = ftell(f);
         fseek(f, 0, SEEK_SET);
         sockaddr_in6 sin6[2048];
-        int num6 = MIN(lenof(sin6), fsize / sizeof(sockaddr_in6));
+        uint num6 = MIN(lenof(sin6), fsize / sizeof(sockaddr_in6));
         num6 = fread(sin6, sizeof(sockaddr_in6), num6, f);
         fclose(f);
-        for (int i = 0; i < num6; i++) {
+        for (uint i = 0; i < num6; i++) {
             dht_ping_node((const sockaddr *)&sin6[i], sizeof(sockaddr_in6));
         }
         if (num6) {
