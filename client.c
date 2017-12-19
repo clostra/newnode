@@ -569,6 +569,14 @@ bool verify_signature(crypto_generichash_state *content_state, const char *sign)
 
     if (memcmp(content_hash, sig->content_hash, sizeof(content_hash))) {
         fprintf(stderr, "Incorrect hash!\n");
+        for (uint i = 0; i < sizeof(content_hash); i++) {
+            fprintf(stderr, "%02X", content_hash[i]);
+        }
+        fprintf(stderr, "\n");
+        for (uint i = 0; i < sizeof(sig->content_hash); i++) {
+            fprintf(stderr, "%02X", sig->content_hash[i]);
+        }
+        fprintf(stderr, "\n");
         free(raw_sig);
         return false;
     }
