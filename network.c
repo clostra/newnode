@@ -34,7 +34,6 @@
 
 uint64 utp_on_firewall(utp_callback_arguments *a)
 {
-    debug("Firewall allowing inbound connection\n");
     return 0;
 }
 
