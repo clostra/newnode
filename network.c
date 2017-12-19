@@ -14,6 +14,8 @@
 #include <netdb.h>
 #include <signal.h>
 
+#include <sodium.h>
+
 #include <event2/thread.h>
 #include <event2/buffer.h>
 #include <event2/event-config.h>
@@ -139,11 +141,16 @@ bufferevent* create_bev(event_base *base, void *userdata)
     return bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 }
 
+uint64 utp_callback_get_random(utp_callback_arguments *args)
+{
+    uint64_t r;
+    randombytes_buf(&r, sizeof(r));
+    return r;
+}
+
 network* network_setup(char *address, port_t port)
 {
     signal(SIGPIPE, SIG_IGN);
-
-    srandomdev();
 
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
@@ -264,6 +271,7 @@ network* network_setup(char *address, port_t port)
 
     utp_context_set_userdata(n->utp, n);
 
+    utp_set_callback(n->utp, UTP_GET_RANDOM, &utp_callback_get_random);
     utp_set_callback(n->utp, UTP_LOG, &utp_callback_log);
     utp_set_callback(n->utp, UTP_SENDTO, &utp_callback_sendto);
     utp_set_callback(n->utp, UTP_ON_FIREWALL, &utp_on_firewall);
