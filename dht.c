@@ -38,7 +38,7 @@ void dht_filter_event_callback(void *closure, int event, const unsigned char *in
         char host[NI_MAXHOST];
         char serv[NI_MAXSERV];
         getnameinfo((sockaddr*)n->dht->peer_ss, ss_len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-        debug("banned %s:%s\n", host, serv);
+        debug("dht banned %s:%s\n", host, serv);
         blacklist_len++;
         blacklist = realloc(blacklist, blacklist_len * sizeof(sockaddr_storage*));
         blacklist[blacklist_len - 1] = memdup(n->dht->peer_ss, ss_len);
@@ -225,7 +225,7 @@ int dht_blacklisted(const sockaddr *sa, int salen)
             continue;
         }
         if (memeq(sa, blacklist[i], salen)) {
-            debug("ignoring blacklisted node\n");
+            debug("dht ignoring blacklisted node\n");
             return 1;
         }
     }
