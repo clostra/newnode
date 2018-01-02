@@ -218,6 +218,12 @@ void dht_destroy(dht *d)
     free(d);
 }
 
+int dht_sendto(int sockfd, const void *buf, int len, int flags,
+               const struct sockaddr *to, int tolen)
+{
+    return sendto(sockfd, buf, len, flags, to, tolen);
+}
+
 int dht_blacklisted(const sockaddr *sa, int salen)
 {
     for (uint i = 0; i < blacklist_len; i++) {
