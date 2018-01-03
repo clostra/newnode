@@ -122,8 +122,12 @@ dht* dht_setup(network *n, int fd)
     dht_add_bootstrap(d, "router.bittorrent.com", 6881);
     dht_add_bootstrap(d, "dht.libtorrent.org", 25401);
 
-    dht_random_bytes(rand_hash, sizeof(rand_hash));
-    dht_get_peers(d, rand_hash);
+    timer_callback cb = ^{
+        dht_random_bytes(rand_hash, sizeof(rand_hash));
+        dht_get_peers(d, rand_hash);
+    };
+    cb();
+    timer_repeating(d->n, 21 * 60 * 1000, cb);
 
     return d;
 }
