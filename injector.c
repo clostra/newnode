@@ -20,7 +20,6 @@
 #include "network.h"
 #include "constants.h"
 #include "bev_splice.h"
-#include "hash_table.h"
 #include "utp_bufferevent.h"
 #include "http.h"
 
@@ -32,7 +31,6 @@ typedef struct {
     crypto_generichash_state content_state;
 } proxy_request;
 
-hash_table *url_table;
 unsigned char pk[crypto_sign_PUBLICKEYBYTES] = injector_pk;
 #ifdef injector_sk
 unsigned char sk[crypto_sign_SECRETKEYBYTES] = injector_sk;
@@ -91,14 +89,6 @@ void request_done_cb(evhttp_request *req, void *arg)
         crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
         content_sig sig;
         content_sign(&sig, content_hash);
-
-        // XXX: HEAD is deprecated, remove the table after the upgrade
-        debug("storing sig for %s\n", uri);
-        // duplicate the memory because the hash_table owns it now
-        p->server_req->uri = strdup(uri);
-        content_sig *s = memdup(&sig, sizeof(sig));
-        content_sig *old = hash_set(url_table, uri, s);
-        free(old);
 
         evkeyvalq trailers;
         TAILQ_INIT(&trailers);
@@ -161,13 +151,6 @@ int header_cb(evhttp_request *req, void *arg)
         copy_header(req, p->server_req, response_header_whitelist[i]);
     }
     overwrite_header(p->server_req, "Content-Location", evhttp_request_get_uri(p->server_req));
-
-    // XXX: HEAD is deprecated. remove after the upgrade
-    if (p->server_req->type == EVHTTP_REQ_HEAD) {
-        evhttp_send_reply(p->server_req, code, req->response_code_line, evbuffer_new());
-        p->server_req = NULL;
-        return 0;
-    }
 
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
     hash_headers(p->server_req->output_headers, &p->content_state);
@@ -392,19 +375,6 @@ void http_request_cb(evhttp_request *req, void *arg)
         return;
     }
 
-    // XXX: HEAD is deprecated. remove the table after the upgrade
-    if (req->type == EVHTTP_REQ_HEAD) {
-        const char *uri_s = evhttp_request_get_uri(req);
-        const content_sig *sig = hash_get(url_table, uri_s);
-        if (sig) {
-            size_t out_len;
-            char *hex_sig = base64_urlsafe_encode((uint8_t*)sig, sizeof(content_sig), &out_len);
-            debug("returning sig for %s %s\n", uri_s, hex_sig);
-            overwrite_header(req, "X-Sign", hex_sig);
-            free(hex_sig);
-        }
-    }
-
     submit_request(n, req, evcon, uri);
 }
 
@@ -418,8 +388,6 @@ void usage(char *name)
     fprintf(stderr, "\n");
     exit(1);
 }
-
-
 
 int main(int argc, char *argv[])
 {
@@ -464,8 +432,6 @@ int main(int argc, char *argv[])
     fclose(f);
 #endif
 
-    url_table = hash_table_create();
-
     port_t port = atoi(port_s);
     network *n = network_setup(address, port);
 
@@ -477,7 +443,7 @@ int main(int argc, char *argv[])
     cb();
     timer_repeating(n, 25 * 60 * 1000, cb);
 
-    evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_HEAD | EVHTTP_REQ_CONNECT | EVHTTP_REQ_TRACE);
+    evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_CONNECT | EVHTTP_REQ_TRACE);
     evhttp_set_gencb(n->http, http_request_cb, n);
 
     return network_loop(n);
