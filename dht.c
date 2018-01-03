@@ -23,6 +23,7 @@ struct dht {
     time_t save_time;
     unsigned char save_hash[crypto_generichash_BYTES];
     sockaddr_storage *peer_ss;
+    bool filter_running:1;
 };
 
 uint8_t rand_hash[20];
@@ -33,16 +34,20 @@ uint blacklist_len;
 void dht_filter_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
 {
     network *n = (network*)closure;
-    if (n->dht->peer_ss && memeq(rand_hash, info_hash, sizeof(rand_hash))) {
-        socklen_t ss_len = n->dht->peer_ss->ss_family == AF_INET6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in);
-        char host[NI_MAXHOST];
-        char serv[NI_MAXSERV];
-        getnameinfo((sockaddr*)n->dht->peer_ss, ss_len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-        debug("dht banned %s:%s\n", host, serv);
-        blacklist_len++;
-        blacklist = realloc(blacklist, blacklist_len * sizeof(sockaddr_storage*));
-        blacklist[blacklist_len - 1] = memdup(n->dht->peer_ss, ss_len);
-        dht_blacklist_address((sockaddr*)n->dht->peer_ss, ss_len);
+    if (memeq(rand_hash, info_hash, sizeof(rand_hash))) {
+        if (n->dht->peer_ss) {
+            socklen_t ss_len = n->dht->peer_ss->ss_family == AF_INET6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in);
+            char host[NI_MAXHOST];
+            char serv[NI_MAXSERV];
+            getnameinfo((sockaddr*)n->dht->peer_ss, ss_len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+            debug("dht banned %s:%s\n", host, serv);
+            blacklist_len++;
+            blacklist = realloc(blacklist, blacklist_len * sizeof(sockaddr_storage*));
+            blacklist[blacklist_len - 1] = memdup(n->dht->peer_ss, ss_len);
+            dht_blacklist_address((sockaddr*)n->dht->peer_ss, ss_len);
+        } else {
+            n->dht->filter_running = false;
+        }
         return;
     }
     dht_event_callback(closure, event, info_hash, data, data_len);
@@ -122,13 +127,6 @@ dht* dht_setup(network *n, int fd)
     dht_add_bootstrap(d, "router.bittorrent.com", 6881);
     dht_add_bootstrap(d, "dht.libtorrent.org", 25401);
 
-    timer_callback cb = ^{
-        dht_random_bytes(rand_hash, sizeof(rand_hash));
-        dht_get_peers(d, rand_hash);
-    };
-    cb();
-    timer_repeating(d->n, 21 * 60 * 1000, cb);
-
     return d;
 }
 
@@ -188,6 +186,16 @@ bool dht_process_icmp(dht *d, const uint8_t *buffer, size_t len, const sockaddr 
     return false;
 }
 
+void dht_filter(dht *d)
+{
+    if (d->filter_running) {
+        return;
+    }
+    d->filter_running = true;
+    dht_random_bytes(rand_hash, sizeof(rand_hash));
+    dht_get_peers(d, rand_hash);
+}
+
 void dht_announce(dht *d, const uint8_t *info_hash)
 {
     sockaddr_storage sa;
@@ -202,6 +210,7 @@ void dht_announce(dht *d, const uint8_t *info_hash)
     } else if (sa.ss_family == AF_INET6) {
         port = ntohs(((sockaddr_in6*)&sa)->sin6_port);
     }
+    dht_filter(d);
     dht_search(info_hash, port, sa.ss_family, dht_filter_event_callback, d->n);
 }
 
@@ -213,6 +222,7 @@ void dht_get_peers(dht *d, const uint8_t *info_hash)
         fprintf(stderr, "dht getsockname failed %d (%s)\n", errno, strerror(errno));
         return;
     }
+    dht_filter(d);
     dht_search(info_hash, 0, sa.ss_family, dht_filter_event_callback, d->n);
 }
 
