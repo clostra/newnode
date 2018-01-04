@@ -45,7 +45,8 @@ void dht_filter_event_callback(void *closure, int event, const unsigned char *in
             blacklist = realloc(blacklist, blacklist_len * sizeof(sockaddr_storage*));
             blacklist[blacklist_len - 1] = memdup(n->dht->peer_ss, ss_len);
             dht_blacklist_address((sockaddr*)n->dht->peer_ss, ss_len);
-        } else {
+        }
+        if (event == DHT_EVENT_SEARCH_DONE) {
             n->dht->filter_running = false;
         }
         return;
