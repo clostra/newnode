@@ -11,10 +11,11 @@
 
 
 typedef struct ip_mreq ip_mreq;
-
+void lsd_setup(network *n);
 
 int lsd_fd = -1;
 event lsd_event;
+event route_event;
 
 bool starts_with(const char *restrict string, const char *restrict prefix)
 {
@@ -84,6 +85,12 @@ void lsd_read_cb(evutil_socket_t fd, short events, void *arg)
     }
 }
 
+void route_read_cb(evutil_socket_t fd, short events, void *arg)
+{
+    network *n = arg;
+    lsd_setup(n);
+}
+
 void lsd_setup(network *n)
 {
     timer_callback cb = ^{
@@ -93,6 +100,16 @@ void lsd_setup(network *n)
         evutil_closesocket(lsd_fd);
         event_del(&lsd_event);
     } else {
+#ifdef __linux__
+        int route_fd = socket(PF_ROUTE, SOCK_DGRAM, NETLINK_ROUTE);
+
+        evutil_make_socket_closeonexec(route_fd);
+        evutil_make_socket_nonblocking(route_fd);
+
+        event_assign(&route_event, n->evbase, route_fd, EV_READ|EV_PERSIST, route_read_cb, n);
+        event_add(&route_event, NULL);
+#endif
+
         timer_repeating(n, 25 * 60 * 1000, cb);
     }
     lsd_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -136,5 +153,6 @@ void lsd_setup(network *n)
 
     event_assign(&lsd_event, n->evbase, lsd_fd, EV_READ|EV_PERSIST, lsd_read_cb, n);
     event_add(&lsd_event, NULL);
+
     cb();
 }
