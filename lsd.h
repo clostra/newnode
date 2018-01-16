@@ -6,4 +6,7 @@
 
 void lsd_setup(network *n);
 
+// defined by caller
+void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen);
+
 #endif // __LSD_H__

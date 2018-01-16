@@ -250,6 +250,13 @@ void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_a
     }
 }
 
+void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
+{
+    dht_ping_node(addr, addrlen);
+    address a = {.ip = ((sockaddr_in*)addr)->sin_addr.s_addr, .port = ((sockaddr_in*)addr)->sin_port};
+    add_addresses(n, &all_peers, (const byte*)&a, 1);
+}
+
 void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
 {
     network *n = (network*)closure;

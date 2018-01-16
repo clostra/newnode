@@ -6,8 +6,7 @@
 
 #include "network.h"
 #include "log.h"
-
-#include "dht/dht.h"
+#include "lsd.h"
 
 
 typedef struct ip_mreq ip_mreq;
@@ -54,6 +53,7 @@ void lsd_send(network *n)
 
 void lsd_read_cb(evutil_socket_t fd, short events, void *arg)
 {
+    network *n = arg;
     for (;;) {
         uint8_t packet[1500];
         sockaddr_storage addr;
@@ -80,7 +80,7 @@ void lsd_read_cb(evutil_socket_t fd, short events, void *arg)
             char serv[NI_MAXSERV];
             getnameinfo((sockaddr *)&addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
             debug("lsd peer %s:%s\n", host, serv);
-            dht_ping_node((sockaddr *)&addr, addrlen);
+            add_sockaddr(n, (sockaddr *)&addr, addrlen);
         }
     }
 }

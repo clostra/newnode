@@ -12,6 +12,8 @@
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 
+#include "dht/dht.h"
+
 #include "log.h"
 #include "sha1.h"
 #include "utp.h"
@@ -46,6 +48,11 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
         debug("%02X", info_hash[i]);
     }
     debug("\n");
+}
+
+void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
+{
+    dht_ping_node(addr, addrlen);
 }
 
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri);
