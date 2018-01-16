@@ -28,6 +28,7 @@
 #include "network.h"
 #include "timer.h"
 #include "log.h"
+#include "lsd.h"
 #include "icmp_handler.h"
 #include "utp_bufferevent.h"
 
@@ -145,6 +146,30 @@ uint64 utp_callback_get_random(utp_callback_arguments *args)
     uint64_t r;
     randombytes_buf(&r, sizeof(r));
     return r;
+}
+
+port_t sockaddr_get_port(const sockaddr* sa)
+{
+    switch (sa->sa_family) {
+    default:
+    case AF_INET:
+        return ntohs(((sockaddr_in*)sa)->sin_port);
+    case AF_INET6:
+        return ntohs(((sockaddr_in6*)sa)->sin6_port);
+    }
+}
+
+void sockaddr_set_port(sockaddr* sa, port_t port)
+{
+    switch (sa->sa_family) {
+    case AF_INET:
+        ((sockaddr_in*)sa)->sin_port = htons(port);
+        return;
+    case AF_INET6: {
+        ((sockaddr_in6*)sa)->sin6_port = htons(port);
+        return;
+    }
+    }
 }
 
 network* network_setup(char *address, port_t port)
@@ -267,6 +292,7 @@ network* network_setup(char *address, port_t port)
 
     n->dht = dht_setup(n, n->fd);
     n->utp = utp_init(2);
+    lsd_setup(n);
 
     utp_context_set_userdata(n->utp, n);
 

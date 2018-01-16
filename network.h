@@ -56,7 +56,11 @@ struct network {
 };
 
 void evbuffer_clear(evbuffer *buf);
+port_t sockaddr_get_port(const sockaddr* sa);
+void sockaddr_set_port(sockaddr* sa, port_t port);
+
 network* network_setup(char *address, port_t port);
 int network_loop(network *n);
+
 
 #endif // __NETWORK_H__

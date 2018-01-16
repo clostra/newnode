@@ -205,14 +205,8 @@ void dht_announce(dht *d, const uint8_t *info_hash)
         fprintf(stderr, "dht getsockname failed %d (%s)\n", errno, strerror(errno));
         return;
     }
-    port_t port = 0;
-    if (sa.ss_family == AF_INET) {
-        port = ntohs(((sockaddr_in*)&sa)->sin_port);
-    } else if (sa.ss_family == AF_INET6) {
-        port = ntohs(((sockaddr_in6*)&sa)->sin6_port);
-    }
     dht_filter(d);
-    dht_search(info_hash, port, sa.ss_family, dht_filter_event_callback, d->n);
+    dht_search(info_hash, sockaddr_get_port((sockaddr*)&sa), sa.ss_family, dht_filter_event_callback, d->n);
 }
 
 void dht_get_peers(dht *d, const uint8_t *info_hash)
