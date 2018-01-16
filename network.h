@@ -18,6 +18,10 @@ typedef struct network network;
 #define MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
 #define lenof(x) (sizeof(x)/sizeof(x[0]))
 #define alloc(type) calloc(1, sizeof(type))
+#define streq(a, b) (strcmp(a, b) == 0)
+#define strcaseeq(a, b) (strcasecmp(a, b) == 0)
+#define strneq(a, b, len) (strncmp(a, b, len) == 0)
+#define strncaseeq(a, b, len) (strncasecmp(a, b, len) == 0)
 #define memeq(a, b, len) (memcmp(a, b, len) == 0)
 #define memdup(m, len) memcpy(malloc(len), m, len)
 
@@ -30,6 +34,7 @@ typedef struct evbuffer evbuffer;
 typedef struct evutil_addrinfo evutil_addrinfo;
 typedef struct bufferevent bufferevent;
 typedef struct addrinfo addrinfo;
+typedef struct in_addr in_addr;
 typedef struct sockaddr sockaddr;
 typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr_in6 sockaddr_in6;
