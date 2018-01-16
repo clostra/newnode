@@ -47,7 +47,7 @@ void lsd_send(network *n)
             .sin_port = htons(9190)
         };
         if (sendto(lsd_fd, buf, len, 0, (sockaddr *)&addr, sizeof(addr)) == -1) {
-            fprintf(stderr, "send multicast error %d %s\n", errno, strerror(errno));
+            fprintf(stderr, "lsd error %d %s\n", errno, strerror(errno));
         }
     }
 }
@@ -88,6 +88,8 @@ void lsd_read_cb(evutil_socket_t fd, short events, void *arg)
 void route_read_cb(evutil_socket_t fd, short events, void *arg)
 {
     network *n = arg;
+    char buf[2048];
+    read(fd, buf, sizeof(buf));
     lsd_setup(n);
 }
 
