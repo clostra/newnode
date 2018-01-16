@@ -101,14 +101,16 @@ void lsd_setup(network *n)
         event_del(&lsd_event);
     } else {
 #ifdef __linux__
-        int route_fd = socket(PF_ROUTE, SOCK_DGRAM, NETLINK_ROUTE);
+        int route_fd = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
+#else
+        int route_fd = socket(PF_ROUTE, SOCK_RAW, 0);
+#endif
 
         evutil_make_socket_closeonexec(route_fd);
         evutil_make_socket_nonblocking(route_fd);
 
         event_assign(&route_event, n->evbase, route_fd, EV_READ|EV_PERSIST, route_read_cb, n);
         event_add(&route_event, NULL);
-#endif
 
         timer_repeating(n, 25 * 60 * 1000, cb);
     }
