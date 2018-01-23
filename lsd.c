@@ -2,6 +2,11 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+#ifdef __linux__
+#include <asm/types.h>
+#include <linux/netlink.h>
+#endif
+
 #include <event2/event-config.h>
 
 #include "network.h"

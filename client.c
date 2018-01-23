@@ -20,6 +20,7 @@
 #include "dht/dht.h"
 
 #include "log.h"
+#include "lsd.h"
 #include "utp.h"
 #include "http.h"
 #include "base64.h"
@@ -841,8 +842,28 @@ peer_connection* start_peer_connection(network *n, peer_array *peers)
     return evhttp_utp_connect(n, p);
 }
 
-void on_connect(pending_request *r, peer_connected connected)
+void queue_request(network *n, pending_request *r, peer_connected connected)
 {
+    bool any_connected = false;
+    for (uint i = 0; i < lenof(peer_connections); i++) {
+        if (peer_connections[i]) {
+            if (peer_connections[i]->evcon) {
+                any_connected = true;
+            }
+            continue;
+        }
+        peer_connections[i] = start_peer_connection(n, all_peers);
+        if (!peer_connections[i]) {
+            break;
+        }
+    }
+
+    static time_t last_lsd = 0;
+    if (!any_connected && time(NULL) - last_lsd > 10) {
+        last_lsd = time(NULL);
+        lsd_send(n);
+    }
+
     for (uint i = 0; i < lenof(peer_connections); i++) {
         peer_connection *pc = peer_connections[i];
         if (pc && pc->evcon) {
@@ -909,20 +930,10 @@ void proxy_submit_request(proxy_request *p)
         return;
     }
 
-    for (uint i = 0; i < lenof(peer_connections); i++) {
-        if (peer_connections[i]) {
-            continue;
-        }
-        peer_connections[i] = start_peer_connection(p->n, all_peers);
-        if (!peer_connections[i]) {
-            break;
-        }
-    }
-
     network *n = p->n;
     fetch_url_swarm(p->n, evhttp_request_get_uri(p->server_req));
 
-    on_connect(&p->r, ^(peer_connection *pc) {
+    queue_request(p->n, &p->r, ^(peer_connection *pc) {
         p->pc = pc;
         proxy_submit_request_on_con(p, p->pc->evcon);
     });
@@ -1042,7 +1053,7 @@ void submit_trace_request(network *n)
 {
     trace_request *t = alloc(trace_request);
     t->n = n;
-    on_connect(&t->r, ^(peer_connection *pc) {
+    queue_request(n, &t->r, ^(peer_connection *pc) {
         t->pc = pc;
         trace_submit_request_on_con(t, t->pc->evcon);
     });
@@ -1198,7 +1209,7 @@ void connect_request(network *n, evhttp_request *req)
 
     evhttp_connection_set_closecb(c->server_req->evcon, connect_evcon_close_cb, c);
 
-    on_connect(&c->r, ^(peer_connection *pc) {
+    queue_request(n, &c->r, ^(peer_connection *pc) {
         c->pc = pc;
         c->proxy_req = evhttp_request_new(connect_done_cb, c);
 
