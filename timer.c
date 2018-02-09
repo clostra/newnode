@@ -28,7 +28,7 @@ void timer_cancel(timer *t)
 
 timer* timer_new(network *n, uint64_t timeout_ms, short events, timer_callback cb)
 {
-    struct timeval timeout;
+    timeval timeout;
     timeout.tv_sec = timeout_ms / 1000;
     timeout.tv_usec = (timeout_ms % 1000) * 1000;
     timer *t = alloc(timer);
