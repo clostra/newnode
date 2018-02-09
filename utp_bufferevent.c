@@ -191,7 +191,7 @@ void ubev_read_cb(bufferevent *bev, void *ctx)
     utp_bufferevent_flush(u);
 }
 
-void ubev_write_cb(struct bufferevent *bev, void *ctx)
+void ubev_write_cb(bufferevent *bev, void *ctx)
 {
     //debug("ubev_write_cb %p\n", ctx);
     utp_bufferevent* u = (utp_bufferevent*)ctx;
@@ -208,7 +208,7 @@ void ubev_write_cb(struct bufferevent *bev, void *ctx)
     }
 }
 
-void ubev_event_cb(struct bufferevent *bev, short events, void *ctx)
+void ubev_event_cb(bufferevent *bev, short events, void *ctx)
 {
     debug("ubev_event_cb %p %x\n", ctx, events);
     utp_bufferevent* u = (utp_bufferevent*)ctx;
