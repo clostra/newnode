@@ -65,19 +65,19 @@ const char *evhttp_method(enum evhttp_cmd_type type)
 
 int get_port_for_scheme(const char *scheme)
 {
-    struct addrinfo hints;
+    addrinfo hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = PF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-    struct addrinfo *res;
+    addrinfo *res;
     int error = getaddrinfo(NULL, scheme, &hints, &res);
     if (error) {
         fprintf(stderr, "getaddrinfo failed %s\n", gai_strerror(error));
         return -1;
     }
     int port = -1;
-    for (struct addrinfo *r = res; r; r = r->ai_next) {
+    for (addrinfo *r = res; r; r = r->ai_next) {
         char portstr[NI_MAXSERV];
         error = getnameinfo(r->ai_addr, r->ai_addrlen, NULL, 0, portstr, sizeof(portstr), NI_NUMERICSERV);
         if (error) {

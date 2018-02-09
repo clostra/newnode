@@ -176,13 +176,13 @@ network* network_setup(char *address, port_t port)
 {
     signal(SIGPIPE, SIG_IGN);
 
-    struct addrinfo hints;
+    addrinfo hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_protocol = IPPROTO_UDP;
 
-    struct addrinfo *res;
+    addrinfo *res;
     char port_s[6];
     snprintf(port_s, sizeof(port_s), "%u", port);
     int error = getaddrinfo(address, port_s, &hints, &res);

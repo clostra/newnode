@@ -33,6 +33,7 @@ typedef struct evhttp evhttp;
 typedef struct evbuffer evbuffer;
 typedef struct evutil_addrinfo evutil_addrinfo;
 typedef struct bufferevent bufferevent;
+typedef struct timeval timeval;
 typedef struct addrinfo addrinfo;
 typedef struct in_addr in_addr;
 typedef struct sockaddr sockaddr;
