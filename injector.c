@@ -29,6 +29,7 @@
 typedef struct {
     network *n;
     evhttp_request *server_req;
+    evbuffer *pending_output;
     evhttp_connection *evcon;
     crypto_generichash_state content_state;
 } proxy_request;
@@ -77,6 +78,9 @@ void request_cleanup(proxy_request *p)
         evhttp_connection_free(p->evcon);
         p->evcon = NULL;
     }
+    if (p->pending_output) {
+        evbuffer_free(p->pending_output);
+    }
     free(p);
 }
 
@@ -97,15 +101,39 @@ void request_done_cb(evhttp_request *req, void *arg)
         content_sig sig;
         content_sign(&sig, content_hash);
 
-        evkeyvalq trailers;
-        TAILQ_INIT(&trailers);
         size_t out_len;
         char *hex_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
         debug("returning sig for %s %s\n", uri, hex_sig);
-        evhttp_add_header(&trailers, "X-Sign", hex_sig);
+
+        char *ifnonematch = (char*)evhttp_find_header(p->server_req->input_headers, "If-None-Match");
+        if (ifnonematch) {
+            evhttp_add_header(p->server_req->output_headers, "X-Sign", hex_sig);
+
+            size_t etag_len;
+            char *etag = base64_urlsafe_encode((uint8_t*)&content_hash, sizeof(content_hash), &out_len);
+            size_t if_len = strlen(ifnonematch);
+            if (if_len > 0) {
+                if (ifnonematch[if_len - 1] == '"') {
+                    ifnonematch[if_len - 1] = '\0';
+                }
+                ifnonematch++;
+            }
+            if (streq(ifnonematch, etag)) {
+                evhttp_send_reply(p->server_req, 304, "Not Modified", NULL);
+            } else {
+                debug("If-None-Match: %s != %s\n", ifnonematch, etag);
+                debug("input_buffer:%zu\n", evbuffer_get_length(p->pending_output));
+                evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, p->pending_output);
+            }
+            free(etag);
+        } else {
+            evkeyvalq trailers;
+            TAILQ_INIT(&trailers);
+            evhttp_add_header(&trailers, "X-Sign", hex_sig);
+            evhttp_send_reply_end_trailers(p->server_req, &trailers);
+            evhttp_clear_headers(&trailers);
+        }
         free(hex_sig);
-        evhttp_send_reply_end_trailers(p->server_req, &trailers);
-        evhttp_clear_headers(&trailers);
         p->server_req = NULL;
     }
     if (req->response_code != 0) {
@@ -121,8 +149,8 @@ void chunked_cb(evhttp_request *req, void *arg)
     evbuffer *input = req->input_buffer;
     //debug("p:%p chunked_cb length:%zu\n", p, evbuffer_get_length(input));
 
-    struct evbuffer_ptr ptr;
-    struct evbuffer_iovec v;
+    evbuffer_ptr ptr;
+    evbuffer_iovec v;
     evbuffer_ptr_set(input, &ptr, 0, EVBUFFER_PTR_SET);
     while (evbuffer_peek(input, -1, &ptr, &v, 1) > 0) {
         crypto_generichash_update(&p->content_state, v.iov_base, v.iov_len);
@@ -130,7 +158,15 @@ void chunked_cb(evhttp_request *req, void *arg)
             break;
         }
     }
-    evhttp_send_reply_chunk(p->server_req, input);
+    const char *ifnonematch = evhttp_find_header(p->server_req->input_headers, "If-None-Match");
+    if (!ifnonematch) {
+        evhttp_send_reply_chunk(p->server_req, input);
+    } else {
+        if (!p->pending_output) {
+            p->pending_output = evbuffer_new();
+        }
+        evbuffer_add_buffer(p->pending_output, input);
+    }
 }
 
 int header_cb(evhttp_request *req, void *arg)
@@ -140,18 +176,6 @@ int header_cb(evhttp_request *req, void *arg)
 
     int code = req->response_code;
     int klass = code / 100;
-    switch (klass) {
-    case 1:
-    case 2:
-    case 3:
-        break;
-    case 4:
-    case 5:
-        evhttp_send_error(p->server_req, 502, "Bad Gateway");
-    default:
-        // XXX: if the code is an error, we probably don't want to hash and store the value
-        return -1;
-    }
 
     const char *response_header_whitelist[] = {"Content-Type", "Location"};
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
@@ -163,7 +187,7 @@ int header_cb(evhttp_request *req, void *arg)
     hash_headers(p->server_req->output_headers, &p->content_state);
 
     // unfortunately, responses with no body also can't use chunking, so we can't send trailers
-    if (klass == 1 || code == 204) {
+    if (klass == 1 || klass >= 4 || code == 204) {
         uint8_t content_hash[crypto_generichash_BYTES];
         crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
         content_sig sig;
@@ -173,14 +197,16 @@ int header_cb(evhttp_request *req, void *arg)
         debug("returning sig for %s %s\n", evhttp_request_get_uri(req), hex_sig);
         overwrite_header(p->server_req, "X-Sign", hex_sig);
         free(hex_sig);
-        evhttp_send_reply(p->server_req, code, req->response_code_line, evbuffer_new());
+        evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, evbuffer_new());
         p->server_req = NULL;
         return 0;
     }
 
-    overwrite_header(p->server_req, "Trailer", "X-Sign");
-
-    evhttp_send_reply_start(p->server_req, code, req->response_code_line);
+    const char *ifnonematch = evhttp_find_header(p->server_req->input_headers, "If-None-Match");
+    if (!ifnonematch) {
+        overwrite_header(p->server_req, "Trailer", "X-Sign");
+        evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
+    }
     evhttp_request_set_chunked_cb(req, chunked_cb);
 
     return 0;
@@ -319,7 +345,7 @@ void connect_request(network *n, evhttp_request *req)
 
     c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
     bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
-    const struct timeval conn_tv = { 45, 0 };
+    const timeval conn_tv = { 45, 0 };
     bufferevent_set_timeouts(c->direct, &conn_tv, &conn_tv);
     bufferevent_enable(c->direct, EV_READ);
     bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port);
@@ -452,6 +478,8 @@ int main(int argc, char *argv[])
 
     evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_CONNECT | EVHTTP_REQ_TRACE);
     evhttp_set_gencb(n->http, http_request_cb, n);
+    evhttp_bind_socket_with_handle(n->http, "127.0.0.1", port);
+    printf("listening on TCP:%s:%d\n", "127.0.0.1", port);
 
     return network_loop(n);
 }
