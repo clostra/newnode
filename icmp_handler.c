@@ -18,15 +18,20 @@
 #define debug(...)
 
 #ifdef __linux__
+typedef struct iovec iovec;
+typedef struct msghdr msghdr;
+typedef struct cmsghdr cmsghdr;
+typedef struct sock_extended_err sock_extended_err;
+
 void icmp_handler(network *n)
 {
     for (;;) {
         unsigned char vec_buf[4096];
         unsigned char ancillary_buf[4096];
-        struct iovec iov = { vec_buf, sizeof(vec_buf) };
+        iovec iov = { vec_buf, sizeof(vec_buf) };
         sockaddr_in remote;
 
-        struct msghdr msg;
+        msghdr msg;
         memset(&msg, 0, sizeof(msg));
         msg.msg_name = &remote;
         msg.msg_namelen = sizeof(remote);
@@ -48,7 +53,7 @@ void icmp_handler(network *n)
         time_t tosleep;
         dht_process_icmp(n->dht, (const byte*) &msg, sizeof(msg), (sockaddr *)&remote, sizeof(remote), &tosleep);
 
-        for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+        for (cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
             if (cmsg->cmsg_type != IP_RECVERR) {
                 debug("Unhandled errqueue type: %d\n", cmsg->cmsg_type);
                 continue;
@@ -68,7 +73,7 @@ void icmp_handler(network *n)
 
             debug("Remote host: %s:%d\n", inet_ntoa(remote.sin_addr), ntohs(remote.sin_port));
 
-            struct sock_extended_err *e = (struct sock_extended_err *)CMSG_DATA(cmsg);
+            sock_extended_err *e = (sock_extended_err *)CMSG_DATA(cmsg);
 
             if (!e) {
                 debug("errqueue: sock_extended_err is NULL?\n");
