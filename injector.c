@@ -174,8 +174,7 @@ int header_cb(evhttp_request *req, void *arg)
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p header_cb %d %s\n", p, req->response_code, req->response_code_line);
 
-    int code = req->response_code;
-    int klass = code / 100;
+    int klass = req->response_code / 100;
 
     const char *response_header_whitelist[] = {"Content-Type", "Location"};
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
@@ -187,7 +186,7 @@ int header_cb(evhttp_request *req, void *arg)
     hash_headers(p->server_req->output_headers, &p->content_state);
 
     // unfortunately, responses with no body also can't use chunking, so we can't send trailers
-    if (klass == 1 || klass >= 4 || code == 204) {
+    if (klass == 1 || klass >= 4 || req->response_code == 204) {
         uint8_t content_hash[crypto_generichash_BYTES];
         crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
         content_sig sig;
