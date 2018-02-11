@@ -68,30 +68,6 @@ echo "$(now) Testing HTTPS forwarding."
 http_proxy=localhost:$CLIENT_PORT do_curl https://www.google.com $HTTP_OK
 
 #-------------------------------------------------------------------------------
-echo "$(now) Test indirect."
-http_proxy=localhost:$CLIENT_PORT do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Peer: 127.0.0.1:$INJECTOR_PORT"
-
-#-------------------------------------------------------------------------------
-echo "$(now) Test cache."
-http_proxy=localhost:$CLIENT_PORT do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Cache: true"
-
-#-------------------------------------------------------------------------------
-echo "$(now) Starting client 2."
-$unbuf ./client -p 8007 2> >(prepend "client2_err") 1> >(prepend "client2_out") &
-
-# Wait for the client to start
-sleep 1
-
-#-------------------------------------------------------------------------------
-echo "$(now) Test cache through peer."
-http_proxy=localhost:8007 do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-Peer: 127.0.0.1:8006"
-
-#-------------------------------------------------------------------------------
-#echo "$(now) Test through DHT."
-#http_proxy=localhost:8007 do_curl $LOCAL_ORIGIN $HTTP_OK -H "X-DHT: true"
-
-
-#-------------------------------------------------------------------------------
 echo "$(now) DONE"
 
 exit $r
