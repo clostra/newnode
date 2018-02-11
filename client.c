@@ -32,8 +32,8 @@
 #include "utp_bufferevent.h"
 
 
-//#define NO_DIRECT
-//#define NO_CACHE
+#define NO_DIRECT 0
+#define NO_CACHE 0
 
 typedef struct {
     in_addr_t ip;
@@ -65,7 +65,6 @@ typedef struct {
 
 #define CACHE_PATH "./cache/"
 #define CACHE_NAME CACHE_PATH "cache.XXXXXXXX"
-#define CACHE_HEADERS_NAME CACHE_NAME ".headers"
 
 typedef void (^peer_connected)(peer_connection *p);
 typedef struct pending_request {
@@ -80,6 +79,7 @@ typedef struct {
     evhttp_request *proxy_req;
     evhttp_request *server_req;
     crypto_generichash_state content_state;
+    uint8_t content_hash[crypto_generichash_BYTES];
     char cache_name[sizeof(CACHE_NAME)];
     int cache_file;
     pending_request r;
@@ -334,9 +334,11 @@ void peer_disconnect(peer_connection *pc)
 
 void proxy_cache_delete(proxy_request *p)
 {
-    close(p->cache_file);
-    p->cache_file = -1;
-    unlink(p->cache_name);
+    if (p->cache_file != -1) {
+        close(p->cache_file);
+        p->cache_file = -1;
+        unlink(p->cache_name);
+    }
 }
 
 void proxy_request_cleanup(proxy_request *p)
@@ -392,7 +394,7 @@ void peer_reuse(network *n, peer_connection *pc)
     for (uint i = 0; i < lenof(peer_connections); i++) {
         peer_connection *old_pc = peer_connections[i];
         if (!old_pc->evcon) {
-            debug("replaceing old_pc:%p with pc:%p\n", old_pc, pc);
+            debug("replacing old_pc:%p with pc:%p\n", old_pc, pc);
             peer_disconnect(old_pc);
             peer_connections[i] = pc;
             return;
@@ -400,6 +402,11 @@ void peer_reuse(network *n, peer_connection *pc)
     }
     // oh well
     peer_disconnect(pc);
+}
+
+double pdelta(proxy_request *p)
+{
+    return (double)(us_clock() - p->start_time) / 1000.0;
 }
 
 void proxy_cancel_direct(proxy_request *p)
@@ -413,6 +420,7 @@ void proxy_cancel_direct(proxy_request *p)
 void proxy_cancel_proxy(proxy_request *p)
 {
     if (p->proxy_req) {
+        proxy_cache_delete(p);
         evhttp_cancel_request(p->proxy_req);
         p->proxy_req = NULL;
     }
@@ -422,6 +430,62 @@ void proxy_cancel_proxy(proxy_request *p)
         peer_disconnect(p->pc);
         p->pc = NULL;
     }
+}
+
+bool write_header_to_file(int headers_file, evhttp_request *req)
+{
+    const char *headers[] = hashed_headers;
+    char buf[1024];
+    int s = snprintf(buf, sizeof(buf), "HTTP/1.1 %d %s\r\n", req->response_code, req->response_code_line);
+    if (s >= (ssize_t)sizeof(buf)) {
+        return false;
+    }
+    ssize_t w = write(headers_file, buf, s);
+    if (s != w) {
+        return false;
+    }
+    for (int i = 0; i < (int)lenof(headers) + 1; i++) {
+        const char *key = i == lenof(headers) ? "X-Sign" : headers[i];
+        const char *value = evhttp_find_header(req->input_headers, key);
+        if (!value) {
+            continue;
+        }
+        s = snprintf(buf, sizeof(buf), "%s: %s\r\n", key, value);
+        if (s >= (ssize_t)sizeof(buf)) {
+            return false;
+        }
+        w = write(headers_file, buf, s);
+        if (s != w) {
+            return false;
+        }
+    }
+    write(headers_file, "\r\n", 2);
+    return true;
+}
+
+void direct_chunked_cb(evhttp_request *req, void *arg);
+
+int direct_header_cb(evhttp_request *req, void *arg)
+{
+    proxy_request *p = (proxy_request*)arg;
+    debug("p:%p (%.2fms) direct_header_cb %d %s %s\n", p, pdelta(p), req->response_code, req->response_code_line, evhttp_request_get_uri(p->server_req));
+    proxy_cancel_proxy(p);
+    p->direct_req_evcon = req->evcon;
+    copy_all_headers(req, p->server_req);
+
+    evhttp_add_header(req->input_headers, "Content-Location", evhttp_request_get_uri(p->server_req));
+
+    crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
+    hash_headers(req->input_headers, &p->content_state);
+
+    evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
+
+    snprintf(p->cache_name, sizeof(p->cache_name), CACHE_NAME);
+    mkpath(p->cache_name);
+    p->cache_file = mkstemp(p->cache_name);
+
+    evhttp_request_set_chunked_cb(req, direct_chunked_cb);
+    return 0;
 }
 
 void direct_chunked_cb(evhttp_request *req, void *arg)
@@ -434,6 +498,12 @@ void direct_chunked_cb(evhttp_request *req, void *arg)
     evbuffer_ptr_set(input, &ptr, 0, EVBUFFER_PTR_SET);
     while (evbuffer_peek(input, -1, &ptr, &v, 1) > 0) {
         crypto_generichash_update(&p->content_state, v.iov_base, v.iov_len);
+        ssize_t w = write(p->cache_file, v.iov_base, v.iov_len);
+        if (w != (ssize_t)v.iov_len) {
+            fprintf(stderr, "p:%p cache write failed %d (%s)\n", p, errno, strerror(errno));
+            proxy_cancel_proxy(p);
+            break;
+        }
         if (evbuffer_ptr_set(input, &ptr, v.iov_len, EVBUFFER_PTR_ADD) < 0) {
             break;
         }
@@ -441,28 +511,6 @@ void direct_chunked_cb(evhttp_request *req, void *arg)
     if (p->server_req) {
         evhttp_send_reply_chunk(p->server_req, input);
     }
-}
-
-double pdelta(proxy_request *p)
-{
-    return (double)(us_clock() - p->start_time) / 1000.0;
-}
-
-int direct_header_cb(evhttp_request *req, void *arg)
-{
-    proxy_request *p = (proxy_request*)arg;
-    debug("p:%p (%.2fms) direct_header_cb %d %s %s\n", p, pdelta(p), req->response_code, req->response_code_line, evhttp_request_get_uri(p->server_req));
-    proxy_cancel_proxy(p);
-    p->direct_req_evcon = req->evcon;
-    copy_all_headers(req, p->server_req);
-
-    crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
-    hash_headers(req->input_headers, &p->content_state);
-
-    evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
-
-    evhttp_request_set_chunked_cb(req, direct_chunked_cb);
-    return 0;
 }
 
 void direct_error_cb(enum evhttp_request_error error, void *arg)
@@ -485,21 +533,29 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
     }
     debug("p:%p (%.2fms) direct server_request_done_cb %s\n", p, pdelta(p), evhttp_request_get_uri(p->server_req));
     if (req->response_code != 0) {
+        crypto_generichash_final(&p->content_state, p->content_hash, sizeof(p->content_hash));
+
         return_connection(p->direct_req_evcon);
         p->direct_req_evcon = NULL;
-        uint8_t content_hash[crypto_generichash_BYTES];
-        crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
-        //submit a proxy-only request with If-None-Match: "base64(content_hash)" and let it cache naturally
+
+        char headers_name[PATH_MAX];
+        snprintf(headers_name, sizeof(headers_name), "%s.headers", p->cache_name);
+        int headers_file = creat(headers_name, 0600);
+        if (!write_header_to_file(headers_file, req)) {
+            unlink(headers_name);
+        }
+        close(headers_file);
+
+        // submit a proxy-only request with If-None-Match: "base64(content_hash)" and let it cache
         assert(!p->proxy_req);
         proxy_make_request(p);
         size_t b64_hash_len;
-        char *b64_hash = base64_urlsafe_encode((uint8_t*)&content_hash, sizeof(content_hash), &b64_hash_len);
+        char *b64_hash = base64_urlsafe_encode((uint8_t*)&p->content_hash, sizeof(p->content_hash), &b64_hash_len);
         char etag[2048];
         snprintf(etag, sizeof(etag), "\"%s\"", b64_hash);
         free(b64_hash);
         debug("submitting a cache request %s\n", etag);
-        // XXX: TODO: send "If-None-Match" to prevent re-fetching the data. but we'll need it on disk first
-        //evhttp_add_header(p->proxy_req->output_headers, "If-None-Match", etag);
+        evhttp_add_header(p->proxy_req->output_headers, "If-None-Match", etag);
         evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
         proxy_submit_request(p);
         p->server_req = NULL;
@@ -508,87 +564,6 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
     if (!p->proxy_req) {
         proxy_request_cleanup(p);
     }
-}
-
-void proxy_chunked_cb(evhttp_request *req, void *arg)
-{
-    proxy_request *p = (proxy_request*)arg;
-    evbuffer *input = req->input_buffer;
-    //debug("p:%p proxy_chunked_cb length:%zu\n", p, evbuffer_get_length(input));
-    evbuffer_ptr ptr;
-    evbuffer_iovec v;
-    evbuffer_ptr_set(input, &ptr, 0, EVBUFFER_PTR_SET);
-    while (evbuffer_peek(input, -1, &ptr, &v, 1) > 0) {
-        crypto_generichash_update(&p->content_state, v.iov_base, v.iov_len);
-        ssize_t w = write(p->cache_file, v.iov_base, v.iov_len);
-        if (w != (ssize_t)v.iov_len) {
-            fprintf(stderr, "p:%p cache write failed %d (%s)\n", p, errno, strerror(errno));
-            proxy_cache_delete(p);
-            proxy_cancel_proxy(p);
-            break;
-        }
-        if (evbuffer_ptr_set(input, &ptr, v.iov_len, EVBUFFER_PTR_ADD) < 0) {
-            break;
-        }
-    }
-}
-
-void proxy_send_error(proxy_request *p, int error, const char *reason)
-{
-    if (p->direct_req) {
-        return;
-    }
-    if (p->server_req) {
-        if (p->server_req->evcon) {
-            evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
-        }
-        evhttp_send_error(p->server_req, error, reason);
-        p->server_req = NULL;
-    }
-}
-
-int proxy_header_cb(evhttp_request *req, void *arg)
-{
-    proxy_request *p = (proxy_request*)arg;
-    debug("p:%p (%.2fms) proxy_header_cb %d %s\n", p, pdelta(p), req->response_code, req->response_code_line);
-
-    int code = req->response_code;
-    int klass = code / 100;
-    switch (klass) {
-    case 1:
-    case 2:
-    case 3:
-        break;
-    case 4:
-    case 5:
-        proxy_send_error(p, code, req->response_code_line);
-    default:
-        return -1;
-    }
-
-    // not the first moment of connection, but does indicate protocol support
-    p->pc->peer->last_connect = time(NULL);
-
-    crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
-    hash_headers(req->input_headers, &p->content_state);
-
-    mkpath(p->cache_name);
-    p->cache_file = mkstemp(p->cache_name);
-    debug("start cache:%s\n", p->cache_name);
-
-    evhttp_request_set_chunked_cb(req, proxy_chunked_cb);
-    return 0;
-}
-
-void proxy_error_cb(enum evhttp_request_error error, void *arg)
-{
-    proxy_request *p = (proxy_request*)arg;
-    debug("p:%p proxy_error_cb %d\n", p, error);
-    if (error != EVREQ_HTTP_REQUEST_CANCEL && peer_is_injector(p->pc->peer)) {
-        injector_reachable = 0;
-    }
-    p->proxy_req = NULL;
-    proxy_request_cleanup(p);
 }
 
 bool verify_signature(const uint8_t *content_hash, const char *sign)
@@ -617,7 +592,7 @@ bool verify_signature(const uint8_t *content_hash, const char *sign)
 
     if (memcmp(content_hash, sig->content_hash, crypto_generichash_BYTES)) {
         fprintf(stderr, "Incorrect hash!\n");
-        for (uint i = 0; i < sizeof(content_hash); i++) {
+        for (uint i = 0; i < crypto_generichash_BYTES; i++) {
             fprintf(stderr, "%02X", content_hash[i]);
         }
         fprintf(stderr, "\n");
@@ -668,35 +643,96 @@ void copy_response_headers(evhttp_request *from, evhttp_request *to)
     }
 }
 
-bool write_header_to_file(int headers_file, evhttp_request *req)
+void proxy_send_error(proxy_request *p, int error, const char *reason)
 {
-    const char *headers[] = hashed_headers;
-    char buf[1024];
-    int s = snprintf(buf, sizeof(buf), "HTTP/1.1 %d %s\r\n", req->response_code, req->response_code_line);
-    if (s >= (ssize_t)sizeof(buf)) {
-        return false;
+    if (p->direct_req) {
+        return;
     }
-    ssize_t w = write(headers_file, buf, s);
-    if (s != w) {
-        return false;
+    if (p->server_req) {
+        if (p->server_req->evcon) {
+            evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+        }
+        evhttp_send_error(p->server_req, error, reason);
+        p->server_req = NULL;
     }
-    for (int i = -1; i < (int)lenof(headers); i++) {
-        const char *key = i == -1 ? "X-Sign" : headers[i];
-        const char *value = evhttp_find_header(req->input_headers, key);
-        if (!value) {
-            continue;
+}
+
+void proxy_chunked_cb(evhttp_request *req, void *arg);
+
+int proxy_header_cb(evhttp_request *req, void *arg)
+{
+    proxy_request *p = (proxy_request*)arg;
+    debug("p:%p (%.2fms) proxy_header_cb %d %s\n", p, pdelta(p), req->response_code, req->response_code_line);
+
+    int klass = req->response_code / 100;
+    switch (klass) {
+    case 1:
+    case 2:
+    case 3:
+        break;
+    case 4:
+    case 5:
+        proxy_send_error(p, req->response_code, req->response_code_line);
+    default:
+        return -1;
+    }
+
+    // not the first moment of connection, but does indicate protocol support
+    p->pc->peer->last_connect = time(NULL);
+
+    if (p->cache_file != -1) {
+        if (req->response_code == 304) {
+            // have hash, file, and headers.
+            return 0;
         }
-        s = snprintf(buf, sizeof(buf), "%s: %s\r\n", key, value);
-        if (s >= (ssize_t)sizeof(buf)) {
-            return false;
+        proxy_cache_delete(p);
+    }
+
+    if (p->cache_file == -1) {
+        snprintf(p->cache_name, sizeof(p->cache_name), CACHE_NAME);
+        mkpath(p->cache_name);
+        p->cache_file = mkstemp(p->cache_name);
+        debug("start cache:%s\n", p->cache_name);
+    }
+
+    crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
+    hash_headers(req->input_headers, &p->content_state);
+
+    evhttp_request_set_chunked_cb(req, proxy_chunked_cb);
+    return 0;
+}
+
+void proxy_chunked_cb(evhttp_request *req, void *arg)
+{
+    proxy_request *p = (proxy_request*)arg;
+    evbuffer *input = req->input_buffer;
+    //debug("p:%p proxy_chunked_cb length:%zu\n", p, evbuffer_get_length(input));
+    evbuffer_ptr ptr;
+    evbuffer_iovec v;
+    evbuffer_ptr_set(input, &ptr, 0, EVBUFFER_PTR_SET);
+    while (evbuffer_peek(input, -1, &ptr, &v, 1) > 0) {
+        crypto_generichash_update(&p->content_state, v.iov_base, v.iov_len);
+        ssize_t w = write(p->cache_file, v.iov_base, v.iov_len);
+        if (w != (ssize_t)v.iov_len) {
+            fprintf(stderr, "p:%p cache write failed %d (%s)\n", p, errno, strerror(errno));
+            proxy_cancel_proxy(p);
+            break;
         }
-        w = write(headers_file, buf, s);
-        if (s != w) {
-            return false;
+        if (evbuffer_ptr_set(input, &ptr, v.iov_len, EVBUFFER_PTR_ADD) < 0) {
+            break;
         }
     }
-    write(headers_file, "\r\n", 2);
-    return true;
+}
+
+void proxy_error_cb(enum evhttp_request_error error, void *arg)
+{
+    proxy_request *p = (proxy_request*)arg;
+    debug("p:%p proxy_error_cb %d\n", p, error);
+    if (error != EVREQ_HTTP_REQUEST_CANCEL && peer_is_injector(p->pc->peer)) {
+        injector_reachable = 0;
+    }
+    p->proxy_req = NULL;
+    proxy_request_cleanup(p);
 }
 
 void proxy_request_done_cb(evhttp_request *req, void *arg)
@@ -711,6 +747,9 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
         proxy_request_cleanup(p);
         return;
     }
+    close(p->cache_file);
+    p->cache_file = -1;
+
     const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
     if (!sign) {
         fprintf(stderr, "no signature!\n");
@@ -719,10 +758,12 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
         proxy_request_cleanup(p);
         return;
     }
-    uint8_t content_hash[crypto_generichash_BYTES];
-    crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
+    if (req->chunk_cb) {
+        crypto_generichash_final(&p->content_state, p->content_hash, sizeof(p->content_hash));
+    }
+
     debug("verifying sig for %s %s\n", evhttp_request_get_uri(req), sign);
-    if (!verify_signature(content_hash, sign)) {
+    if (!verify_signature(p->content_hash, sign)) {
         fprintf(stderr, "signature failed!\n");
         proxy_send_error(p, 502, "Bad Gateway Signature");
         p->proxy_req = NULL;
@@ -730,26 +771,30 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
         return;
     }
     fprintf(stderr, "signature good!\n");
+
+    char headers_name[PATH_MAX];
+    snprintf(headers_name, sizeof(headers_name), "%s.headers", p->cache_name);
+    if (req->chunk_cb) {
+        int headers_file = creat(headers_name, 0600);
+        if (!write_header_to_file(headers_file, req)) {
+            unlink(headers_name);
+        }
+        close(headers_file);
+    }
+
     p->pc->peer->last_verified = time(NULL);
     if (peer_is_injector(p->pc->peer)) {
         injector_reachable = time(NULL);
         update_injector_proxy_swarm(p->n);
     }
-    char headers_name[] = CACHE_HEADERS_NAME;
-    int headers_file = mkstemps(headers_name, sizeof(headers_name) - sizeof(p->cache_name));
-    if (!write_header_to_file(headers_file, req)) {
-        unlink(headers_name);
-    }
-    close(headers_file);
-    close(p->cache_file);
-    p->cache_file = -1;
-    const char *content_location = evhttp_find_header(req->input_headers, "Content-Location");
-    char *uri = evhttp_encode_uri(content_location);
-    char cache_path[2048];
-    char cache_headers_path[2048];
-    snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, uri);
+
+    const char *uri = evhttp_request_get_uri(req);
+    char *encoded_uri = evhttp_encode_uri(uri);
+    char cache_path[PATH_MAX];
+    char cache_headers_path[PATH_MAX];
+    snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, encoded_uri);
     snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
-    free(uri);
+    free(encoded_uri);
     debug("store cache:%s headers:%s\n", cache_path, cache_headers_path);
     rename(p->cache_name, cache_path);
     rename(headers_name, cache_headers_path);
@@ -771,7 +816,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
         evbuffer_free(content);
     }
 
-    join_url_swarm(p->n, content_location);
+    join_url_swarm(p->n, uri);
     peer_reuse(p->n, p->pc);
     p->pc = NULL;
     p->proxy_req = NULL;
@@ -977,7 +1022,6 @@ void submit_request(network *n, evhttp_request *server_req)
     proxy_request *p = alloc(proxy_request);
     p->n = n;
     p->start_time = us_clock();
-    snprintf(p->cache_name, sizeof(p->cache_name), CACHE_NAME);
     p->cache_file = -1;
     p->server_req = server_req;
     evhttp_connection_set_closecb(p->server_req->evcon, server_close_cb, p);
@@ -987,10 +1031,8 @@ void submit_request(network *n, evhttp_request *server_req)
     sockaddr_storage ss;
     socklen_t len = sizeof(ss);
     getpeername(fd, (sockaddr *)&ss, &len);
-    if (addr_is_localhost((sockaddr *)&ss, len)) {
-#ifndef NO_DIRECT
+    if (!NO_DIRECT && addr_is_localhost((sockaddr *)&ss, len)) {
         direct_submit_request(p);
-#endif
     }
     proxy_submit_request(p);
 }
@@ -1240,7 +1282,7 @@ void connect_request(network *n, evhttp_request *req)
         evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, evhttp_request_get_uri(c->server_req));
     });
 
-#ifndef NO_DIRECT
+#if !NO_DIRECT
     c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
     bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
     bufferevent_enable(c->direct, EV_READ);
@@ -1269,20 +1311,15 @@ void http_request_cb(evhttp_request *req, void *arg)
     }
 
     char *uri = evhttp_encode_uri(evhttp_request_get_uri(req));
-    char cache_path[2048];
-    char cache_headers_path[2048];
+    char cache_path[PATH_MAX];
+    char cache_headers_path[PATH_MAX];
     snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, uri);
     snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
     free(uri);
-#ifdef NO_CACHE
-    int cache_file = -1;
-    int headers_file = -1;
-#else
     int cache_file = open(cache_path, O_RDONLY);
     int headers_file = open(cache_headers_path, O_RDONLY);
-#endif
     debug("check hit:%d,%d cache:%s\n", cache_file != -1, headers_file != -1, cache_path);
-    if (cache_file != -1 && headers_file != -1) {
+    if (!NO_CACHE && cache_file != -1 && headers_file != -1) {
         evhttp_request *temp = evhttp_request_new(NULL, NULL);
         evbuffer *header_buf = evbuffer_new();
         off_t length = lseek(headers_file, 0, SEEK_END);
