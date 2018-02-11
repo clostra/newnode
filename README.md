@@ -2,8 +2,6 @@
 
 ## Integration status
 
-[![Build Status](https://travis-ci.org/clostra/dcdn.svg?branch=master)](https://travis-ci.org/clostra/dcdn)
-[![codecov.io](https://codecov.io/github/clostra/dcdn/coverage.svg?branch=master)](https://codecov.io/github/clostra/dcdn?branch=master)
 [![Stories in Ready](https://badge.waffle.io/clostra/dcdn.svg?label=ready&title=Ready)](http://waffle.io/clostra/dcdn)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/fbeb689ec190470a90645fb016cbcfb7)](https://www.codacy.com/app/shalunov/dcdn)
 [ ![Download](https://api.bintray.com/packages/clostra/dcdn/dcdn/images/download.svg) ](https://bintray.com/clostra/dcdn/dcdn/_latestVersion)
@@ -37,7 +35,7 @@
 
 In development mode, you deal with issues one after another, and maintain enough pipeline so you're not just waiting for reviews, merges, and assignments. This normally means having a backup issue assigned; this way, after you're done with the issue you're working on and send a pull request, you can work on the other issue. Feature branches make it more convenient to work on multiple issues like that.
 
-You may be asked to review a merge request. Please try to be timely with your review. Be kind, but firm in your review: we want things to be the best we can make them, but we are also a community. When providing the review, always make it very clear whether you think the pull request should be merged—start your review with 👍 or 👎. If you think it's good to go, you may still provide optional comments, but it's not necessary. Obviously a request for revision or outright rejection needs to be explained.
+You may be asked to review a merge request. Please try to be timely with your review. Be kind, but firm in your review: we want things to be the best we can make them, but we are also a community. When providing the review, always make it very clear whether you think the pull request should be merged—start your review with  or . If you think it's good to go, you may still provide optional comments, but it's not necessary. Obviously a request for revision or outright rejection needs to be explained.
 
 ## Coding style
 
