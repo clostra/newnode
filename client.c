@@ -227,7 +227,7 @@ void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_a
             }
         }
         address *a = (address *)&addrs[sizeof(address) * i];
-        // XXX: paper over a bug in some DHT implementation that winds up with 1 for the port
+        // paper over a bug in some DHT implementation that winds up with 1 for the port
         if (ntohs(a->port) == 1) {
             continue;
         }
