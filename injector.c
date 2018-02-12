@@ -401,6 +401,7 @@ void http_request_cb(evhttp_request *req, void *arg)
     }
 
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(req);
+    // TODO: could look up uri in a table of {uri => headers}
     evhttp_connection *evcon = make_connection(n, uri);
     if (!evcon) {
         evhttp_send_error(req, 503, "Service Unavailable");
