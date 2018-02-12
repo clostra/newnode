@@ -74,17 +74,25 @@ typedef struct pending_request {
 
 typedef struct {
     network *n;
+
+    evhttp_request *server_req;
+    uint64 start_time;
+
     evhttp_request *direct_req;
     evhttp_connection *direct_req_evcon;
-    evhttp_request *proxy_req;
-    evhttp_request *server_req;
+
+    evkeyvalq direct_headers;
     crypto_generichash_state content_state;
+
     uint8_t content_hash[crypto_generichash_BYTES];
-    char cache_name[sizeof(CACHE_NAME)];
-    int cache_file;
+
     pending_request r;
     peer_connection *pc;
-    uint64 start_time;
+    evhttp_request *proxy_req;
+
+    char cache_name[sizeof(CACHE_NAME)];
+    int cache_file;
+
     bool dont_free:1;
 } proxy_request;
 
@@ -347,14 +355,11 @@ void proxy_request_cleanup(proxy_request *p)
         return;
     }
     if (p->server_req) {
+        assert(!p->server_req->response_code);
         if (p->server_req->evcon) {
             evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
         }
-        if (!p->server_req->response_code) {
-            evhttp_send_error(p->server_req, 504, "Gateway Timeout");
-        } else {
-            evhttp_send_reply_end(p->server_req);
-        }
+        evhttp_send_error(p->server_req, 504, "Gateway Timeout");
         p->server_req = NULL;
     }
     if (p->pc) {
@@ -365,6 +370,7 @@ void proxy_request_cleanup(proxy_request *p)
         evhttp_connection_free(p->direct_req_evcon);
         p->direct_req_evcon = NULL;
     }
+    evhttp_clear_headers(&p->direct_headers);
     proxy_cache_delete(p);
     free(p);
 }
@@ -432,11 +438,11 @@ void proxy_cancel_proxy(proxy_request *p)
     }
 }
 
-bool write_header_to_file(int headers_file, evhttp_request *req)
+bool write_header_to_file(int headers_file, int code, const char *code_line, evkeyvalq *input_headers)
 {
     const char *headers[] = hashed_headers;
     char buf[1024];
-    int s = snprintf(buf, sizeof(buf), "HTTP/1.1 %d %s\r\n", req->response_code, req->response_code_line);
+    int s = snprintf(buf, sizeof(buf), "HTTP/1.1 %d %s\r\n", code, code_line);
     if (s >= (ssize_t)sizeof(buf)) {
         return false;
     }
@@ -446,7 +452,7 @@ bool write_header_to_file(int headers_file, evhttp_request *req)
     }
     for (int i = 0; i < (int)lenof(headers) + 1; i++) {
         const char *key = i == lenof(headers) ? "X-Sign" : headers[i];
-        const char *value = evhttp_find_header(req->input_headers, key);
+        const char *value = evhttp_find_header(input_headers, key);
         if (!value) {
             continue;
         }
@@ -464,6 +470,8 @@ bool write_header_to_file(int headers_file, evhttp_request *req)
 }
 
 void direct_chunked_cb(evhttp_request *req, void *arg);
+void proxy_make_request(proxy_request *p);
+void proxy_submit_request(proxy_request *p);
 
 int direct_header_cb(evhttp_request *req, void *arg)
 {
@@ -474,6 +482,11 @@ int direct_header_cb(evhttp_request *req, void *arg)
     copy_all_headers(req, p->server_req);
 
     evhttp_add_header(req->input_headers, "Content-Location", evhttp_request_get_uri(p->server_req));
+
+    evkeyval *header;
+    TAILQ_FOREACH(header, req->input_headers, next) {
+        evhttp_add_header(&p->direct_headers, header->key, header->value);
+    }
 
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
     hash_headers(req->input_headers, &p->content_state);
@@ -521,9 +534,6 @@ void direct_error_cb(enum evhttp_request_error error, void *arg)
     proxy_request_cleanup(p);
 }
 
-void proxy_make_request(proxy_request *p);
-void proxy_submit_request(proxy_request *p);
-
 void direct_request_done_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
@@ -538,14 +548,6 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
         return_connection(p->direct_req_evcon);
         p->direct_req_evcon = NULL;
 
-        char headers_name[PATH_MAX];
-        snprintf(headers_name, sizeof(headers_name), "%s.headers", p->cache_name);
-        int headers_file = creat(headers_name, 0600);
-        if (!write_header_to_file(headers_file, req)) {
-            unlink(headers_name);
-        }
-        close(headers_file);
-
         // submit a proxy-only request with If-None-Match: "base64(content_hash)" and let it cache
         assert(!p->proxy_req);
         proxy_make_request(p);
@@ -556,8 +558,12 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
         free(b64_hash);
         debug("submitting a cache request %s\n", etag);
         evhttp_add_header(p->proxy_req->output_headers, "If-None-Match", etag);
-        evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
         proxy_submit_request(p);
+
+        if (p->server_req->evcon) {
+            evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+        }
+        evhttp_send_reply_end(p->server_req);
         p->server_req = NULL;
     }
     p->direct_req = NULL;
@@ -735,6 +741,22 @@ void proxy_error_cb(enum evhttp_request_error error, void *arg)
     proxy_request_cleanup(p);
 }
 
+char* cache_name_from_uri(const char *uri)
+{
+    size_t name_max = NAME_MAX - strlen(".headers");
+    char *encoded_uri = evhttp_encode_uri(uri);
+    if (strlen(encoded_uri) > name_max) {
+        uint8_t uri_hash[crypto_generichash_BYTES];
+        crypto_generichash(uri_hash, sizeof(uri_hash), (uint8_t*)uri, strlen(uri), NULL, 0);
+        size_t b64_hash_len;
+        char *b64_hash = base64_urlsafe_encode(uri_hash, sizeof(uri_hash), &b64_hash_len);
+        encoded_uri[name_max - b64_hash_len - 2] = '.';
+        strcpy(&encoded_uri[name_max - b64_hash_len - 1], b64_hash);
+        free(b64_hash);
+    }
+    return encoded_uri;
+}
+
 void proxy_request_done_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
@@ -742,13 +764,11 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
     if (!req) {
         return;
     }
-    if (req->response_code == 0) {
+    if (!req->response_code) {
         p->proxy_req = NULL;
         proxy_request_cleanup(p);
         return;
     }
-    close(p->cache_file);
-    p->cache_file = -1;
 
     const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
     if (!sign) {
@@ -772,38 +792,49 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
     }
     fprintf(stderr, "signature good!\n");
 
-    char headers_name[PATH_MAX];
-    snprintf(headers_name, sizeof(headers_name), "%s.headers", p->cache_name);
-    if (req->chunk_cb) {
-        int headers_file = creat(headers_name, 0600);
-        if (!write_header_to_file(headers_file, req)) {
-            unlink(headers_name);
-        }
-        close(headers_file);
-    }
-
     p->pc->peer->last_verified = time(NULL);
     if (peer_is_injector(p->pc->peer)) {
         injector_reachable = time(NULL);
         update_injector_proxy_swarm(p->n);
     }
 
+    char headers_name[PATH_MAX];
+    snprintf(headers_name, sizeof(headers_name), "%s.headers", p->cache_name);
+    evkeyvalq *headers = req->input_headers;
+    int code = req->response_code;
+    const char *code_line = req->response_code_line;
+    if (!req->chunk_cb) {
+        assert(req->response_code == 304);
+        code = 200;
+        code_line = "OK";
+        overwrite_kv_header(&p->direct_headers, "X-Sign", sign);
+        headers = &p->direct_headers;
+    }
+    int headers_file = creat(headers_name, 0600);
+    if (!write_header_to_file(headers_file, code, code_line, headers)) {
+        unlink(headers_name);
+    }
+    fsync(headers_file);
+    close(headers_file);
+
     const char *uri = evhttp_request_get_uri(req);
-    char *encoded_uri = evhttp_encode_uri(uri);
+    char *encoded_uri = cache_name_from_uri(uri);
     char cache_path[PATH_MAX];
     char cache_headers_path[PATH_MAX];
     snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, encoded_uri);
     snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
     free(encoded_uri);
     debug("store cache:%s headers:%s\n", cache_path, cache_headers_path);
+
+    fsync(p->cache_file);
     rename(p->cache_name, cache_path);
     rename(headers_name, cache_headers_path);
 
     if (p->server_req) {
-        int fd = open(cache_path, O_RDONLY);
-        off_t length = lseek(fd, 0, SEEK_END);
+        off_t length = lseek(p->cache_file, 0, SEEK_END);
         evbuffer *content = evbuffer_new();
-        evbuffer_add_file(content, fd, 0, length);
+        evbuffer_add_file(content, p->cache_file, 0, length);
+        p->cache_file = -1;
         debug("p:%p (%.2fms) server_request_done_cb %d %s length:%u\n", p, pdelta(p),
             req->response_code, req->response_code_line, length);
         proxy_cancel_direct(p);
@@ -1022,6 +1053,7 @@ void submit_request(network *n, evhttp_request *server_req)
     proxy_request *p = alloc(proxy_request);
     p->n = n;
     p->start_time = us_clock();
+    TAILQ_INIT(&p->direct_headers);
     p->cache_file = -1;
     p->server_req = server_req;
     evhttp_connection_set_closecb(p->server_req->evcon, server_close_cb, p);
@@ -1031,6 +1063,7 @@ void submit_request(network *n, evhttp_request *server_req)
     sockaddr_storage ss;
     socklen_t len = sizeof(ss);
     getpeername(fd, (sockaddr *)&ss, &len);
+    // TODO: we could request directly if we then fetched the signature
     if (!NO_DIRECT && addr_is_localhost((sockaddr *)&ss, len)) {
         direct_submit_request(p);
     }
@@ -1310,12 +1343,12 @@ void http_request_cb(evhttp_request *req, void *arg)
         return;
     }
 
-    char *uri = evhttp_encode_uri(evhttp_request_get_uri(req));
+    char *encoded_uri = cache_name_from_uri(evhttp_request_get_uri(req));
     char cache_path[PATH_MAX];
     char cache_headers_path[PATH_MAX];
-    snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, uri);
+    snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, encoded_uri);
     snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
-    free(uri);
+    free(encoded_uri);
     int cache_file = open(cache_path, O_RDONLY);
     int headers_file = open(cache_headers_path, O_RDONLY);
     debug("check hit:%d,%d cache:%s\n", cache_file != -1, headers_file != -1, cache_path);
@@ -1329,13 +1362,34 @@ void http_request_cb(evhttp_request *req, void *arg)
         copy_response_headers(temp, req);
         evbuffer_free(header_buf);
 
-        evbuffer *content = evbuffer_new();
+        evbuffer *content = NULL;
         length = lseek(cache_file, 0, SEEK_END);
-        evbuffer_add_file(content, cache_file, 0, length);
+
+        const char *ifnonematch = evhttp_find_header(req->input_headers, "If-None-Match");
+        if (ifnonematch) {
+            const char *sign = evhttp_find_header(temp->output_headers, "X-Sign");
+            size_t out_len = 0;
+            uint8_t *content_hash = base64_decode(ifnonematch, strlen(ifnonematch), &out_len);
+            if (out_len == crypto_generichash_BYTES && verify_signature(content_hash, sign)) {
+                temp->response_code = 304;
+                free(temp->response_code_line);
+                temp->response_code_line = strdup("Not Modified");
+                close(cache_file);
+                cache_file = -1;
+            }
+            free(content_hash);
+        }
+
+        if (cache_file != -1) {
+            content = evbuffer_new();
+            evbuffer_add_file(content, cache_file, 0, length);
+        }
         debug("responding with %d %s length:%u\n", temp->response_code, temp->response_code_line, length);
         evhttp_send_reply(req, temp->response_code, temp->response_code_line, content);
         evhttp_request_free(temp);
-        evbuffer_free(content);
+        if (content) {
+            evbuffer_free(content);
+        }
         return;
     }
     close(cache_file);

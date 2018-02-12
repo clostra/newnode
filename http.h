@@ -31,6 +31,7 @@ const char *evhttp_method(enum evhttp_cmd_type type);
 
 int get_port_for_scheme(const char *scheme);
 
+void overwrite_kv_header(evkeyvalq *out, const char *key, const char *value);
 void overwrite_header(evhttp_request *to, const char *key, const char *value);
 void copy_header(evhttp_request *from, evhttp_request *to, const char *key);
 void copy_all_headers(evhttp_request *from, evhttp_request *to);

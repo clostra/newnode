@@ -93,13 +93,17 @@ int get_port_for_scheme(const char *scheme)
     return port;
 }
 
-void overwrite_header(evhttp_request *to, const char *key, const char *value)
+void overwrite_kv_header(evkeyvalq *out, const char *key, const char *value)
 {
-    evkeyvalq *out = to->output_headers;
     while (evhttp_find_header(out, key)) {
         evhttp_remove_header(out, key);
     }
     evhttp_add_header(out, key, value);
+}
+
+void overwrite_header(evhttp_request *to, const char *key, const char *value)
+{
+    overwrite_kv_header(to->output_headers, key, value);
 }
 
 void copy_header(evhttp_request *from, evhttp_request *to, const char *key)
