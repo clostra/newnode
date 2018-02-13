@@ -14,7 +14,7 @@ function build_android {
 
 
     cd Libevent
-    if [ ! -f $TRIPLE/libevent.a ]; then
+    if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
         ./configure --disable-shared --disable-openssl --host=$TRIPLE --prefix="$(pwd)/$TRIPLE"
         make clean
