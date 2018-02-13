@@ -51,6 +51,9 @@ JNIEXPORT void JNICALL Java_com_clostra_dcdn_Dcdn_setCacheDir(JNIEnv* env, jobje
 {
     const char* cCacheDir = (*env)->GetStringUTFChars(env, cacheDir, NULL);
     chdir(cCacheDir);
+    network *n = client_init(8006);
+    pthread_t t;
+    pthread_create(&t, NULL, android_main, n);
     (*env)->ReleaseStringUTFChars(env, cacheDir, cCacheDir);
 }
 
@@ -61,8 +64,5 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
         return JNI_ERR;
     }
     start_stdio_thread();
-    network *n = client_init(8006);
-    pthread_t t;
-    pthread_create(&t, NULL, android_main, n);
     return JNI_VERSION_1_6;
 }
