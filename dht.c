@@ -154,11 +154,15 @@ void dht_save(dht *d)
 
     ddebug("dht saving num:%d num6:%d\n", num, num6);
     FILE *f = fopen("dht.dat", "wb");
-    fwrite(sin, sizeof(sockaddr_in), num, f);
-    fclose(f);
+    if (f) {
+        fwrite(sin, sizeof(sockaddr_in), num, f);
+        fclose(f);
+    }
     f = fopen("dht6.dat", "wb");
-    fwrite(sin6, sizeof(sockaddr_in6), num6, f);
-    fclose(f);
+    if (f) {
+        fwrite(sin6, sizeof(sockaddr_in6), num6, f);
+        fclose(f);
+    }
 }
 
 time_t dht_tick(dht *d)
