@@ -128,12 +128,16 @@ void evbuffer_clear(evbuffer *buf)
 
 void libevent_log_cb(int severity, const char *msg)
 {
-    debug("[libevent] %d %s\n", severity, msg);
+    if (severity > EVENT_LOG_DEBUG || o_debug > 1) {
+        debug("[libevent] %d %s\n", severity, msg);
+    }
 }
 
 void evdns_log_cb(int severity, const char *msg)
 {
-    debug("[evdns] %d %s\n", severity, msg);
+    if (severity > EVENT_LOG_DEBUG || o_debug > 1) {
+        debug("[evdns] %d %s\n", severity, msg);
+    }
 }
 
 bufferevent* create_bev(event_base *base, void *userdata)
@@ -235,7 +239,7 @@ network* network_setup(char *address, port_t port)
 #endif
 
     event_enable_debug_mode();
-    if (o_debug >= 2) {
+    if (o_debug) {
         event_enable_debug_logging(EVENT_DBG_ALL);
     }
 
