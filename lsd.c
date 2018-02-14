@@ -51,7 +51,11 @@ void lsd_send(network *n)
             .sin_port = htons(9190)
         };
         if (sendto(lsd_fd, buf, len, 0, (sockaddr *)&addr, sizeof(addr)) == -1) {
+            if (errno == ENETDOWN || errno == ENETUNREACH) {
+                return;
+            }
             fprintf(stderr, "lsd error %d %s\n", errno, strerror(errno));
+            return;
         }
     }
 }
