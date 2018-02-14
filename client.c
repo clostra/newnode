@@ -1400,7 +1400,7 @@ void http_request_cb(evhttp_request *req, void *arg)
 
 network* client_init(port_t port)
 {
-    o_debug = 0;
+    //o_debug = 0;
 
     injectors = alloc(peer_array);
     injector_proxies = alloc(peer_array);
@@ -1437,13 +1437,16 @@ int main(int argc, char *argv[])
     char *port_s = "8006";
 
     for (;;) {
-        int c = getopt(argc, argv, "p:");
+        int c = getopt(argc, argv, "p:v");
         if (c == -1) {
             break;
         }
         switch (c) {
         case 'p':
             port_s = optarg;
+            break;
+        case 'v':
+            o_debug = 1;
             break;
         default:
             die("Unhandled argument: %c\n", c);
