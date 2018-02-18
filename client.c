@@ -163,6 +163,7 @@ void on_utp_connect(network *n, peer_connection *pc)
         pending_request *r = TAILQ_FIRST(&pending_requests);
         TAILQ_REMOVE(&pending_requests, r, next);
         pending_requests_len--;
+        debug("on_utp_connect request:%p (outstanding:%zu)\n", r, pending_requests_len);
         bool found = false;
         for (uint i = 0; i < lenof(peer_connections); i++) {
             if (peer_connections[i] == pc) {
@@ -325,6 +326,7 @@ void abort_connect(pending_request *r)
     r->connected = NULL;
     TAILQ_REMOVE(&pending_requests, r, next);
     pending_requests_len--;
+    debug("abort_connect request:%p (outstanding:%zu)\n", r, pending_requests_len);
 }
 
 void peer_disconnect(peer_connection *pc)
@@ -383,7 +385,7 @@ void peer_reuse(network *n, peer_connection *pc)
         pending_request *r = TAILQ_FIRST(&pending_requests);
         TAILQ_REMOVE(&pending_requests, r, next);
         pending_requests_len--;
-        debug("reusing pc:%p for request:%p\n", pc, r);
+        debug("reusing pc:%p for request:%p (outstanding:%zu)\n", pc, r, pending_requests_len);
         r->connected(pc);
         Block_release(r->connected);
         r->connected = NULL;
@@ -998,10 +1000,10 @@ void queue_request(network *n, pending_request *r, peer_connected connected)
             return;
         }
     }
-    debug("queuing request:%p (outstanding:%zu)\n", r, pending_requests_len);
     r->connected = Block_copy(connected);
     TAILQ_INSERT_TAIL(&pending_requests, r, next);
     pending_requests_len++;
+    debug("queued request:%p (outstanding:%zu)\n", r, pending_requests_len);
 }
 
 void connect_more_injectors(network *n)
