@@ -107,6 +107,7 @@ peer_array *all_peers;
 
 peer_connection *peer_connections[10];
 
+char via_tag[] = "1.1 _.dcdn";
 time_t last_trace;
 time_t injector_reachable;
 
@@ -886,9 +887,9 @@ address parse_address(const char *addr)
 void append_via(evhttp_request *from, evhttp_request *to)
 {
     const char *via = evhttp_find_header(from->input_headers, "Via");
-    char viab[1024];
+    char viab[2048];
     assert(!via || strlen(via) < sizeof(viab)/2);
-    snprintf(viab, sizeof(viab), "%s%s0.1 dcdn", via?:"", via ? ", " : "");
+    snprintf(viab, sizeof(viab), "%s%s%s", via?:"", via ? ", " : "", via_tag);
     overwrite_header(to, "Via", viab);
 }
 
@@ -1338,6 +1339,11 @@ void http_request_cb(evhttp_request *req, void *arg)
 
     connect_more_injectors(n);
 
+    const char *via = evhttp_find_header(req->input_headers, "Via");
+    if (via && strstr(via, via_tag)) {
+        evhttp_send_error(req, 403, "Via Loop");
+    }
+
     if (req->type == EVHTTP_REQ_CONNECT) {
         connect_request(n, req);
         return;
@@ -1406,6 +1412,9 @@ network* client_init(port_t port)
     injector_proxies = alloc(peer_array);
     all_peers = alloc(peer_array);
     TAILQ_INIT(&pending_requests);
+
+    // "1.1 _.dcdn"
+    via_tag[4] = 'a' + randombytes_uniform(26);
 
     network *n = network_setup("0.0.0.0", 0);
 
