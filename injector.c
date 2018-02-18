@@ -176,7 +176,7 @@ int header_cb(evhttp_request *req, void *arg)
 
     int klass = req->response_code / 100;
 
-    const char *response_header_whitelist[] = {"Content-Type", "Location"};
+    const char *response_header_whitelist[] = hashed_headers;
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
         copy_header(req, p->server_req, response_header_whitelist[i]);
     }

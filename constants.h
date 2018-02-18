@@ -11,6 +11,6 @@
 #define injector_pk "\xe5\x7d\x10\x3b\xf1\x49\x6d\x24\x9c\x1a\x9e\x83\x13\x1a\x75\xb5\xf6\x2e\x3a\x67\x7e\xb6\xab\x9d\x66\x77\x5f\xb4\x8a\xbe\x68\xfa"
 #endif
 
-#define hashed_headers {"Content-Location", "Content-Type", "Location"}
+#define hashed_headers {"Content-Location", "Content-Type", "Location", "Access-Control-Allow-Origin"}
 
 #endif // __CONSTANTS_H__

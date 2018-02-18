@@ -640,10 +640,11 @@ bool evcon_is_local_browser(evhttp_connection *evcon)
 
 void copy_response_headers(evhttp_request *from, evhttp_request *to)
 {
-    const char *response_header_whitelist[] = {"Content-Length", "Content-Type", "Location"};
+    const char *response_header_whitelist[] = hashed_headers;
     for (uint i = 0; i < lenof(response_header_whitelist); i++) {
         copy_header(from, to, response_header_whitelist[i]);
     }
+    copy_header(from, to, "Content-Length");
     if (!evcon_is_local_browser(to->evcon)) {
         copy_header(from, to, "Content-Location");
         copy_header(from, to, "X-Sign");
