@@ -985,7 +985,7 @@ void queue_request(network *n, pending_request *r, peer_connected connected)
     static time_t last_lsd = 0;
     if (!any_connected && time(NULL) - last_lsd > 10) {
         last_lsd = time(NULL);
-        lsd_send(n);
+        lsd_send(n, false);
     }
 
     for (uint i = 0; i < lenof(peer_connections); i++) {

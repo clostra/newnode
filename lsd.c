@@ -31,18 +31,19 @@ bool starts_with(const char *restrict string, const char *restrict prefix)
     return true;
 }
 
-void lsd_send(network *n)
+void lsd_send(network *n, bool reply)
 {
     sockaddr_storage ss;
     socklen_t sslen = sizeof(ss);
     getsockname(n->fd, (sockaddr *)&ss, &sslen);
 
     char buf[1500];
+    // XXX: TODO: remove SEARCH/REPLY once we have bidirectional peer connections
     int len = snprintf(buf, sizeof(buf),
-                       "NN-SEARCH * HTTP/1.1\r\n"
+                       "NN-%s * HTTP/1.1\r\n"
                        "Host: 239.192.0.0:9190\r\n"
                        "Port: %d\r\n"
-                       "\r\n", sockaddr_get_port((sockaddr*)&ss));
+                       "\r\n", reply?"REPLY":"SEARCH", sockaddr_get_port((sockaddr*)&ss));
 
     for (int i = 0; i < 3; i++) {
         sockaddr_in addr = {
@@ -76,7 +77,10 @@ void lsd_read_cb(evutil_socket_t fd, short events, void *arg)
             fprintf(stderr, "recvfrom %d (%s)\n", err, evutil_socket_error_to_string(err));
             return;
         }
-        if (!starts_with((char*)packet, "NN-SEARCH ")) {
+        // XXX: TODO: remove SEARCH/REPLY once we have bidirectional peer connections
+        if (starts_with((char*)packet, "NN-SEARCH ")) {
+            lsd_send(n, true);
+        } else if (!starts_with((char*)packet, "NN-REPLY ")) {
             continue;
         }
         char *p = strstr((char*)packet, "Port: ");
@@ -88,7 +92,7 @@ void lsd_read_cb(evutil_socket_t fd, short events, void *arg)
             char host[NI_MAXHOST];
             char serv[NI_MAXSERV];
             getnameinfo((sockaddr *)&addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-            debug("lsd peer %s:%s\n", host, serv);
+            //debug("lsd peer %s:%s\n", host, serv);
             add_sockaddr(n, (sockaddr *)&addr, addrlen);
         }
     }
@@ -105,7 +109,7 @@ void route_read_cb(evutil_socket_t fd, short events, void *arg)
 void lsd_setup(network *n)
 {
     timer_callback cb = ^{
-        lsd_send(n);
+        lsd_send(n, false);
     };
     if (lsd_fd != -1) {
         evutil_closesocket(lsd_fd);
