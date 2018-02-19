@@ -47,6 +47,7 @@ else
 fi
 
 CFLAGS="$FLAGS -std=gnu11"
+CPPFLAGS="$FLAGS -std=c++14"
 
 echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
@@ -57,7 +58,7 @@ for file in client.c injector.c dht.c bev_splice.c base64.c http.c log.c lsd.c i
     clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS -c $file
 done
 mv client.o client.o.tmp
-clang++ $FLAGS -o injector *.o -stdlib=libc++ $LRT $LM $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -lpthread
+clang++ $CPPFLAGS -o injector *.o -stdlib=libc++ $LRT $LM $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -lpthread
 mv injector.o injector.o.tmp
 mv client.o.tmp client.o
-clang++ $FLAGS -o client *.o -stdlib=libc++ $LRT $LM $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -lpthread
+clang++ $CPPFLAGS -o client *.o -stdlib=libc++ $LRT $LM $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -lpthread
