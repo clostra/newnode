@@ -154,9 +154,9 @@ void on_utp_connect(network *n, peer_connection *pc)
     char host[NI_MAXHOST];
     char serv[NI_MAXSERV];
     getnameinfo((sockaddr*)&sin, sizeof(sin), host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-    debug("on_utp_connect %s:%s bev:%p\n", host, serv, pc->bev);
     bufferevent_disable(pc->bev, EV_READ|EV_WRITE);
     pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, pc->bev, host, atoi(serv));
+    debug("on_utp_connect %s:%s bev:%p con:%p\n", host, serv, pc->bev, pc->evcon);
     pc->bev = NULL;
     // handle waiting requests first
     if (!TAILQ_EMPTY(&pending_requests)) {
@@ -172,7 +172,7 @@ void on_utp_connect(network *n, peer_connection *pc)
             }
         }
         assert(found);
-        debug("using new pc:%p for request:%p\n", pc, r);
+        debug("using new pc:%p con:%p for request:%p\n", pc, pc->evcon, r);
         r->connected(pc);
         Block_release(r->connected);
         r->connected = NULL;
@@ -385,7 +385,7 @@ void peer_reuse(network *n, peer_connection *pc)
         pending_request *r = TAILQ_FIRST(&pending_requests);
         TAILQ_REMOVE(&pending_requests, r, next);
         pending_requests_len--;
-        debug("reusing pc:%p for request:%p (outstanding:%zu)\n", pc, r, pending_requests_len);
+        debug("reusing pc:%p con:%p for request:%p (outstanding:%zu)\n", pc, pc->evcon, r, pending_requests_len);
         r->connected(pc);
         Block_release(r->connected);
         r->connected = NULL;
@@ -769,6 +769,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
         return;
     }
     if (!req->response_code) {
+        debug("p:%p (%.2fms) no response code!\n", p, pdelta(p));
         p->proxy_req = NULL;
         proxy_request_cleanup(p);
         return;
@@ -777,6 +778,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
     const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
     if (!sign) {
         fprintf(stderr, "no signature!\n");
+        debug("p:%p (%.2fms) no signature\n", p, pdelta(p));
         proxy_send_error(p, 502, "Missing Gateway Signature");
         p->proxy_req = NULL;
         proxy_request_cleanup(p);
@@ -786,7 +788,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
         crypto_generichash_final(&p->content_state, p->content_hash, sizeof(p->content_hash));
     }
 
-    debug("verifying sig for %s %s\n", evhttp_request_get_uri(req), sign);
+    debug("p:%p (%.2fms) verifying sig for %s %s\n", p, pdelta(p), evhttp_request_get_uri(req), sign);
     if (!verify_signature(p->content_hash, sign)) {
         fprintf(stderr, "signature failed!\n");
         proxy_send_error(p, 502, "Bad Gateway Signature");
@@ -794,7 +796,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
         proxy_request_cleanup(p);
         return;
     }
-    fprintf(stderr, "signature good!\n");
+    fprintf(stderr, "p:%p (%.2fms) signature good!\n", p, pdelta(p));
 
     p->pc->peer->last_verified = time(NULL);
     if (peer_is_injector(p->pc->peer)) {
@@ -828,7 +830,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
     snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, encoded_uri);
     snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
     free(encoded_uri);
-    debug("store cache:%s headers:%s\n", cache_path, cache_headers_path);
+    debug("p:%p (%.2fms) store cache:%s headers:%s\n", p, pdelta(p), cache_path, cache_headers_path);
 
     fsync(p->cache_file);
     rename(p->cache_name, cache_path);
@@ -877,8 +879,11 @@ void direct_submit_request(proxy_request *p)
     }
     snprintf(request_uri, sizeof(request_uri), "%s%s%s", path, q?"?":"", q?q:"");
     evhttp_connection *evcon = make_connection(p->n, uri);
+    if (!evcon) {
+        return;
+    }
     evhttp_make_request(evcon, p->direct_req, EVHTTP_REQ_GET, request_uri);
-    debug("p:%p con:%p direct request submitted: %s\n", p, p->direct_req->evcon, evhttp_request_get_uri(p->direct_req));
+    debug("p:%p con:%p direct request submitted: %s\n", p, p->direct_req->evcon, evhttp_request_get_uri(p->server_req));
 }
 
 address parse_address(const char *addr)
@@ -999,7 +1004,7 @@ void queue_request(network *n, pending_request *r, peer_connected connected)
         peer_connection *pc = peer_connections[i];
         if (pc && pc->evcon) {
             peer_connections[i] = NULL;
-            debug("using pc:%p for request:%p\n", pc, r);
+            debug("using pc:%p evcon:%p for request:%p\n", pc, pc->evcon, r);
             connected(pc);
             return;
         }
@@ -1465,7 +1470,7 @@ int main(int argc, char *argv[])
             port_s = optarg;
             break;
         case 'v':
-            o_debug = 1;
+            o_debug++;
             break;
         default:
             die("Unhandled argument: %c\n", c);
