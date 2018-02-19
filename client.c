@@ -871,7 +871,11 @@ void direct_submit_request(proxy_request *p)
     char request_uri[2048];
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(p->server_req);
     const char *q = evhttp_uri_get_query(uri);
-    snprintf(request_uri, sizeof(request_uri), "%s%s%s", evhttp_uri_get_path(uri), q?"?":"", q?q:"");
+    const char *path = evhttp_uri_get_path(uri);
+    if (!strlen(path)) {
+        path = "/";
+    }
+    snprintf(request_uri, sizeof(request_uri), "%s%s%s", path, q?"?":"", q?q:"");
     evhttp_connection *evcon = make_connection(p->n, uri);
     evhttp_make_request(evcon, p->direct_req, EVHTTP_REQ_GET, request_uri);
     debug("p:%p con:%p direct request submitted: %s\n", p, p->direct_req->evcon, evhttp_request_get_uri(p->direct_req));
