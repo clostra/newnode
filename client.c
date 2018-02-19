@@ -1357,6 +1357,8 @@ void http_request_cb(evhttp_request *req, void *arg)
         return;
     }
 
+    overwrite_header(req, "Proxy-Connection", "Keep-Alive");
+
     char *encoded_uri = cache_name_from_uri(evhttp_request_get_uri(req));
     char cache_path[PATH_MAX];
     char cache_headers_path[PATH_MAX];
