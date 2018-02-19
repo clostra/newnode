@@ -1039,10 +1039,10 @@ void proxy_submit_request(proxy_request *p)
     });
 }
 
-void server_close_cb(evhttp_connection *evcon, void *ctx)
+void server_evcon_close_cb(evhttp_connection *evcon, void *ctx)
 {
     proxy_request *p = (proxy_request*)ctx;
-    debug("p:%p server_close_cb\n", p);
+    debug("p:%p server_evcon_close_cb\n", p);
     evhttp_connection_set_closecb(evcon, NULL, NULL);
     p->server_req = NULL;
     p->dont_free = true;
@@ -1060,7 +1060,7 @@ void submit_request(network *n, evhttp_request *server_req)
     TAILQ_INIT(&p->direct_headers);
     p->cache_file = -1;
     p->server_req = server_req;
-    evhttp_connection_set_closecb(p->server_req->evcon, server_close_cb, p);
+    evhttp_connection_set_closecb(p->server_req->evcon, server_evcon_close_cb, p);
 
     // https://github.com/libevent/libevent/issues/510
     int fd = bufferevent_getfd(evhttp_connection_get_bufferevent(server_req->evcon));
@@ -1278,6 +1278,7 @@ void connect_evcon_close_cb(evhttp_connection *evcon, void *ctx)
     connect_req *c = (connect_req *)ctx;
     debug("c:%p connect_evcon_close_cb\n", c);
     evhttp_connection_set_closecb(evcon, NULL, NULL);
+    c->server_req = NULL;
     connect_proxy_cancel(c);
     connect_direct_cancel(c);
     connect_cleanup(c);
