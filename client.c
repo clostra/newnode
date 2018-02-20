@@ -1045,7 +1045,7 @@ void proxy_submit_request(proxy_request *p)
         fetch_url_swarm(p->n, evhttp_request_get_uri(p->proxy_req));
     }
 
-    const evhttp_uri *uri = evhttp_request_get_evhttp_uri(p->proxy_req);
+    const evhttp_uri *uri = evhttp_request_get_evhttp_uri(p->server_req);
     const char *host = evhttp_uri_get_host(uri);
     fetch_url_swarm(p->n, host);
 
