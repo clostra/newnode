@@ -1042,7 +1042,7 @@ void proxy_submit_request(proxy_request *p)
     network *n = p->n;
 
     if (!dht_num_searches()) {
-        fetch_url_swarm(p->n, evhttp_request_get_uri(p->proxy_req));
+        fetch_url_swarm(p->n, evhttp_request_get_uri(p->server_req));
     }
 
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(p->server_req);
