@@ -44,9 +44,6 @@ void fetch_url_swarm(network *n, const char *url)
 {
     uint8_t url_hash[20];
     SHA1(url_hash, (const unsigned char *)url, strlen(url));
-    if (dht_is_searching(url_hash)) {
-        return;
-    }
     dht_get_peers(n->dht, url_hash);
 }
 

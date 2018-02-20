@@ -210,6 +210,9 @@ void dht_announce(dht *d, const uint8_t *info_hash)
         return;
     }
     dht_filter(d);
+    if (dht_is_searching(info_hash) == 2) {
+        return;
+    }
     dht_search(info_hash, sockaddr_get_port((sockaddr*)&sa), sa.ss_family, dht_filter_event_callback, d->n);
 }
 
@@ -222,6 +225,9 @@ void dht_get_peers(dht *d, const uint8_t *info_hash)
         return;
     }
     dht_filter(d);
+    if (dht_is_searching(info_hash)) {
+        return;
+    }
     dht_search(info_hash, 0, sa.ss_family, dht_filter_event_callback, d->n);
 }
 
