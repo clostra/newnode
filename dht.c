@@ -249,6 +249,7 @@ int dht_blacklisted(const sockaddr *sa, int salen)
         if (sa->sa_family != blacklist[i]->ss_family) {
             continue;
         }
+        socklen_t ss_len = blacklist[i]->ss_family == AF_INET6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in);
         if (memeq(sa, blacklist[i], salen)) {
             debug("dht ignoring blacklisted node\n");
             return 1;
