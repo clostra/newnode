@@ -1166,10 +1166,15 @@ void trace_submit_request_on_con(trace_request *t, evhttp_connection *evcon)
 {
     evhttp_request *req = evhttp_request_new(trace_request_done_cb, t);
     overwrite_header(req, "Proxy-Connection", "Keep-Alive");
+    overwrite_header(req, "User-Agent", "dcdn/" VERSION);
     evhttp_request_set_error_cb(req, trace_error_cb);
     char request_uri[256];
-    snprintf(request_uri, sizeof(request_uri), "/%u%u%u",
-             randombytes_random(), randombytes_random(), randombytes_random());
+    static uint32_t instance = 0;
+    if (!instance) {
+        instance = randombytes_random();
+    }
+    snprintf(request_uri, sizeof(request_uri), "/%u-%u%u",
+             instance, randombytes_random(), randombytes_random());
     evhttp_make_request(evcon, req, EVHTTP_REQ_TRACE, request_uri);
     debug("t:%p con:%p trace request submitted: %s\n", t, req->evcon, request_uri);
 }
