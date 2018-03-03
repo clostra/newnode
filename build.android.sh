@@ -5,7 +5,7 @@ NDK_API=27
 
 
 function build_android {
-    TRIPLE=`python -c "import sys; sys.path.append(sys.argv[1]); import make_standalone_toolchain; print make_standalone_toolchain.get_triple(sys.argv[2])" $ANDROID_NDK_HOME/build/tools $ARCH`
+    TRIPLE=`python -c "import sys; sys.path.append(sys.argv[1]); import make_standalone_toolchain; print(make_standalone_toolchain.get_triple(sys.argv[2]))" $ANDROID_NDK_HOME/build/tools $ARCH`
     TOOLCHAIN="$(pwd)/android-toolchain-$TRIPLE"
     if [ ! -d $TOOLCHAIN ]; then
         $ANDROID_NDK_HOME/build/tools/make_standalone_toolchain.py --force --api=$NDK_API --arch=$ARCH --stl=libc++ --install-dir="$TOOLCHAIN"
