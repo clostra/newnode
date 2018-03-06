@@ -48,7 +48,6 @@ public class Dcdn {
         if (VERSION.equals("v" + BuildConfig.VERSION_NAME)) {
             System.loadLibrary("dcdn");
         }
-        setCacheDir(app.getCacheDir().getAbsolutePath());
     }
 
     private static Application app() {
@@ -117,9 +116,14 @@ public class Dcdn {
     }
 
     private static Thread updateThread;
+    private static boolean started = false;
 
     public static void init() {
-        Log.e("dcdn", "version " + VERSION + " started");
+        if (!started) {
+            setCacheDir(app().getCacheDir().getAbsolutePath());
+            Log.e("dcdn", "version " + VERSION + " started");
+            started = true;
+        }
 
         System.setProperty("http.proxyHost", "127.0.0.1");
         System.setProperty("https.proxyHost", "127.0.0.1");
