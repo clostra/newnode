@@ -167,8 +167,8 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
         utp_socket_stats *stats = utp_get_stats(a->socket);
         if (o_debug >= 2 && stats) {
             debug("Socket Statistics:\n");
-            debug("    Bytes sent:          %d\n", stats->nbytes_xmit);
-            debug("    Bytes received:      %d\n", stats->nbytes_recv);
+            debug("    Bytes sent:          %llu\n", stats->nbytes_xmit);
+            debug("    Bytes received:      %llu\n", stats->nbytes_recv);
             debug("    Packets received:    %d\n", stats->nrecv);
             debug("    Packets sent:        %d\n", stats->nxmit);
             debug("    Duplicate receives:  %d\n", stats->nduprecv);
