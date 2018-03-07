@@ -20,7 +20,7 @@ android {
     compileSdkVersion = 26
 
     defaultConfig {
-        minSdkVersion 13
+        minSdkVersion 21
         versionName "1.1.6"
         versionCode versionName.replace(".", "").toInteger()
     }

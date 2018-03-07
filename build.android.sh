@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-NDK_API=27
+NDK_API=21
 
 
 function build_android {
@@ -11,7 +11,8 @@ function build_android {
         $ANDROID_NDK_HOME/build/tools/make_standalone_toolchain.py --force --api=$NDK_API --arch=$ARCH --stl=libc++ --install-dir="$TOOLCHAIN"
     fi
     export PATH="$TOOLCHAIN/bin/":"$TOOLCHAIN/$TRIPLE/bin/":"$PATH"
-
+    export CC=clang
+    export CXX=clang++
 
     cd Libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
@@ -34,6 +35,7 @@ function build_android {
     LIBSODIUM_CFLAGS=-I${LIBSODIUM_DIR}/include
     LIBSODIUM=${LIBSODIUM_DIR}/lib/libsodium.a
 
+
     if [ "$ABI" = "mips64" ]; then
         ABI_FLAGS="-fintegrated-as"
     fi
@@ -41,7 +43,7 @@ function build_android {
     cd libutp
     if [ ! -f $TRIPLE/libutp.a ]; then
         make clean
-        CC=clang CXX=clang++ CPPFLAGS=$ABI_FLAGS make -j3 libutp.a
+        CPPFLAGS=$ABI_FLAGS make -j3 libutp.a
         mkdir $TRIPLE
         mv libutp.a $TRIPLE
     fi
