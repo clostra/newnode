@@ -842,7 +842,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
         evbuffer_add_file(content, p->cache_file, 0, length);
         p->cache_file = -1;
         debug("p:%p (%.2fms) server_request_done_cb %d %s length:%u\n", p, pdelta(p),
-            req->response_code, req->response_code_line, length);
+            req->response_code, req->response_code_line, (uint32_t)length);
         proxy_cancel_direct(p);
         copy_response_headers(req, p->server_req);
         if (p->server_req->evcon) {
@@ -887,7 +887,9 @@ void direct_submit_request(proxy_request *p)
         return;
     }
     evhttp_make_request(evcon, p->direct_req, EVHTTP_REQ_GET, request_uri);
-    debug("p:%p con:%p direct request submitted: %s\n", p, p->direct_req->evcon, evhttp_request_get_uri(p->server_req));
+    if (p->direct_req) {
+        debug("p:%p con:%p direct request submitted: %s\n", p, p->direct_req->evcon, evhttp_request_get_uri(p->server_req));
+    }
 }
 
 address parse_address(const char *addr)
@@ -1088,6 +1090,8 @@ void submit_request(network *n, evhttp_request *server_req)
     p->server_req = server_req;
     evhttp_connection_set_closecb(p->server_req->evcon, server_evcon_close_cb, p);
 
+    p->dont_free = true;
+
     // https://github.com/libevent/libevent/issues/510
     int fd = bufferevent_getfd(evhttp_connection_get_bufferevent(server_req->evcon));
     sockaddr_storage ss;
@@ -1098,6 +1102,11 @@ void submit_request(network *n, evhttp_request *server_req)
         direct_submit_request(p);
     }
     proxy_submit_request(p);
+
+    p->dont_free = false;
+
+    // may need to be cleaned up already
+    proxy_request_cleanup(p);
 }
 
 typedef struct {
@@ -1427,7 +1436,7 @@ void http_request_cb(evhttp_request *req, void *arg)
             content = evbuffer_new();
             evbuffer_add_file(content, cache_file, 0, length);
         }
-        debug("responding with %d %s length:%u\n", temp->response_code, temp->response_code_line, length);
+        debug("responding with %d %s length:%u\n", temp->response_code, temp->response_code_line, (uint32_t)length);
         evhttp_send_reply(req, temp->response_code, temp->response_code_line, content);
         evhttp_request_free(temp);
         if (content) {
