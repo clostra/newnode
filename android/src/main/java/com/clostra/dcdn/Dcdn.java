@@ -46,7 +46,11 @@ public class Dcdn {
             }
         }
         if (VERSION.equals("v" + BuildConfig.VERSION_NAME)) {
-            System.loadLibrary("dcdn");
+            try {
+                System.loadLibrary("dcdn");
+            } catch (UnsatisfiedLinkError e) {
+                Log.e("dcdn", "", e);
+            }
         }
     }
 
