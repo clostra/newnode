@@ -8,18 +8,12 @@
 #include <execinfo.h>
 #endif
 
+#include "log.h"
+
+
 int o_debug = 0;
 
-void die(const char *fmt, ...)
-{
-    va_list ap;
-    fflush(stdout);
-    va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
-    va_end(ap);
-    exit(1);
-}
-
+#ifndef ANDROID
 void debug(const char *fmt, ...)
 {
     va_list ap;
@@ -31,6 +25,17 @@ void debug(const char *fmt, ...)
         va_end(ap);
         fflush(stderr);
     }
+}
+#endif
+
+void die(const char *fmt, ...)
+{
+    va_list ap;
+    fflush(stdout);
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    assert(0);
 }
 
 void pdie(const char *err)
