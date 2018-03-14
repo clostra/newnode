@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-NDK_API=21
 
 
 function build_android {
@@ -17,7 +16,7 @@ function build_android {
     cd Libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
-        ./configure --disable-shared --disable-openssl --host=$TRIPLE --prefix="$(pwd)/$TRIPLE"
+        ./configure --disable-shared --disable-openssl $LIBEVENT_CONFIG --host=$TRIPLE --prefix="$(pwd)/$TRIPLE"
         make clean
         make -j3
         make install
@@ -25,7 +24,6 @@ function build_android {
     cd ..
     LIBEVENT_CFLAGS=-ILibevent/$TRIPLE/include
     LIBEVENT="Libevent/$TRIPLE/lib/libevent.a Libevent/$TRIPLE/lib/libevent_pthreads.a"
-
 
     cd libsodium
     LIBSODIUM_DIR="$(pwd)/libsodium-android-$CPU_ARCH"
@@ -90,36 +88,46 @@ function build_android {
     ls -ld android/libs/$ABI/*
 }
 
+NDK_API=14
 ARCH=arm
 ABI=armeabi-v7a
 CPU_ARCH=armv7-a
 SODIUM_SCRIPT=$CPU_ARCH
+# large file support doesn't work for sendfile until API 21
+# https://github.com/android-ndk/ndk/issues/536#issuecomment-333197557
+LIBEVENT_CONFIG=--disable-largefile
 build_android
+LIBEVENT_CONFIG=
 
+NDK_API=21
 ARCH=arm64
 ABI=arm64-v8a
 CPU_ARCH=armv8-a
 SODIUM_SCRIPT=$CPU_ARCH
 build_android
 
+NDK_API=21
 ARCH=x86
 ABI=x86
 CPU_ARCH=i686
 SODIUM_SCRIPT=$ABI
 build_android
 
+NDK_API=21
 ARCH=x86_64
 ABI=x86_64
 CPU_ARCH=westmere
 SODIUM_SCRIPT=$ABI
 build_android
 
+NDK_API=21
 ARCH=mips
 ABI=mips
 CPU_ARCH=mips32
 SODIUM_SCRIPT=$CPU_ARCH
 build_android
 
+NDK_API=21
 ARCH=mips64
 ABI=mips64
 CPU_ARCH=mips64r6
