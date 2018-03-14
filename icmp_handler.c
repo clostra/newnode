@@ -62,14 +62,14 @@ void icmp_handler(network *n)
                 continue;
             }
 
-            debug("errqueue: IP_RECVERR, SOL_IP, len %zd\n", cmsg->cmsg_len);
+            ddebug("errqueue: IP_RECVERR, SOL_IP, len %zd\n", cmsg->cmsg_len);
 
             if (remote.sin_family != AF_INET) {
                 debug("Address family is %d, not AF_INET?  Ignoring\n", remote.sin_family);
                 continue;
             }
 
-            debug("Remote host: %s:%d\n", inet_ntoa(remote.sin_addr), ntohs(remote.sin_port));
+            ddebug("Remote host: %s:%d\n", inet_ntoa(remote.sin_addr), ntohs(remote.sin_port));
 
             sock_extended_err *e = (sock_extended_err *)CMSG_DATA(cmsg);
 
@@ -83,7 +83,7 @@ void icmp_handler(network *n)
                 continue;
             }
 
-            debug(" errno:%d origin:%d type:%d code:%d info:%d data:%d\n",
+            ddebug(" errno:%d origin:%d type:%d code:%d info:%d data:%d\n",
                 e->ee_errno, e->ee_origin, e->ee_type, e->ee_code, e->ee_info, e->ee_data);
 
             // "Node that caused the error"
@@ -101,8 +101,8 @@ void icmp_handler(network *n)
                 continue;
             }
 
-            debug("msg_flags: %d", msg.msg_flags);
-            if (o_debug) {
+            ddebug("msg_flags: %d", msg.msg_flags);
+            if (o_debug >= 2) {
                 if (msg.msg_flags & MSG_TRUNC)
                     fprintf(stderr, " MSG_TRUNC");
                 if (msg.msg_flags & MSG_CTRUNC)
@@ -121,10 +121,10 @@ void icmp_handler(network *n)
             }
 
             if (e->ee_type == 3 && e->ee_code == 4) {
-                debug("ICMP type 3, code 4: Fragmentation error, discovered MTU %d\n", e->ee_info);
+                ddebug("ICMP type 3, code 4: Fragmentation error, discovered MTU %d\n", e->ee_info);
                 utp_process_icmp_fragmentation(n->utp, vec_buf, len, (sockaddr *)&remote, sizeof(remote), e->ee_info);
             } else {
-                debug("ICMP type %d, code %d\n", e->ee_type, e->ee_code);
+                ddebug("ICMP type %d, code %d\n", e->ee_type, e->ee_code);
                 utp_process_icmp_error(n->utp, vec_buf, len, (sockaddr *)&remote, sizeof(remote));
             }
         }
