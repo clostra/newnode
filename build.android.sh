@@ -13,6 +13,7 @@ function build_android {
     export CC=clang
     export CXX=clang++
 
+
     cd Libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
@@ -24,6 +25,7 @@ function build_android {
     cd ..
     LIBEVENT_CFLAGS=-ILibevent/$TRIPLE/include
     LIBEVENT="Libevent/$TRIPLE/lib/libevent.a Libevent/$TRIPLE/lib/libevent_pthreads.a"
+
 
     cd libsodium
     LIBSODIUM_DIR="$(pwd)/libsodium-android-$CPU_ARCH"
@@ -51,15 +53,14 @@ function build_android {
 
 
     cd blocksruntime
-    LIBBLOCKSRUNTIME_DIR="$(pwd)/blocksruntime-$TRIPLE"
-    if [ ! -f ${LIBBLOCKSRUNTIME_DIR}/libBlocksRuntime.a ]; then
-        CC=clang ./buildlib
-        mkdir $LIBBLOCKSRUNTIME_DIR
-        mv libBlocksRuntime.a $LIBBLOCKSRUNTIME_DIR
+    if [ ! -f $TRIPLE/libBlocksRuntime.a ]; then
+        ./buildlib
+        mkdir $TRIPLE
+        mv libBlocksRuntime.a $TRIPLE
     fi
     cd ..
     LIBBLOCKSRUNTIME_CFLAGS=-Iblocksruntime/BlocksRuntime
-    LIBBLOCKSRUNTIME=${LIBBLOCKSRUNTIME_DIR}/libBlocksRuntime.a
+    LIBBLOCKSRUNTIME=blocksruntime/$TRIPLE/libBlocksRuntime.a
 
 
     FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
