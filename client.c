@@ -31,6 +31,10 @@
 #include "hash_table.h"
 #include "utp_bufferevent.h"
 
+#ifdef ANDROID
+#include <sys/system_properties.h>
+#endif
+
 
 #define NO_DIRECT 0
 #define NO_CACHE 0
@@ -1175,7 +1179,20 @@ void trace_submit_request_on_con(trace_request *t, evhttp_connection *evcon)
 {
     evhttp_request *req = evhttp_request_new(trace_request_done_cb, t);
     overwrite_header(req, "Proxy-Connection", "Keep-Alive");
-    overwrite_header(req, "User-Agent", "dcdn/" VERSION);
+    char user_agent[2048];
+#ifdef ANDROID
+    char abi_list[PROP_VALUE_MAX];
+    __system_property_get("ro.product.cpu.abilist", abi_list);
+    char sdk_ver[PROP_VALUE_MAX];
+    __system_property_get("ro.build.version.sdk", sdk_ver);
+    char os_ver[PROP_VALUE_MAX];
+    __system_property_get("ro.build.version.release", os_ver);
+    snprintf(user_agent, sizeof(user_agent), "dcdn/%s (Android %s (%s); %s)", VERSION, sdk_ver, os_ver, abi_list);
+    debug("user_agent:%s\n", user_agent);
+#else
+    snprintf(user_agent, sizeof(user_agent), "dcdn/%s", VERSION);
+#endif
+    overwrite_header(req, "User-Agent", user_agent);
     evhttp_request_set_error_cb(req, trace_error_cb);
     char request_uri[256];
     static uint32_t instance = 0;
