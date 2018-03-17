@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+export CC=clang
+export CXX=clang++
+
 
 cd Libevent
 if [ ! -d native ]; then
