@@ -19,17 +19,16 @@ LIBEVENT="$LIBEVENT_CFLAGS Libevent/native/lib/libevent.a Libevent/native/lib/li
 
 
 cd libsodium
-LIBSODIUM_DIR="$(pwd)/native"
-if [ ! -d $LIBSODIUM_DIR ]; then
+if [ ! -d native ]; then
     ./autogen.sh
-    mkdir -p $LIBSODIUM_DIR
-    ./configure --enable-minimal --disable-shared --prefix=$LIBSODIUM_DIR
+    mkdir -p native
+    ./configure --enable-minimal --disable-shared --prefix=native
     make -j3 check
     make -j3 install
 fi
 cd ..
-LIBSODIUM_CFLAGS=-I${LIBSODIUM_DIR}/include
-LIBSODIUM="$LIBSODIUM_CFLAGS ${LIBSODIUM_DIR}/lib/libsodium.a"
+LIBSODIUM_CFLAGS=-Ilibsodium/native/include
+LIBSODIUM="$LIBSODIUM_CFLAGS libsodium/native/lib/libsodium.a"
 
 
 cd libutp
