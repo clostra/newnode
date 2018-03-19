@@ -17,8 +17,11 @@
 q = crypto_scalarmult(q, my_sk, their_pk)
 rx,tx = h(q ‖ client_publickey ‖ server_publickey)
 
-1 A->B: crypto_kx_PUBLICKEYBYTES, PadA
-2 B->A: crypto_kx_PUBLICKEYBYTES, PadB
+ENCRYPT() is ChaCha20, that uses the following keys to send data:
+rx,tx
+
+1 A->B: crypto_kx_PUBLICKEYBYTES, crypto_stream_chacha20_NONCEBYTES, PadA
+2 B->A: crypto_kx_PUBLICKEYBYTES, crypto_stream_chacha20_NONCEBYTES, PadB
 3 A->B: HASH('req1', tx), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
 4 B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
 5 A->B: ENCRYPT2(Payload Stream)
