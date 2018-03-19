@@ -18,9 +18,6 @@ typedef struct {
 typedef struct evkeyval evkeyval;
 typedef struct evkeyvalq evkeyvalq;
 typedef struct evhttp_uri evhttp_uri;
-typedef struct evbuffer_ptr evbuffer_ptr;
-typedef struct evbuffer_iovec evbuffer_iovec;
-typedef struct bufferevent bufferevent;
 typedef struct evhttp_request evhttp_request;
 typedef struct evhttp_connection evhttp_connection;
 
