@@ -6,8 +6,6 @@
 #include "network.h"
 
 
-#define PACKED __attribute__((__packed__))
-
 typedef struct {
     uint8_t signature[crypto_sign_BYTES];
     char sign[sizeof("sign") - 1];

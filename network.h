@@ -16,7 +16,9 @@ typedef struct network network;
 
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 #define MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
+#define PACKED __attribute__((__packed__))
 #define lenof(x) (sizeof(x)/sizeof(x[0]))
+#define member_sizeof(type, member) sizeof(((type *)0)->member)
 #define alloc(type) calloc(1, sizeof(type))
 #define streq(a, b) (strcmp(a, b) == 0)
 #define strcaseeq(a, b) (strcasecmp(a, b) == 0)
