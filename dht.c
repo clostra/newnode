@@ -88,7 +88,7 @@ dht* dht_setup(network *n, int fd)
     d->fd = fd;
     uint8_t myid[20];
     randombytes_buf(myid, sizeof(myid));
-    int rc = dht_init(fd, 0, myid, (unsigned char*)"dc\0\1");
+    int rc = dht_init(fd, 0, myid, NULL);
 
     FILE *f = fopen("dht.dat", "rb");
     if (f) {
