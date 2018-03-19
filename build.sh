@@ -57,7 +57,7 @@ echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblock
 
 rm *.o || true
 clang $CFLAGS -c dht/dht.c -o dht_dht.o
-for file in client.c injector.c dht.c bev_splice.c base64.c http.c log.c lsd.c icmp_handler.c hash_table.c network.c sha1.c timer.c utp_bufferevent.c; do
+for file in client.c injector.c dht.c bev_splice.c base64.c http.c log.c lsd.c icmp_handler.c hash_table.c network.c obfoo.c sha1.c timer.c utp_bufferevent.c; do
     clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS -c $file
 done
 mv client.o client.o.tmp
