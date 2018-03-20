@@ -45,6 +45,7 @@ typedef struct sockaddr sockaddr;
 typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr_in6 sockaddr_in6;
 typedef struct sockaddr_storage sockaddr_storage;
+typedef enum evhttp_request_error evhttp_request_error;
 typedef enum bufferevent_filter_result bufferevent_filter_result;
 typedef in_port_t port_t;
 
