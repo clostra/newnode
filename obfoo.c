@@ -51,6 +51,13 @@ typedef struct {
     uint8_t pad[];
 } PACKED crypt_intro;
 
+typedef enum {
+    OF_STATE_INTRO = 0,
+    OF_STATE_SYNC,
+    OF_STATE_DISCARD,
+    OF_STATE_READY
+} of_state;
+
 typedef struct {
     uint8_t pk[crypto_kx_PUBLICKEYBYTES];
     uint8_t sk[crypto_kx_SECRETKEYBYTES];
@@ -66,18 +73,10 @@ typedef struct {
         // outgoing
         uint8_t vc[member_sizeof(crypt_intro, vc)];
     };
+    of_state state;
+    bufferevent *filter_bev;
     uint16_t discarding;
-    bool incoming:1;
 } obfoo;
-
-void bufferevent_set_readcb(bufferevent *bev, bufferevent_data_cb read_cb)
-{
-    bufferevent_data_cb write_cb;
-    bufferevent_event_cb event_cb;
-    void *ctx;
-    bufferevent_getcb(bev, NULL, &write_cb, &event_cb, &ctx);
-    bufferevent_setcb(bev, read_cb, write_cb, event_cb, ctx);
-}
 
 int crypto_stream_chacha20_xor_ic_bytes(uint8_t *c, const uint8_t *m, size_t mlen,
                                         const unsigned char *n, uint64_t ic_bytes,
@@ -116,233 +115,6 @@ int obfoo_decrypt(obfoo *o, uint8_t *m, const uint8_t *c, size_t clen)
     return r;
 }
 
-void obfoo_write_encrypt(obfoo *o, bufferevent *bev, uint8_t *b, size_t len)
-{
-    uint8_t c[len];
-    if (obfoo_encrypt(o, c, b, len)) {
-        return;
-    }
-    bufferevent_write(bev, c, len);
-}
-
-void bufferevent_read_min(bufferevent *bev, size_t len, bufferevent_data_cb read_cb)
-{
-    debug("%s reading:%llu\n", __func__, len);
-    bufferevent_setwatermark(bev, EV_READ, len, 0);
-    bufferevent_set_readcb(bev, read_cb);
-    evbuffer *in = bufferevent_get_input(bev);
-    if (evbuffer_get_length(in) > 0 && evbuffer_get_length(in) >= len) {
-        void *ctx;
-        bufferevent_getcb(bev, NULL, NULL, NULL, &ctx);
-        read_cb(bev, ctx);
-    }
-}
-
-void obfoo_incoming_read_sync(bufferevent *bev, void *ctx);
-
-void obfoo_incoming_read_intro(bufferevent *bev, void *ctx)
-{
-    obfoo *o = (obfoo*)ctx;
-    debug("%s o:%p\n", __func__, o);
-    assert(o->incoming);
-    evbuffer *in = bufferevent_get_input(bev);
-    assert(evbuffer_get_length(in) >= INTRO_BYTES);
-    uint8_t *other_pk = evbuffer_pullup(in, crypto_kx_PUBLICKEYBYTES);
-
-    if (crypto_kx_server_session_keys(o->rx, o->tx, o->pk, o->sk, other_pk)) {
-        debug("suspicious client public key\n");
-        bufferevent_free(bev);
-        free(o);
-        return;
-    }
-
-    evbuffer_drain(in, crypto_kx_PUBLICKEYBYTES);
-    bufferevent_read(bev, o->rx_nonce, sizeof(o->rx_nonce));
-
-    crypto_generichash_state state;
-    crypto_generichash_init(&state, NULL, 0, sizeof(o->synchash));
-    crypto_generichash_update(&state, (const uint8_t *)"req1", strlen("req1"));
-    crypto_generichash_update(&state, o->rx, sizeof(o->rx));
-    crypto_generichash_final(&state, o->synchash, sizeof(o->synchash));
-
-    bufferevent_read_min(bev, sizeof(o->synchash) + sizeof(crypt_intro), obfoo_incoming_read_sync);
-}
-
-void obfoo_discard(bufferevent *bev, void *ctx);
-
-void obfoo_incoming_read_sync(bufferevent *bev, void *ctx)
-{
-    obfoo *o = (obfoo*)ctx;
-    debug("%s o:%p\n", __func__, o);
-    evbuffer *in = bufferevent_get_input(bev);
-    assert(evbuffer_get_length(in) >= sizeof(o->synchash) + sizeof(crypt_intro));
-    bufferevent_setwatermark(bev, EV_READ, 0, 0);
-    evbuffer_ptr f = evbuffer_search(in, (char*)o->synchash, sizeof(o->synchash), NULL);
-    if (f.pos == -1) {
-        size_t max_len = INTRO_PAD_MAX + sizeof(o->synchash);
-        if (evbuffer_get_length(in) >= max_len) {
-            debug("synchash not found in %llu (%llu) bytes\n", max_len, evbuffer_get_length(in));
-            bufferevent_free(bev);
-            free(o);
-            return;
-        }
-        return;
-    }
-    evbuffer_drain(in, f.pos + sizeof(o->synchash));
-    //debug("synchash found!\n");
-
-    assert(!o->rx_ic_bytes);
-
-    size_t len = sizeof(crypt_intro);
-    assert(evbuffer_get_length(in) >= len);
-    uint8_t *c = evbuffer_pullup(in, len);
-    obfoo_decrypt(o, c, c, len);
-    uint16_t pad_len = ((crypt_intro*)c)->pad_len;
-    evbuffer_drain(in, len);
-    // pad,len(ia)
-    o->discarding = pad_len + sizeof(uint16_t);
-    bufferevent_read_min(bev, o->discarding, obfoo_discard);
-
-    {
-        bufferevent_disable(bev, EV_WRITE);
-
-        union {
-            uint8_t buf[sizeof(crypt_intro) + PAD_MAX];
-            crypt_intro ci;
-        } r = {.buf = {0}};
-        r.ci.pad_len = randombytes_uniform(PAD_MAX);
-        randombytes_buf(r.ci.pad, r.ci.pad_len);
-        size_t crypt_len = sizeof(r.ci) + r.ci.pad_len;
-        obfoo_encrypt(o, r.buf, r.buf, crypt_len);
-        bufferevent_write(bev, r.buf, crypt_len);
-
-        bufferevent_enable(bev, EV_WRITE);
-    }
-
-    obfoo_write_encrypt(o, bev, (uint8_t*)"sup man", sizeof("sup man"));
-}
-
-void obfoo_read(bufferevent *bev, void *ctx);
-
-void obfoo_discard(bufferevent *bev, void *ctx)
-{
-    obfoo *o = (obfoo*)ctx;
-    debug("%s o:%p\n", __func__, o);
-    assert(o->discarding);
-    evbuffer *in = bufferevent_get_input(bev);
-    assert(evbuffer_get_length(in) >= o->discarding);
-    o->rx_ic_bytes += o->discarding;
-    evbuffer_drain(in, o->discarding);
-    o->discarding = 0;
-    bufferevent_read_min(bev, 0, obfoo_read);
-}
-
-void obfoo_outgoing_read_vc(bufferevent *bev, void *ctx);
-
-void obfoo_outgoing_read_intro(bufferevent *bev, void *ctx)
-{
-    obfoo *o = (obfoo*)ctx;
-    debug("%s o:%p\n", __func__, o);
-    assert(!o->incoming);
-    evbuffer *in = bufferevent_get_input(bev);
-    assert(evbuffer_get_length(in) >= INTRO_BYTES);
-    uint8_t *other_pk = evbuffer_pullup(in, crypto_kx_PUBLICKEYBYTES);
-
-    if (crypto_kx_client_session_keys(o->rx, o->tx, o->pk, o->sk, other_pk)) {
-        debug("suspicious server public key\n");
-        bufferevent_free(bev);
-        free(o);
-        return;
-    }
-
-    evbuffer_drain(in, crypto_kx_PUBLICKEYBYTES);
-    bufferevent_read(bev, o->rx_nonce, sizeof(o->rx_nonce));
-
-    bufferevent_disable(bev, EV_WRITE);
-
-    uint8_t synchash[SYNC_HASH_LEN];
-    crypto_generichash_state state;
-    crypto_generichash_init(&state, NULL, 0, sizeof(synchash));
-    crypto_generichash_update(&state, (const uint8_t *)"req1", strlen("req1"));
-    crypto_generichash_update(&state, o->tx, sizeof(o->tx));
-    crypto_generichash_final(&state, synchash, sizeof(synchash));
-    bufferevent_write(bev, synchash, sizeof(synchash));
-
-    // vc,crypto_provide,(uint16_t)len(pad),pad,len(ia)
-    union {
-        uint8_t buf[sizeof(crypt_intro) + PAD_MAX + sizeof(uint16_t)];
-        crypt_intro ci;
-    } r = {.buf = {0}};
-    r.ci.pad_len = randombytes_uniform(PAD_MAX);
-    randombytes_buf(r.ci.pad, r.ci.pad_len);
-    size_t crypt_len = sizeof(crypt_intro) + r.ci.pad_len + sizeof(uint16_t);
-    obfoo_encrypt(o, r.buf, r.buf, crypt_len);
-    bufferevent_write(bev, r.buf, crypt_len);
-
-    bufferevent_enable(bev, EV_WRITE);
-
-    // encrypt vc from the other side
-    crypto_stream_chacha20_xor_ic(o->vc, o->vc, sizeof(o->vc), o->rx_nonce, 0, o->rx);
-
-    bufferevent_read_min(bev, sizeof(crypt_intro), obfoo_outgoing_read_vc);
-}
-
-void obfoo_outgoing_read_vc(bufferevent *bev, void *ctx)
-{
-    obfoo *o = (obfoo*)ctx;
-    debug("%s o:%p\n", __func__, o);
-    bufferevent_setwatermark(bev, EV_READ, 0, 0);
-    evbuffer *in = bufferevent_get_input(bev);
-    assert(evbuffer_get_length(in) >= sizeof(crypt_intro));
-    evbuffer_ptr f = evbuffer_search(in, (char*)o->vc, sizeof(o->vc), NULL);
-    if (f.pos == -1) {
-        size_t max_len = INTRO_PAD_MAX + sizeof(o->vc);
-        if (evbuffer_get_length(in) >= max_len) {
-            debug("vc not found in %llu (%llu) bytes\n", max_len, evbuffer_get_length(in));
-            bufferevent_free(bev);
-            free(o);
-            return;
-        }
-        return;
-    }
-    assert(!o->rx_ic_bytes);
-    o->rx_ic_bytes += sizeof(o->vc);
-    evbuffer_drain(in, f.pos + sizeof(o->vc));
-    //debug("vc found!\n");
-
-    size_t len = member_sizeof(crypt_intro, crypto_provide) + member_sizeof(crypt_intro, pad_len);
-    assert(evbuffer_get_length(in) >= len);
-    uint8_t *crypto_select = evbuffer_pullup(in, len);
-    obfoo_decrypt(o, crypto_select, crypto_select, len);
-    uint16_t pad_len = *(uint16_t*)(crypto_select + member_sizeof(crypt_intro, crypto_provide));
-    evbuffer_drain(in, len);
-
-    o->discarding = pad_len;
-    bufferevent_read_min(bev, o->discarding, obfoo_discard);
-
-    obfoo_write_encrypt(o, bev, (uint8_t*)"hello, world!", sizeof("hello, world!"));
-}
-
-void obfoo_read(bufferevent *bev, void *ctx)
-{
-    obfoo *o = (obfoo*)ctx;
-    debug("%s o:%p\n", __func__, o);
-    evbuffer *in = bufferevent_get_input(bev);
-    size_t len = evbuffer_get_length(in);
-    uint8_t *b = evbuffer_pullup(in, len);
-    uint8_t m[len];
-    if (obfoo_decrypt(o, m, b, len)) {
-        return;
-    }
-    debug("rcv: [%.*s]\n", (int)len, m);
-}
-
-void obfoo_write(bufferevent *bev, void *ctx)
-{
-    obfoo *o = (obfoo*)ctx;
-    debug("obfoo_write o:%p\n", o);
-}
-
 void obfoo_write_intro(obfoo *o, bufferevent *bev)
 {
     bufferevent_disable(bev, EV_WRITE);
@@ -355,15 +127,6 @@ void obfoo_write_intro(obfoo *o, bufferevent *bev)
     bufferevent_enable(bev, EV_WRITE);
 }
 
-void obfoo_event(bufferevent *bev, short events, void *ctx)
-{
-    obfoo *o = (obfoo*)ctx;
-    debug("%s o:%p events:0x%x\n", __func__, o, events);
-    if (events & BEV_EVENT_CONNECTED) {
-        obfoo_write_intro(o, bev);
-    }
-}
-
 obfoo* obfoo_new()
 {
     obfoo *o = alloc(obfoo);
@@ -372,47 +135,234 @@ obfoo* obfoo_new()
     return o;
 }
 
-void obfoo_accept(evconnlistener *listener,
-    evutil_socket_t fd, sockaddr *address, int socklen,
-    void *ctx)
+ssize_t evbuffer_filter(evbuffer *in, evbuffer *out, bool (^cb)(evbuffer_iovec v))
 {
-    debug("%s %p fd:%d\n", __func__, ctx, fd);
-    event_base *base = evconnlistener_get_base(listener);
-    bufferevent *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-    obfoo *o = obfoo_new();
-    o->incoming = true;
-    bufferevent_setcb(bev, obfoo_incoming_read_intro, obfoo_write, obfoo_event, o);
-    bufferevent_setwatermark(bev, EV_READ, INTRO_BYTES, 0);
-    obfoo_write_intro(o, bev);
-    bufferevent_enable(bev, EV_READ|EV_WRITE);
-}
-
-void obfoo_accept_error(evconnlistener *listener, void *ctx)
-{
-    event_base *base = evconnlistener_get_base(listener);
-    int err = EVUTIL_SOCKET_ERROR();
-    debug("%s %d (%s)\n", __func__, err, evutil_socket_error_to_string(err));
-}
-
-
-void obfoo_demo(event_base *base)
-{
-    sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = INADDR_ANY, .sin_port = htons(5600)};
-
-    evconnlistener *listener = evconnlistener_new_bind(base, obfoo_accept, NULL,
-        LEV_OPT_CLOSE_ON_FREE|LEV_OPT_REUSEABLE, -1, (sockaddr*)&sin, sizeof(sin));
-    if (!listener) {
-        perror("couldn't create listener");
-        return;
+    evbuffer_ptr ptr;
+    evbuffer_ptr_set(in, &ptr, 0, EVBUFFER_PTR_SET);
+    evbuffer_iovec v;
+    while (evbuffer_peek(in, -1, &ptr, &v, 1) > 0) {
+        if (!cb(v)) {
+            return -1;
+        }
+        if (evbuffer_ptr_set(in, &ptr, v.iov_len, EVBUFFER_PTR_ADD) < 0) {
+            break;
+        }
     }
-    evconnlistener_set_error_cb(listener, obfoo_accept_error);
+    return evbuffer_remove_buffer(in, out, evbuffer_get_length(in));
+}
 
+bufferevent_filter_result obfoo_outgoing_input_filter(evbuffer *in, evbuffer *out,
+    ev_ssize_t dst_limit, enum bufferevent_flush_mode mode, void *ctx)
+{
+    obfoo *o = (obfoo*)ctx;
+    //debug("%s: o:%p state:%d\n", __func__, o, o->state);
+    switch(o->state) {
+    case OF_STATE_INTRO: {
+        if (evbuffer_get_length(in) < INTRO_BYTES) {
+            return BEV_NEED_MORE;
+        }
+        uint8_t *other_pk = evbuffer_pullup(in, crypto_kx_PUBLICKEYBYTES);
+
+        if (crypto_kx_client_session_keys(o->rx, o->tx, o->pk, o->sk, other_pk)) {
+            debug("suspicious server public key\n");
+            return BEV_ERROR;
+        }
+
+        evbuffer_drain(in, crypto_kx_PUBLICKEYBYTES);
+        evbuffer_remove(in, o->rx_nonce, sizeof(o->rx_nonce));
+
+        bufferevent_disable(bufferevent_get_underlying(o->filter_bev), EV_WRITE);
+
+        uint8_t synchash[SYNC_HASH_LEN];
+        crypto_generichash_state state;
+        crypto_generichash_init(&state, NULL, 0, sizeof(synchash));
+        crypto_generichash_update(&state, (const uint8_t *)"req1", strlen("req1"));
+        crypto_generichash_update(&state, o->tx, sizeof(o->tx));
+        crypto_generichash_final(&state, synchash, sizeof(synchash));
+        bufferevent_write(bufferevent_get_underlying(o->filter_bev), synchash, sizeof(synchash));
+
+        // vc,crypto_provide,(uint16_t)len(pad),pad,len(ia)
+        union {
+            uint8_t buf[sizeof(crypt_intro) + PAD_MAX + sizeof(uint16_t)];
+            crypt_intro ci;
+        } r = {.buf = {0}};
+        r.ci.pad_len = randombytes_uniform(PAD_MAX);
+        randombytes_buf(r.ci.pad, r.ci.pad_len);
+        size_t crypt_len = sizeof(crypt_intro) + r.ci.pad_len + sizeof(uint16_t);
+        obfoo_encrypt(o, r.buf, r.buf, crypt_len);
+        bufferevent_write(bufferevent_get_underlying(o->filter_bev), r.buf, crypt_len);
+
+        bufferevent_enable(bufferevent_get_underlying(o->filter_bev), EV_WRITE);
+
+        // encrypt vc from the other side
+        crypto_stream_chacha20_xor_ic(o->vc, o->vc, sizeof(o->vc), o->rx_nonce, 0, o->rx);
+
+        o->state = OF_STATE_SYNC;
+    }
+    case OF_STATE_SYNC: {
+        if (evbuffer_get_length(in) < sizeof(crypt_intro)) {
+            return BEV_NEED_MORE;
+        }
+        evbuffer_ptr f = evbuffer_search(in, (char*)o->vc, sizeof(o->vc), NULL);
+        if (f.pos == -1) {
+            size_t max_len = INTRO_PAD_MAX + sizeof(o->vc);
+            if (evbuffer_get_length(in) >= max_len) {
+                debug("vc not found in %llu (%llu) bytes\n", max_len, evbuffer_get_length(in));
+                return BEV_ERROR;
+            }
+            return BEV_NEED_MORE;
+        }
+        assert(!o->rx_ic_bytes);
+        o->rx_ic_bytes += sizeof(o->vc);
+        evbuffer_drain(in, f.pos + sizeof(o->vc));
+        //debug("vc found!\n");
+
+        size_t len = member_sizeof(crypt_intro, crypto_provide) + member_sizeof(crypt_intro, pad_len);
+        assert(evbuffer_get_length(in) >= len);
+        uint8_t *crypto_select = evbuffer_pullup(in, len);
+        obfoo_decrypt(o, crypto_select, crypto_select, len);
+        uint16_t pad_len = *(uint16_t*)(crypto_select + member_sizeof(crypt_intro, crypto_provide));
+        evbuffer_drain(in, len);
+        o->discarding = pad_len;
+
+        o->state = OF_STATE_DISCARD;
+        bufferevent_flush(o->filter_bev, EV_WRITE, BEV_NORMAL);
+    }
+    case OF_STATE_DISCARD: {
+        size_t discard = MIN(evbuffer_get_length(in), o->discarding);
+        o->rx_ic_bytes += discard;
+        evbuffer_drain(in, discard);
+        o->discarding -= discard;
+        if (o->discarding) {
+            return BEV_NEED_MORE;
+        }
+        o->state = OF_STATE_READY;
+    }
+    case OF_STATE_READY: {
+        ssize_t m = evbuffer_filter(in, out, ^bool (evbuffer_iovec v) {
+            return obfoo_decrypt(o, v.iov_base, v.iov_base, v.iov_len) == 0;
+        });
+        return m == -1 ? BEV_ERROR : (m > 0 ? BEV_OK : BEV_NEED_MORE);
+    }
+    }
+}
+
+bufferevent_filter_result obfoo_incoming_input_filter(evbuffer *in, evbuffer *out,
+    ev_ssize_t dst_limit, enum bufferevent_flush_mode mode, void *ctx)
+{
+    obfoo *o = (obfoo*)ctx;
+    //debug("%s: o:%p state:%d len:%zu\n", __func__, o, o->state, evbuffer_get_length(in));
+    switch(o->state) {
+    case OF_STATE_INTRO: {
+        if (evbuffer_get_length(in) < INTRO_BYTES) {
+            return BEV_NEED_MORE;
+        }
+        uint8_t *other_pk = evbuffer_pullup(in, crypto_kx_PUBLICKEYBYTES);
+
+        if (crypto_kx_server_session_keys(o->rx, o->tx, o->pk, o->sk, other_pk)) {
+            debug("suspicious client public key\n");
+            return BEV_ERROR;
+        }
+
+        evbuffer_drain(in, crypto_kx_PUBLICKEYBYTES);
+        evbuffer_remove(in, o->rx_nonce, sizeof(o->rx_nonce));
+
+        crypto_generichash_state state;
+        crypto_generichash_init(&state, NULL, 0, sizeof(o->synchash));
+        crypto_generichash_update(&state, (const uint8_t *)"req1", strlen("req1"));
+        crypto_generichash_update(&state, o->rx, sizeof(o->rx));
+        crypto_generichash_final(&state, o->synchash, sizeof(o->synchash));
+
+        o->state = OF_STATE_SYNC;
+    }
+    case OF_STATE_SYNC: {
+        if (evbuffer_get_length(in) < sizeof(o->synchash) + sizeof(crypt_intro)) {
+            return BEV_NEED_MORE;
+        }
+        evbuffer_ptr f = evbuffer_search(in, (char*)o->synchash, sizeof(o->synchash), NULL);
+        if (f.pos == -1) {
+            size_t max_len = INTRO_PAD_MAX + sizeof(o->synchash);
+            if (evbuffer_get_length(in) >= max_len) {
+                debug("synchash not found in %llu (%llu) bytes\n", max_len, evbuffer_get_length(in));
+                return BEV_ERROR;
+            }
+            return BEV_NEED_MORE;
+        }
+        evbuffer_drain(in, f.pos + sizeof(o->synchash));
+        //debug("synchash found!\n");
+
+        assert(!o->rx_ic_bytes);
+
+        size_t len = sizeof(crypt_intro);
+        assert(evbuffer_get_length(in) >= len);
+        uint8_t *c = evbuffer_pullup(in, len);
+        obfoo_decrypt(o, c, c, len);
+        uint16_t pad_len = ((crypt_intro*)c)->pad_len;
+        evbuffer_drain(in, len);
+        // pad,len(ia)
+        o->discarding = pad_len + sizeof(uint16_t);
+
+        union {
+            uint8_t buf[sizeof(crypt_intro) + PAD_MAX];
+            crypt_intro ci;
+        } r = {.buf = {0}};
+        r.ci.pad_len = randombytes_uniform(PAD_MAX);
+        randombytes_buf(r.ci.pad, r.ci.pad_len);
+        size_t crypt_len = sizeof(r.ci) + r.ci.pad_len;
+        obfoo_encrypt(o, r.buf, r.buf, crypt_len);
+        bufferevent_write(bufferevent_get_underlying(o->filter_bev), r.buf, crypt_len);
+
+        o->state = OF_STATE_DISCARD;
+        bufferevent_flush(o->filter_bev, EV_WRITE, BEV_NORMAL);
+    }
+    case OF_STATE_DISCARD: {
+        size_t discard = MIN(evbuffer_get_length(in), o->discarding);
+        o->rx_ic_bytes += discard;
+        evbuffer_drain(in, discard);
+        o->discarding -= discard;
+        if (o->discarding) {
+            return BEV_NEED_MORE;
+        }
+        o->state = OF_STATE_READY;
+    }
+    case OF_STATE_READY: {
+        ssize_t m = evbuffer_filter(in, out, ^bool (evbuffer_iovec v) {
+            return obfoo_decrypt(o, v.iov_base, v.iov_base, v.iov_len) == 0;
+        });
+        return m == -1 ? BEV_ERROR : (m > 0 ? BEV_OK : BEV_NEED_MORE);
+    }
+    }
+}
+
+bufferevent_filter_result obfoo_output_filter(evbuffer *in, evbuffer *out,
+    ev_ssize_t dst_limit, enum bufferevent_flush_mode mode, void *ctx)
+{
+    obfoo *o = (obfoo*)ctx;
+    //debug("%s: o:%p state:%d\n", __func__, o, o->state);
+    if (o->state < OF_STATE_DISCARD) {
+        return BEV_NEED_MORE;
+    }
+    ssize_t m = evbuffer_filter(in, out, ^bool (evbuffer_iovec v) {
+        return obfoo_encrypt(o, v.iov_base, v.iov_base, v.iov_len) == 0;
+    });
+    return m == -1 ? BEV_ERROR : (m > 0 ? BEV_OK : BEV_NEED_MORE);
+}
+
+void obfoo_free(void *ctx)
+{
+    obfoo *o = (obfoo*)ctx;
+    //debug("%s o:%p\n", __func__, o);
+    free(o);
+}
+
+bufferevent* obfoo_filter(bufferevent *underlying, bool incoming)
+{
     obfoo *o = obfoo_new();
-    bufferevent *bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-    bufferevent_setcb(bev, obfoo_outgoing_read_intro, obfoo_write, obfoo_event, o);
-    bufferevent_setwatermark(bev, EV_READ, INTRO_BYTES, 0);
-    bufferevent_enable(bev, EV_READ);
-    bufferevent_socket_connect_hostname(bev, NULL, AF_INET, "127.0.0.1", 5600);
-
-    debug("obfoo init pubkey_len:%d nonce_len:%d seskey_len:%d\n", crypto_kx_PUBLICKEYBYTES, crypto_stream_chacha20_NONCEBYTES, crypto_kx_SESSIONKEYBYTES);
+    //debug("%s: o:%p incoming:%d\n", __func__, o, incoming);
+    obfoo_write_intro(o, underlying);
+    bufferevent *bev = bufferevent_filter_new(underlying,
+                   incoming ? obfoo_incoming_input_filter : obfoo_outgoing_input_filter,
+                   obfoo_output_filter, BEV_OPT_CLOSE_ON_FREE, obfoo_free, o);
+    o->filter_bev = bev;
+    return bev;
 }
