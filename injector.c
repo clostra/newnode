@@ -211,7 +211,7 @@ int header_cb(evhttp_request *req, void *arg)
     return 0;
 }
 
-void error_cb(enum evhttp_request_error error, void *arg)
+void error_cb(evhttp_request_error error, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p error_cb %d\n", p, error);
