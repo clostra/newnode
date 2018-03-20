@@ -131,6 +131,10 @@ void lsd_setup(network *n)
     }
     lsd_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
+    int optval = 1;
+    setsockopt(lsd_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    setsockopt(lsd_fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+
     sockaddr_in addr = {
         .sin_family = AF_INET,
         .sin_addr.s_addr = INADDR_ANY,
