@@ -431,10 +431,10 @@ int main(int argc, char *argv[])
     char *address = "0.0.0.0";
     char *port_s = NULL;
 
-    o_debug = 1;
+    o_debug = 0;
 
     for (;;) {
-        int c = getopt(argc, argv, "p:s:");
+        int c = getopt(argc, argv, "p:s:v");
         if (c == -1) {
             break;
         }
@@ -444,6 +444,9 @@ int main(int argc, char *argv[])
             break;
         case 's':
             address = optarg;
+            break;
+        case 'v':
+            o_debug++;
             break;
         default:
             die("Unhandled argument: %c\n", c);
