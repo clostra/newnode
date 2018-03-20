@@ -211,8 +211,8 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
 {
     utp_socket *s = utp_create_socket(n->utp);
     address *a = &p->addr;
+    debug("evhttp_utp_connect %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
     sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
-    debug("utp_socket_create_bev %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
     p->last_connect_attempt = time(NULL);
     peer_connection *pc = alloc(peer_connection);
     pc->n = n;
