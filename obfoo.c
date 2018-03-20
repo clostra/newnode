@@ -358,7 +358,7 @@ void obfoo_write_intro(obfoo *o, bufferevent *bev)
 void obfoo_event(bufferevent *bev, short events, void *ctx)
 {
     obfoo *o = (obfoo*)ctx;
-    debug("obfoo_event o:%p events:0x%x\n", o, events);
+    debug("%s o:%p events:0x%x\n", __func__, o, events);
     if (events & BEV_EVENT_CONNECTED) {
         obfoo_write_intro(o, bev);
     }
@@ -376,7 +376,7 @@ void obfoo_accept(evconnlistener *listener,
     evutil_socket_t fd, sockaddr *address, int socklen,
     void *ctx)
 {
-    debug("obfoo_accept %p fd:%d\n", ctx, fd);
+    debug("%s %p fd:%d\n", __func__, ctx, fd);
     event_base *base = evconnlistener_get_base(listener);
     bufferevent *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
     obfoo *o = obfoo_new();
@@ -391,8 +391,9 @@ void obfoo_accept_error(evconnlistener *listener, void *ctx)
 {
     event_base *base = evconnlistener_get_base(listener);
     int err = EVUTIL_SOCKET_ERROR();
-    debug("obfoo_accept_error %d (%s)\n", err, evutil_socket_error_to_string(err));
+    debug("%s %d (%s)\n", __func__, err, evutil_socket_error_to_string(err));
 }
+
 
 void obfoo_demo(event_base *base)
 {
