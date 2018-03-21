@@ -152,7 +152,7 @@ ssize_t evbuffer_filter(evbuffer *in, evbuffer *out, bool (^cb)(evbuffer_iovec v
 }
 
 bufferevent_filter_result obfoo_outgoing_input_filter(evbuffer *in, evbuffer *out,
-    ev_ssize_t dst_limit, enum bufferevent_flush_mode mode, void *ctx)
+    ev_ssize_t dst_limit, bufferevent_flush_mode mode, void *ctx)
 {
     obfoo *o = (obfoo*)ctx;
     //debug("%s: o:%p state:%d\n", __func__, o, o->state);
@@ -248,7 +248,7 @@ bufferevent_filter_result obfoo_outgoing_input_filter(evbuffer *in, evbuffer *ou
 }
 
 bufferevent_filter_result obfoo_incoming_input_filter(evbuffer *in, evbuffer *out,
-    ev_ssize_t dst_limit, enum bufferevent_flush_mode mode, void *ctx)
+    ev_ssize_t dst_limit, bufferevent_flush_mode mode, void *ctx)
 {
     obfoo *o = (obfoo*)ctx;
     //debug("%s: o:%p state:%d len:%zu\n", __func__, o, o->state, evbuffer_get_length(in));
@@ -335,7 +335,7 @@ bufferevent_filter_result obfoo_incoming_input_filter(evbuffer *in, evbuffer *ou
 }
 
 bufferevent_filter_result obfoo_output_filter(evbuffer *in, evbuffer *out,
-    ev_ssize_t dst_limit, enum bufferevent_flush_mode mode, void *ctx)
+    ev_ssize_t dst_limit, bufferevent_flush_mode mode, void *ctx)
 {
     obfoo *o = (obfoo*)ctx;
     //debug("%s: o:%p state:%d\n", __func__, o, o->state);

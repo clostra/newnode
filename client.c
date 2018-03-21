@@ -533,7 +533,7 @@ void direct_chunked_cb(evhttp_request *req, void *arg)
     }
 }
 
-void direct_error_cb(enum evhttp_request_error error, void *arg)
+void direct_error_cb(evhttp_request_error error, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p direct_error_cb %d\n", p, error);
@@ -738,7 +738,7 @@ void proxy_chunked_cb(evhttp_request *req, void *arg)
     }
 }
 
-void proxy_error_cb(enum evhttp_request_error error, void *arg)
+void proxy_error_cb(evhttp_request_error error, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p proxy_error_cb %d\n", p, error);
@@ -1128,7 +1128,7 @@ void trace_request_cleanup(trace_request *t)
     free(t);
 }
 
-void trace_error_cb(enum evhttp_request_error error, void *arg)
+void trace_error_cb(evhttp_request_error error, void *arg)
 {
     trace_request *t = (trace_request*)arg;
     debug("t:%p trace_error_cb %d\n", t, error);
@@ -1305,7 +1305,7 @@ int connect_header_cb(evhttp_request *req, void *arg)
     return -1;
 }
 
-void connect_error_cb(enum evhttp_request_error error, void *arg)
+void connect_error_cb(evhttp_request_error error, void *arg)
 {
     connect_req *c = (connect_req *)arg;
     debug("c:%p connect_error_cb %d\n", c, error);

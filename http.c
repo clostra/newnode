@@ -47,7 +47,7 @@ void fetch_url_swarm(network *n, const char *url)
     dht_get_peers(n->dht, url_hash);
 }
 
-const char *evhttp_method(enum evhttp_cmd_type type)
+const char *evhttp_method(evhttp_cmd_type type)
 {
     switch (type) {
     case EVHTTP_REQ_GET: return "GET";

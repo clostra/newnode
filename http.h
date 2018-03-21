@@ -18,11 +18,13 @@ typedef struct evkeyvalq evkeyvalq;
 typedef struct evhttp_uri evhttp_uri;
 typedef struct evhttp_request evhttp_request;
 typedef struct evhttp_connection evhttp_connection;
+typedef enum evhttp_cmd_type evhttp_cmd_type;
+typedef enum evhttp_request_error evhttp_request_error;
 
 void join_url_swarm(network *n, const char *url);
 void fetch_url_swarm(network *n, const char *url);
 
-const char *evhttp_method(enum evhttp_cmd_type type);
+const char *evhttp_method(evhttp_cmd_type type);
 
 int get_port_for_scheme(const char *scheme);
 
