@@ -39,12 +39,15 @@ typedef struct evconnlistener evconnlistener;
 typedef struct evutil_addrinfo evutil_addrinfo;
 typedef struct bufferevent bufferevent;
 typedef struct timeval timeval;
+typedef struct timespec timespec;
 typedef struct addrinfo addrinfo;
 typedef struct in_addr in_addr;
 typedef struct sockaddr sockaddr;
 typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr_in6 sockaddr_in6;
 typedef struct sockaddr_storage sockaddr_storage;
+typedef enum bufferevent_flush_mode bufferevent_flush_mode;
+typedef enum bufferevent_filter_result bufferevent_filter_result;
 typedef in_port_t port_t;
 
 #include "timer.h"

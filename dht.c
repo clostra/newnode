@@ -238,7 +238,7 @@ void dht_destroy(dht *d)
 }
 
 int dht_sendto(int sockfd, const void *buf, int len, int flags,
-               const struct sockaddr *to, int tolen)
+               const sockaddr *to, int tolen)
 {
     return sendto(sockfd, buf, len, flags, to, tolen);
 }

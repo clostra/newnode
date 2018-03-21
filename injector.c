@@ -211,7 +211,7 @@ int header_cb(evhttp_request *req, void *arg)
     return 0;
 }
 
-void error_cb(enum evhttp_request_error error, void *arg)
+void error_cb(evhttp_request_error error, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p error_cb %d\n", p, error);
@@ -431,10 +431,10 @@ int main(int argc, char *argv[])
     char *address = "0.0.0.0";
     char *port_s = NULL;
 
-    o_debug = 1;
+    o_debug = 0;
 
     for (;;) {
-        int c = getopt(argc, argv, "p:s:");
+        int c = getopt(argc, argv, "p:s:v");
         if (c == -1) {
             break;
         }
@@ -444,6 +444,9 @@ int main(int argc, char *argv[])
             break;
         case 's':
             address = optarg;
+            break;
+        case 'v':
+            o_debug++;
             break;
         default:
             die("Unhandled argument: %c\n", c);
@@ -476,6 +479,7 @@ int main(int argc, char *argv[])
 
     timer_callback cb = ^{
         dht_announce(n->dht, (const uint8_t *)injector_swarm);
+        dht_announce(n->dht, (const uint8_t *)encrypted_injector_swarm);
     };
     cb();
     timer_repeating(n, 25 * 60 * 1000, cb);

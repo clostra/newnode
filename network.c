@@ -25,10 +25,11 @@
 #include <sys/system_properties.h>
 #endif
 
-#include "network.h"
-#include "timer.h"
 #include "log.h"
 #include "lsd.h"
+#include "obfoo.h"
+#include "timer.h"
+#include "network.h"
 #include "icmp_handler.h"
 #include "utp_bufferevent.h"
 
@@ -142,7 +143,8 @@ void evdns_log_cb(int severity, const char *msg)
 
 bufferevent* create_bev(event_base *base, void *userdata)
 {
-    return bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+    bufferevent* bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+    return obfoo_filter(bev, true);
 }
 
 uint64 utp_callback_get_random(utp_callback_arguments *args)
