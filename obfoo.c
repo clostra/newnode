@@ -226,6 +226,7 @@ bufferevent_filter_result obfoo_outgoing_input_filter(evbuffer *in, evbuffer *ou
         o->discarding = pad_len;
 
         o->state = OF_STATE_DISCARD;
+        // writing is now possible, flush
         bufferevent_flush(o->filter_bev, EV_WRITE, BEV_NORMAL);
     }
     case OF_STATE_DISCARD: {
@@ -313,6 +314,7 @@ bufferevent_filter_result obfoo_incoming_input_filter(evbuffer *in, evbuffer *ou
         bufferevent_write(bufferevent_get_underlying(o->filter_bev), r.buf, crypt_len);
 
         o->state = OF_STATE_DISCARD;
+        // writing is now possible, flush
         bufferevent_flush(o->filter_bev, EV_WRITE, BEV_NORMAL);
     }
     case OF_STATE_DISCARD: {
