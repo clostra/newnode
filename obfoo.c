@@ -52,6 +52,7 @@ typedef struct {
 } PACKED crypt_intro;
 
 typedef enum {
+    OF_STATE_DISABLED = -1,
     OF_STATE_INTRO = 0,
     OF_STATE_SYNC,
     OF_STATE_DISCARD,
@@ -158,7 +159,30 @@ bufferevent_filter_result obfoo_input_filter(evbuffer *in, evbuffer *out,
     obfoo *o = (obfoo*)ctx;
     //debug("%s: o:%p state:%d\n", __func__, o, o->state);
     switch(o->state) {
+    case OF_STATE_DISABLED:
+        return (evbuffer_remove_buffer(in, out, dst_limit) >= 0) ? BEV_OK : BEV_ERROR;
     case OF_STATE_INTRO: {
+
+        // XXX: temporary plaintext support
+        if (evbuffer_get_length(in) < 8) {
+            return BEV_NEED_MORE;
+        }
+#define method_matches(s, m) strncaseeq((char*)s, m, lenof(m) - 1)
+        uint8_t *start = evbuffer_pullup(in, 8);
+        if (method_matches(start, "GET ") ||
+            method_matches(start, "PUT ") ||
+            method_matches(start, "POST ") ||
+            method_matches(start, "HEAD ") ||
+            method_matches(start, "TRACE ") ||
+            method_matches(start, "PATCH ") ||
+            method_matches(start, "DELETE ") ||
+            method_matches(start, "OPTIONS ") ||
+            method_matches(start, "CONNECT ")) {
+            o->state = OF_STATE_DISABLED;
+            return obfoo_input_filter(in, out, dst_limit, mode, ctx);
+        }
+#undef method_matches
+
         if (evbuffer_get_length(in) < INTRO_BYTES) {
             return BEV_NEED_MORE;
         }
@@ -186,6 +210,8 @@ bufferevent_filter_result obfoo_input_filter(evbuffer *in, evbuffer *out,
         if (o->incoming) {
             crypto_generichash_update(&state, o->rx, sizeof(o->rx));
             crypto_generichash_final(&state, o->synchash, sizeof(o->synchash));
+
+            obfoo_write_intro(o, bufferevent_get_underlying(o->filter_bev));
         } else {
             bufferevent_disable(bufferevent_get_underlying(o->filter_bev), EV_WRITE);
 
@@ -276,7 +302,7 @@ bufferevent_filter_result obfoo_input_filter(evbuffer *in, evbuffer *out,
     }
     case OF_STATE_READY: {
         ssize_t m = evbuffer_filter(in, out, ^bool (evbuffer_iovec v) {
-            return obfoo_decrypt(o, v.iov_base, v.iov_base, v.iov_len) == 0;
+            return !obfoo_decrypt(o, v.iov_base, v.iov_base, v.iov_len);
         });
         return m == -1 ? BEV_ERROR : (m > 0 ? BEV_OK : BEV_NEED_MORE);
     }
@@ -288,13 +314,19 @@ bufferevent_filter_result obfoo_output_filter(evbuffer *in, evbuffer *out,
 {
     obfoo *o = (obfoo*)ctx;
     //debug("%s: o:%p state:%d\n", __func__, o, o->state);
-    if (o->state < OF_STATE_DISCARD) {
+    switch(o->state) {
+    case OF_STATE_DISABLED:
+        return (evbuffer_remove_buffer(in, out, dst_limit) >= 0) ? BEV_OK : BEV_ERROR;
+    default:
         return BEV_NEED_MORE;
+    case OF_STATE_DISCARD:
+    case OF_STATE_READY: {
+        ssize_t m = evbuffer_filter(in, out, ^bool (evbuffer_iovec v) {
+            return obfoo_encrypt(o, v.iov_base, v.iov_base, v.iov_len) == 0;
+        });
+        return m == -1 ? BEV_ERROR : (m > 0 ? BEV_OK : BEV_NEED_MORE);
     }
-    ssize_t m = evbuffer_filter(in, out, ^bool (evbuffer_iovec v) {
-        return obfoo_encrypt(o, v.iov_base, v.iov_base, v.iov_len) == 0;
-    });
-    return m == -1 ? BEV_ERROR : (m > 0 ? BEV_OK : BEV_NEED_MORE);
+    }
 }
 
 void obfoo_free(void *ctx)
@@ -309,7 +341,9 @@ bufferevent* obfoo_filter(bufferevent *underlying, bool incoming)
     obfoo *o = obfoo_new();
     //debug("%s: o:%p incoming:%d\n", __func__, o, incoming);
     o->incoming = incoming;
-    obfoo_write_intro(o, underlying);
+    if (!o->incoming) {
+        obfoo_write_intro(o, underlying);
+    }
     bufferevent *bev = bufferevent_filter_new(underlying,
                    obfoo_input_filter, obfoo_output_filter,
                    BEV_OPT_CLOSE_ON_FREE, obfoo_free, o);
