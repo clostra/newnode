@@ -39,6 +39,7 @@ typedef struct evconnlistener evconnlistener;
 typedef struct evutil_addrinfo evutil_addrinfo;
 typedef struct bufferevent bufferevent;
 typedef struct timeval timeval;
+typedef struct timespec timespec;
 typedef struct addrinfo addrinfo;
 typedef struct in_addr in_addr;
 typedef struct sockaddr sockaddr;

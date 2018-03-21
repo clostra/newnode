@@ -121,7 +121,7 @@ TAILQ_HEAD(, pending_request) pending_requests;
 
 uint64_t us_clock()
 {
-    struct timespec ts;
+    timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
 }
@@ -212,7 +212,7 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
     utp_socket *s = utp_create_socket(n->utp);
     address *a = &p->addr;
     sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
-    debug("utp_socket_create_bev %s:%d\n", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
+    debug("utp_socket_create_bev %s:%d\n", inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port));
     p->last_connect_attempt = time(NULL);
     peer_connection *pc = alloc(peer_connection);
     pc->n = n;
@@ -248,7 +248,7 @@ void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_a
         } else if (*pa == injector_proxies) {
             label = "injector proxy";
         }
-        debug("new %s %s:%d\n", label, inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
+        debug("new %s %s:%d\n", label, inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port));
 
         sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
         dht_ping_node((const sockaddr *)&sin, sizeof(sin));
@@ -299,7 +299,7 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
         printf("\": [");
         for (uint i = 0; i < data_len / 6; i++) {
             address *a = (address *)&data[i * 6];
-            printf("\"%s:%d\"", inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port));
+            printf("\"%s:%d\"", inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port));
             if (i + 1 != data_len / 6) {
                 printf(", ");
             }
@@ -972,7 +972,7 @@ peer* select_peer(peer_array *pa)
         sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
         /*
         debug("peer %s:%d failed:%d verified_ago:%d last_connect:%d never_connected:%d salt:%d p:%p\n",
-            inet_ntoa((struct in_addr){.s_addr = a->ip}), ntohs(a->port),
+            inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port),
             c.failed, c.time_since_verified, c.last_connect_attempt, c.never_connected, c.salt, c.peer);
         */
         if (!i || peer_sort_cmp(&c, &best) < 0) {
