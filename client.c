@@ -23,8 +23,9 @@
 #include "lsd.h"
 #include "utp.h"
 #include "http.h"
-#include "base64.h"
 #include "timer.h"
+#include "obfoo.h"
+#include "base64.h"
 #include "network.h"
 #include "constants.h"
 #include "bev_splice.h"
@@ -49,6 +50,7 @@ typedef struct {
     uint32_t last_verified;
     uint32_t last_connect;
     uint32_t last_connect_attempt;
+    bool encrypted:1;
 } peer;
 
 typedef struct {
@@ -218,13 +220,16 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
     pc->n = n;
     pc->peer = p;
     pc->bev = utp_socket_create_bev(n->evbase, s);
+    if (p->encrypted) {
+        pc->bev = obfoo_filter(pc->bev, false);
+    }
     utp_connect(s, (sockaddr*)&sin, sizeof(sin));
     bufferevent_setcb(pc->bev, NULL, NULL, bev_event_cb, pc);
     bufferevent_enable(pc->bev, EV_READ);
     return pc;
 }
 
-void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_addrs)
+void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_addrs, bool encrypted)
 {
     for (uint i = 0; i < num_addrs; i++) {
         for (uint j = 0; j < (*pa)->length; j++) {
@@ -242,13 +247,15 @@ void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_a
         peer *p = alloc(peer);
         (*pa)->peers[(*pa)->length-1] = p;
         p->addr = *a;
+        p->encrypted = encrypted;
         const char *label = "peer";
         if (*pa == injectors) {
             label = "injector";
         } else if (*pa == injector_proxies) {
             label = "injector proxy";
         }
-        debug("new %s %s:%d\n", label, inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port));
+        debug("new %s%s %s:%d\n", encrypted?"encrypted ":"", label,
+            inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port));
 
         sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
         dht_ping_node((const sockaddr *)&sin, sizeof(sin));
@@ -269,7 +276,7 @@ void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
 {
     dht_ping_node(addr, addrlen);
     address a = {.ip = ((sockaddr_in*)addr)->sin_addr.s_addr, .port = ((sockaddr_in*)addr)->sin_port};
-    add_addresses(n, &all_peers, (const byte*)&a, 1);
+    add_addresses(n, &all_peers, (const byte*)&a, 1, false);
 }
 
 void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
@@ -284,11 +291,15 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
     size_t num_peers = data_len / 6;
     debug("dht_event_callback num_peers:%zu\n", num_peers);
     if (memeq(info_hash, injector_swarm, sizeof(injector_swarm))) {
-        add_addresses(n, &injectors, peers, num_peers);
+        add_addresses(n, &injectors, peers, num_peers, false);
     } else if (memeq(info_hash, injector_proxy_swarm, sizeof(injector_proxy_swarm))) {
-        add_addresses(n, &injector_proxies, peers, num_peers);
+        add_addresses(n, &injector_proxies, peers, num_peers, false);
+    } else if (memeq(info_hash, encrypted_injector_swarm, sizeof(encrypted_injector_swarm))) {
+        add_addresses(n, &injectors, peers, num_peers, true);
+    } else if (memeq(info_hash, encrypted_injector_proxy_swarm, sizeof(encrypted_injector_proxy_swarm))) {
+        add_addresses(n, &injector_proxies, peers, num_peers, true);
     } else {
-        add_addresses(n, &all_peers, peers, num_peers);
+        add_addresses(n, &all_peers, peers, num_peers, false);
     }
     if (o_debug >= 2) {
         printf("Received %d values.\n", (int)(data_len / 6));
@@ -315,8 +326,10 @@ void update_injector_proxy_swarm(network *n)
 {
     if (injector_reachable) {
         dht_announce(n->dht, (const uint8_t *)injector_proxy_swarm);
+        dht_announce(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm);
     } else {
         dht_get_peers(n->dht, (const uint8_t *)injector_proxy_swarm);
+        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm);
     }
 }
 
@@ -1489,7 +1502,7 @@ network* client_init(port_t port)
     printf("listening on TCP:%s:%d\n", "127.0.0.1", port);
 
     timer_callback cb = ^{
-        dht_get_peers(n->dht, (const uint8_t *)injector_swarm);
+        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm);
         submit_trace_request(n);
         update_injector_proxy_swarm(n);
     };
