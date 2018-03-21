@@ -22,7 +22,7 @@ cd libsodium
 if [ ! -d native ]; then
     ./autogen.sh
     mkdir -p native
-    ./configure --enable-minimal --disable-shared --prefix=native
+    ./configure --enable-minimal --disable-shared --prefix=$(pwd)/native
     make -j3 check
     make -j3 install
 fi
