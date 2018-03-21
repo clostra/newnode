@@ -1496,9 +1496,6 @@ network* client_init(port_t port)
     cb();
     timer_repeating(n, 25 * 60 * 1000, cb);
 
-    void obfoo_demo(event_base *base);
-    obfoo_demo(n->evbase);
-
     return n;
 }
 
