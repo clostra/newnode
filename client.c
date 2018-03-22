@@ -116,10 +116,13 @@ peer_connection *peer_connections[10];
 char via_tag[] = "1.1 _.dcdn";
 time_t last_trace;
 time_t injector_reachable;
+timer *saving_peers;
 
 size_t pending_requests_len;
 TAILQ_HEAD(, pending_request) pending_requests;
 
+
+void save_peers(network *n);
 
 uint64_t us_clock()
 {
@@ -229,36 +232,50 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
     return pc;
 }
 
+bool has_address(peer_array *pa, address *a)
+{
+    for (uint i = 0; i < pa->length; i++) {
+        if (memeq(a, (const uint8_t *)&(pa->peers[i]->addr), sizeof(address))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void add_peer(peer_array **pa, peer *p)
+{
+    (*pa)->length++;
+    *pa = realloc(*pa, sizeof(peer_array) + (*pa)->length * sizeof(peer*));
+    (*pa)->peers[(*pa)->length - 1] = p;
+
+    sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = p->addr.ip, .sin_port = p->addr.port};
+    dht_ping_node((const sockaddr *)&sin, sizeof(sin));
+}
+
 void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_addrs, bool encrypted)
 {
     for (uint i = 0; i < num_addrs; i++) {
-        for (uint j = 0; j < (*pa)->length; j++) {
-            if (memeq(&addrs[sizeof(address) * i], (const uint8_t *)&((*pa)->peers)[j]->addr, sizeof(address))) {
-                return;
-            }
-        }
         address *a = (address *)&addrs[sizeof(address) * i];
+        if (has_address(*pa, a)) {
+            return;
+        }
         // paper over a bug in some DHT implementation that winds up with 1 for the port
         if (ntohs(a->port) == 1) {
             continue;
         }
-        (*pa)->length++;
-        *pa = realloc(*pa, sizeof(peer_array) + (*pa)->length * sizeof(peer*));
         peer *p = alloc(peer);
-        (*pa)->peers[(*pa)->length-1] = p;
         p->addr = *a;
         p->encrypted = encrypted;
+        add_peer(pa, p);
+
         const char *label = "peer";
         if (*pa == injectors) {
             label = "injector";
         } else if (*pa == injector_proxies) {
             label = "injector proxy";
         }
-        debug("new %s%s %s:%d\n", encrypted?"encrypted ":"", label,
-            inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port));
-
-        sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
-        dht_ping_node((const sockaddr *)&sin, sizeof(sin));
+        debug("new %s%s %s:%d\n", p->encrypted?"encrypted ":"", label,
+            inet_ntoa((in_addr){.s_addr = p->addr.ip}), ntohs(p->addr.port));
 
         if (!TAILQ_EMPTY(&pending_requests)) {
             for (uint k = 0; k < lenof(peer_connections); k++) {
@@ -269,6 +286,8 @@ void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_a
                 break;
             }
         }
+
+        save_peers(n);
     }
 }
 
@@ -816,6 +835,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
     fprintf(stderr, "p:%p (%.2fms) signature good!\n", p, pdelta(p));
 
     p->pc->peer->last_verified = time(NULL);
+    save_peers(p->n);
     if (peer_is_injector(p->pc->peer)) {
         injector_reachable = time(NULL);
         update_injector_proxy_swarm(p->n);
@@ -1176,6 +1196,7 @@ void trace_request_done_cb(evhttp_request *req, void *arg)
                 debug("signature good!\n");
                 t->pc->peer->last_connect = time(NULL);
                 t->pc->peer->last_verified = time(NULL);
+                save_peers(t->n);
                 if (peer_is_injector(t->pc->peer)) {
                     injector_reachable = time(NULL);
                     update_injector_proxy_swarm(t->n);
@@ -1222,6 +1243,7 @@ void submit_trace_request(network *n)
 {
     trace_request *t = alloc(trace_request);
     t->n = n;
+    connect_more_injectors(n);
     queue_request(n, &t->r, ^(peer_connection *pc) {
         t->pc = pc;
         trace_submit_request_on_con(t, t->pc->evcon);
@@ -1480,6 +1502,58 @@ void http_request_cb(evhttp_request *req, void *arg)
     submit_request(n, req);
 }
 
+void save_peer_file(const char *s, peer_array *pa)
+{
+    FILE *f = fopen(s, "wb");
+    if (f) {
+        for (size_t i = 0; i < pa->length; i++) {
+            fwrite(pa->peers[i], sizeof(peer), 1, f);
+        }
+        fclose(f);
+    }
+}
+
+void save_peers(network *n)
+{
+    if (saving_peers) {
+        return;
+    }
+    saving_peers = timer_start(n, 1000, ^{
+        saving_peers = NULL;
+        save_peer_file("injectors.dat", injectors);
+        save_peer_file("injector_proxies.dat", injector_proxies);
+        save_peer_file("peers.dat", all_peers);
+    });
+}
+
+void load_peer_file(const char *s, peer_array **pa)
+{
+    FILE *f = fopen(s, "rb");
+    if (f) {
+        peer p;
+        while (fread(&p, sizeof(p), 1, f) == 1) {
+            if (!has_address(*pa, &p.addr)) {
+                add_peer(pa, memdup(&p, sizeof(p)));
+            }
+        }
+        const char *label = "peers";
+        if (*pa == injectors) {
+            label = "injectors";
+        } else if (*pa == injector_proxies) {
+            label = "injector proxies";
+        }
+        debug("loaded %llu %s\n", (*pa)->length, label);
+        fclose(f);
+    }
+}
+
+void load_peers(network *n)
+{
+    load_peer_file("injectors.dat", &injectors);
+    load_peer_file("injector_proxies.dat", &injector_proxies);
+    load_peer_file("peers.dat", &all_peers);
+}
+
 network* client_init(port_t port)
 {
     //o_debug = 0;
@@ -1489,6 +1563,7 @@ network* client_init(port_t port)
     all_peers = alloc(peer_array);
     TAILQ_INIT(&pending_requests);
 
+    // 1.1 is the version of HTTP, not dcdn
     // "1.1 _.dcdn"
     via_tag[4] = 'a' + randombytes_uniform(26);
 
@@ -1500,6 +1575,8 @@ network* client_init(port_t port)
     evhttp_set_gencb(n->http, http_request_cb, n);
     evhttp_bind_socket_with_handle(n->http, "127.0.0.1", port);
     printf("listening on TCP:%s:%d\n", "127.0.0.1", port);
+
+    load_peers(n);
 
     timer_callback cb = ^{
         dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm);
