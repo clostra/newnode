@@ -262,13 +262,14 @@ bufferevent_filter_result obfoo_input_filter(evbuffer *in, evbuffer *out,
             evbuffer_drain(in, sizeof(o->synchash));
         }
 
-        size_t len = sizeof(crypt_intro);
-        assert(evbuffer_get_length(in) >= len);
-        uint8_t *c = evbuffer_pullup(in, len);
-        obfoo_decrypt(o, c, c, len);
-        uint16_t pad_len = ((crypt_intro*)c)->pad_len;
-        evbuffer_drain(in, len);
-        o->discarding = pad_len;
+        crypt_intro *ci = (crypt_intro*)evbuffer_pullup(in, sizeof(crypt_intro));
+        obfoo_decrypt(o, (uint8_t*)ci, (uint8_t*)ci, sizeof(crypt_intro));
+        if (ci->vc != 0) {
+            debug("incorrect vc: %llu != 0\n", ci->vc);
+            return BEV_ERROR;
+        }
+        o->discarding = ci->pad_len;
+        evbuffer_drain(in, sizeof(crypt_intro));
 
         if (o->incoming) {
             // len(ia)
