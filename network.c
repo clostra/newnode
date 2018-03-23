@@ -210,11 +210,23 @@ network* network_setup(char *address, port_t port)
     }
 #endif
 
-    if (bind(n->fd, res->ai_addr, res->ai_addrlen) != 0) {
-        pdie("bind");
+    for (;;) {
+        if (bind(n->fd, res->ai_addr, res->ai_addrlen) != 0) {
+            if (port == 0) {
+                pdie("bind");
+            }
+            freeaddrinfo(res);
+            port = 0;
+            snprintf(port_s, sizeof(port_s), "%u", port);
+            error = getaddrinfo(address, port_s, &hints, &res);
+            if (error) {
+                die("getaddrinfo: %s\n", gai_strerror(error));
+            }
+            continue;
+        }
+        freeaddrinfo(res);
+        break;
     }
-
-    freeaddrinfo(res);
 
     evutil_make_socket_closeonexec(n->fd);
     evutil_make_socket_nonblocking(n->fd);

@@ -1521,9 +1521,8 @@ void save_peers(network *n)
     saving_peers = timer_start(n, 1000, ^{
         saving_peers = NULL;
         save_peer_file("injectors.dat", injectors);
-        // XXX: possibly ephemeral ports, maybe not worth saving
-        //save_peer_file("injector_proxies.dat", injector_proxies);
-        //save_peer_file("peers.dat", all_peers);
+        save_peer_file("injector_proxies.dat", injector_proxies);
+        save_peer_file("peers.dat", all_peers);
     });
 }
 
@@ -1568,7 +1567,24 @@ network* client_init(port_t port)
     // "1.1 _.dcdn"
     via_tag[4] = 'a' + randombytes_uniform(26);
 
-    network *n = network_setup("0.0.0.0", 0);
+    uint16_t port_pref = 0;
+    FILE *f = fopen("port.dat", "rb");
+    if (f) {
+        fread(&port_pref, sizeof(port_pref), 1, f);
+        fclose(f);
+    }
+
+    network *n = network_setup("0.0.0.0", port_pref);
+
+    sockaddr_storage ss;
+    socklen_t sslen = sizeof(ss);
+    getsockname(n->fd, (sockaddr *)&ss, &sslen);
+    port_pref = sockaddr_get_port((sockaddr *)&ss);
+    f = fopen("port.dat", "wb");
+    if (f) {
+        fwrite(&port_pref, sizeof(port_pref), 1, f);
+        fclose(f);
+    }
 
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
 
