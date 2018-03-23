@@ -1521,8 +1521,9 @@ void save_peers(network *n)
     saving_peers = timer_start(n, 1000, ^{
         saving_peers = NULL;
         save_peer_file("injectors.dat", injectors);
-        save_peer_file("injector_proxies.dat", injector_proxies);
-        save_peer_file("peers.dat", all_peers);
+        // XXX: possibly ephemeral ports, maybe not worth saving
+        //save_peer_file("injector_proxies.dat", injector_proxies);
+        //save_peer_file("peers.dat", all_peers);
     });
 }
 
