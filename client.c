@@ -1542,7 +1542,7 @@ void load_peer_file(const char *s, peer_array **pa)
         } else if (*pa == injector_proxies) {
             label = "injector proxies";
         }
-        debug("loaded %llu %s\n", (*pa)->length, label);
+        debug("loaded %u %s\n", (*pa)->length, label);
         fclose(f);
     }
 }
