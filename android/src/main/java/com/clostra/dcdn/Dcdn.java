@@ -124,7 +124,11 @@ public class Dcdn {
 
     public static void init() {
         if (!started) {
-            setCacheDir(app().getCacheDir().getAbsolutePath());
+            try {
+                setCacheDir(app().getCacheDir().getAbsolutePath());
+            } catch (UnsatisfiedLinkError e) {
+                Log.e("dcdn", "", e);
+            }
             Log.e("dcdn", "version " + VERSION + " started");
             started = true;
         }

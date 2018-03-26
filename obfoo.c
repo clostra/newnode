@@ -250,7 +250,7 @@ bufferevent_filter_result obfoo_input_filter(evbuffer *in, evbuffer *out,
         if (f.pos == -1) {
             size_t max_len = INTRO_PAD_MAX + search_len;
             if (evbuffer_get_length(in) >= max_len) {
-                debug("sync not found in %llu (%llu) bytes\n", max_len, evbuffer_get_length(in));
+                debug("sync not found in %zu (%zu) bytes\n", max_len, evbuffer_get_length(in));
                 return BEV_ERROR;
             }
             return BEV_NEED_MORE;
@@ -265,7 +265,7 @@ bufferevent_filter_result obfoo_input_filter(evbuffer *in, evbuffer *out,
         crypt_intro *ci = (crypt_intro*)evbuffer_pullup(in, sizeof(crypt_intro));
         obfoo_decrypt(o, (uint8_t*)ci, (uint8_t*)ci, sizeof(crypt_intro));
         if (ci->vc != 0) {
-            debug("incorrect vc: %llu != 0\n", ci->vc);
+            debug("incorrect vc: %llu != 0\n", (unsigned long long)ci->vc);
             return BEV_ERROR;
         }
         o->discarding = ci->pad_len;
