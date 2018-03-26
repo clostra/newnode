@@ -891,8 +891,9 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
     }
 
     //join_url_swarm(p->n, uri);
-    const evhttp_uri *evuri = evhttp_request_get_evhttp_uri(req);
+    evhttp_uri *evuri = evhttp_uri_parse(req->uri);
     const char *host = evhttp_uri_get_host(evuri);
+    evhttp_uri_free(evuri);
     join_url_swarm(p->n, host);
 
     peer_reuse(p->n, p->pc);
@@ -970,15 +971,12 @@ void proxy_make_request(proxy_request *p)
 
     // a hack to keep the request url, even if the server_req dies
     p->proxy_req->uri = strdup(evhttp_request_get_uri(p->server_req));
-    p->proxy_req->uri_elems = evhttp_uri_parse(p->proxy_req->uri);
 }
 
 void proxy_submit_request_on_con(proxy_request *p, evhttp_connection *evcon)
 {
     char *uri = p->proxy_req->uri;
     p->proxy_req->uri = NULL;
-    evhttp_uri_free(p->proxy_req->uri_elems);
-    p->proxy_req->uri_elems = NULL;
     evhttp_make_request(evcon, p->proxy_req, EVHTTP_REQ_GET, uri);
     free(uri);
     debug("p:%p con:%p proxy request submitted: %s\n", p, evhttp_request_get_connection(p->proxy_req), evhttp_request_get_uri(p->proxy_req));
