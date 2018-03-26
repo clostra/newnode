@@ -126,35 +126,36 @@ public class Dcdn {
         if (!started) {
             try {
                 setCacheDir(app().getCacheDir().getAbsolutePath());
+                Log.e("dcdn", "version " + VERSION + " started");
+                started = true;
             } catch (UnsatisfiedLinkError e) {
                 Log.e("dcdn", "", e);
             }
-            Log.e("dcdn", "version " + VERSION + " started");
-            started = true;
         }
 
-        System.setProperty("http.proxyHost", "127.0.0.1");
-        System.setProperty("https.proxyHost", "127.0.0.1");
-        System.setProperty("http.proxyPort", "8006");
-        System.setProperty("https.proxyPort", "8006");
-
-        if (updateThread != null) {
-            return;
+        if (started) {
+            System.setProperty("http.proxyHost", "127.0.0.1");
+            System.setProperty("https.proxyHost", "127.0.0.1");
+            System.setProperty("http.proxyPort", "8006");
+            System.setProperty("https.proxyPort", "8006");
         }
-        updateThread = new Thread() { public void run() {
-            while (!Thread.interrupted()) {
-                try {
-                    update();
-                } catch(Exception e) {
-                    Log.e("dcdn", "", e);
+
+        if (updateThread == null) {
+            updateThread = new Thread() { public void run() {
+                while (!Thread.interrupted()) {
+                    try {
+                        update();
+                    } catch(Exception e) {
+                        Log.e("dcdn", "", e);
+                    }
+                    try {
+                        sleep((long) (1 + Math.random() * (24 * 60 * 60 * 1000)));
+                    } catch(InterruptedException e) {
+                    }
                 }
-                try {
-                    sleep((long) (1 + Math.random() * (24 * 60 * 60 * 1000)));
-                } catch(InterruptedException e) {
-                }
-            }
-        }};
-        updateThread.start();
+            }};
+            updateThread.start();
+        }
     }
 
     public static void shutdown() {
