@@ -77,7 +77,7 @@ public class MainActivity extends AppCompatActivity {
         });
         WebSettings webSettings = mWebView.getSettings();
         webSettings.setJavaScriptEnabled(true);
-        mEditText.setText("http://clostra.com", TextView.BufferType.EDITABLE);
+        mEditText.setText("http://newnode.com", TextView.BufferType.EDITABLE);
         load();
     }
 
