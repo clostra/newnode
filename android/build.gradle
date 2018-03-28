@@ -32,7 +32,13 @@ android {
     defaultConfig {
         minSdkVersion 21
         targetSdkVersion 27
-        versionName "1.2.1"
+        new File('../constants.h').eachLine { line ->
+            def matcher = line =~ /VERSION "(.*)"/
+            if (matcher) {
+                versionName matcher[0][1]
+                return true
+            }
+        }
         versionCode versionName.replace(".", "").toInteger()
         buildConfigField("String", "BUGSNAG_API_KEY", "\"${bugsnagApiKey}\"")
     }
