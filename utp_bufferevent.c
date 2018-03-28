@@ -216,20 +216,19 @@ void ubev_event_cb(bufferevent *bev, short events, void *ctx)
     if (events & BEV_EVENT_ERROR) {
         evbuffer_clear(bufferevent_get_output(u->bev));
         if (u->utp) {
-            if (!evbuffer_get_length(bufferevent_get_input(u->bev))) {
+            if (evbuffer_get_length(bufferevent_get_input(u->bev))) {
                 utp_shutdown(u->utp, SHUT_RD);
                 return;
             }
             ubev_utp_close(u);
-        } else {
-            evbuffer_clear(bufferevent_get_input(u->bev));
         }
         ubev_bev_close(u);
         ubev_cleanup(u);
     } else if (events & BEV_EVENT_EOF) {
         if (events & BEV_EVENT_WRITING) {
             evbuffer_clear(bufferevent_get_output(bev));
-            if (!(bufferevent_get_enabled(bev) & EV_READ)) {
+            if (!(bufferevent_get_enabled(bev) & EV_READ) &&
+                !evbuffer_get_length(bufferevent_get_input(u->bev))) {
                 if (u->utp) {
                     ubev_utp_close(u);
                 }
