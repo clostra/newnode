@@ -4,6 +4,9 @@ import android.app.Application;
 import android.os.Build;
 import android.util.Log;
 
+import com.bugsnag.android.Bugsnag;
+import com.bugsnag.android.Configuration;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -18,6 +21,7 @@ import java.util.Arrays;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
+
 
 public class Dcdn {
     static String VERSION = "v" + BuildConfig.VERSION_NAME;
@@ -124,6 +128,13 @@ public class Dcdn {
 
     public static void init() {
         if (!started) {
+
+            Configuration config = new Configuration(BuildConfig.BUGSNAG_API_KEY);
+            config.setAppVersion(BuildConfig.VERSION_NAME);
+            config.setPersistUserBetweenSessions(true);
+            config.setAutoCaptureSessions(true);
+            Bugsnag.init(app(), config);
+
             try {
                 setCacheDir(app().getCacheDir().getAbsolutePath());
                 Log.e("dcdn", "version " + VERSION + " started");

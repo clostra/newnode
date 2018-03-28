@@ -22,8 +22,11 @@ dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation 'com.android.support:appcompat-v7:27.+'
     implementation 'com.android.support.constraint:constraint-layout:+'
-    // include directly
+
+    // include AAR directly (must include dependencies)
     implementation project(':dcdn')
+    implementation 'com.bugsnag:bugsnag-android-ndk:1.+'
+
     // use jcenter
     //implementation 'com.clostra.dcdn:dcdn:+'
 }
