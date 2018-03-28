@@ -69,6 +69,25 @@ void ubev_bev_graceful_close(utp_bufferevent *u)
     ubev_cleanup(u);
 }
 
+bool bufferevent_input_done(bufferevent *bev)
+{
+    return !(bufferevent_get_enabled(bev) & EV_READ ||
+        evbuffer_get_length(bufferevent_get_input(bev)));
+}
+
+bool ubev_check_close(utp_bufferevent *u)
+{
+    if (bufferevent_get_enabled(u->bev) || !bufferevent_input_done(u->bev)) {
+        return false;
+    }
+    if (u->utp) {
+        ubev_utp_close(u);
+    }
+    ubev_bev_close(u);
+    ubev_cleanup(u);
+    return true;
+}
+
 void utp_bufferevent_flush(utp_bufferevent *u)
 {
     evbuffer *in = bufferevent_get_input(u->bev);
@@ -88,15 +107,11 @@ void utp_bufferevent_flush(utp_bufferevent *u)
         }
         evbuffer_drain(in, r);
     }
-    if (!(bufferevent_get_enabled(u->bev) & EV_READ) && !evbuffer_get_length(in)) {
-        if (!(bufferevent_get_enabled(u->bev) & EV_WRITE)) {
-            ubev_utp_close(u);
-            ubev_bev_close(u);
-            ubev_cleanup(u);
+    if (bufferevent_input_done(u->bev)) {
+        if (ubev_check_close(u)) {
             return;
         }
         utp_shutdown(u->utp, SHUT_WR);
-        return;
     }
 }
 
@@ -115,24 +130,20 @@ uint64 utp_on_read(utp_callback_arguments *a)
 {
     utp_bufferevent *u = (utp_bufferevent*)utp_get_userdata(a->socket);
     if (u->bev) {
-        assert(bufferevent_get_enabled(u->bev) & EV_WRITE);
         //debug("writing utp>bev %d bytes\n", a->len);
         bufferevent_write(u->bev, a->buf, a->len);
     }
     return 0;
 }
 
-void ubev_bev_stop_writing(utp_bufferevent* u)
+void ubev_bev_stop_writing(utp_bufferevent *u)
 {
     assert(!evbuffer_get_length(bufferevent_get_output(u->bev)));
     bufferevent_disable(u->bev, EV_WRITE);
-    shutdown(bufferevent_getfd(u->bev), SHUT_WR);
-    if (!(bufferevent_get_enabled(u->bev) & EV_READ) &&
-        !evbuffer_get_length(bufferevent_get_input(u->bev))) {
-        ubev_utp_close(u);
-        ubev_bev_close(u);
-        ubev_cleanup(u);
+    if (ubev_check_close(u)) {
+        return;
     }
+    shutdown(bufferevent_getfd(u->bev), SHUT_WR);
 }
 
 uint64 utp_on_state_change(utp_callback_arguments *a)
@@ -187,7 +198,6 @@ void ubev_read_cb(bufferevent *bev, void *ctx)
 {
     //debug("ubev_read_cb %p\n", ctx);
     utp_bufferevent* u = (utp_bufferevent*)ctx;
-    assert(u->utp);
     utp_bufferevent_flush(u);
 }
 
@@ -212,37 +222,17 @@ void ubev_event_cb(bufferevent *bev, short events, void *ctx)
 {
     debug("ubev_event_cb %p %x\n", ctx, events);
     utp_bufferevent* u = (utp_bufferevent*)ctx;
-    assert(u->bev == bev);
-    if (events & BEV_EVENT_ERROR) {
+    if (events & BEV_EVENT_ERROR || events & (BEV_EVENT_EOF|BEV_EVENT_WRITING)) {
         evbuffer_clear(bufferevent_get_output(u->bev));
+        if (ubev_check_close(u)) {
+            return;
+        }
         if (u->utp) {
-            if (evbuffer_get_length(bufferevent_get_input(u->bev))) {
-                utp_shutdown(u->utp, SHUT_RD);
-                return;
-            }
-            ubev_utp_close(u);
+            utp_shutdown(u->utp, SHUT_RD);
         }
-        ubev_bev_close(u);
-        ubev_cleanup(u);
-    } else if (events & BEV_EVENT_EOF) {
-        if (events & BEV_EVENT_WRITING) {
-            evbuffer_clear(bufferevent_get_output(bev));
-            if (!(bufferevent_get_enabled(bev) & EV_READ) &&
-                !evbuffer_get_length(bufferevent_get_input(u->bev))) {
-                if (u->utp) {
-                    ubev_utp_close(u);
-                }
-                ubev_bev_close(u);
-                ubev_cleanup(u);
-                return;
-            }
-            if (u->utp) {
-                utp_shutdown(u->utp, SHUT_RD);
-            }
-        }
-        if (events & BEV_EVENT_READING) {
-            utp_bufferevent_flush(u);
-        }
+    }
+    if (events & (BEV_EVENT_EOF|BEV_EVENT_READING)) {
+        utp_bufferevent_flush(u);
     }
 }
 
