@@ -957,7 +957,6 @@ void proxy_make_request(proxy_request *p)
     for (uint i = 0; i < lenof(request_header_whitelist); i++) {
         copy_header(p->server_req, p->proxy_req, request_header_whitelist[i]);
     }
-    overwrite_header(p->proxy_req, "Proxy-Connection", "Keep-Alive");
     overwrite_header(p->proxy_req, "TE", "trailers");
 
     append_via(p->server_req, p->proxy_req);
@@ -1210,7 +1209,6 @@ void trace_request_done_cb(evhttp_request *req, void *arg)
 void trace_submit_request_on_con(trace_request *t, evhttp_connection *evcon)
 {
     evhttp_request *req = evhttp_request_new(trace_request_done_cb, t);
-    overwrite_header(req, "Proxy-Connection", "Keep-Alive");
     char user_agent[2048];
 #ifdef ANDROID
     char abi_list[PROP_VALUE_MAX];
@@ -1442,8 +1440,6 @@ void http_request_cb(evhttp_request *req, void *arg)
         connect_request(n, req);
         return;
     }
-
-    overwrite_header(req, "Proxy-Connection", "Keep-Alive");
 
     char *encoded_uri = cache_name_from_uri(evhttp_request_get_uri(req));
     char cache_path[PATH_MAX];

@@ -365,11 +365,6 @@ void http_request_cb(evhttp_request *req, void *arg)
         return;
     }
 
-    const char *connection = evhttp_find_header(req->input_headers, "Proxy-Connection");
-    if (connection && strcasecmp(connection, "keep-alive") == 0) {
-        overwrite_header(req, "Proxy-Connection", "Keep-Alive");
-    }
-
     if (req->type == EVHTTP_REQ_TRACE) {
 
         char *useragent = (char*)evhttp_find_header(req->input_headers, "User-Agent");
