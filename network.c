@@ -85,7 +85,7 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
     for (;;) {
         sockaddr_storage src_addr;
         socklen_t addrlen = sizeof(src_addr);
-        unsigned char buf[4096];
+        unsigned char buf[64 * 1024 + 1];
         ssize_t len = recvfrom(n->fd, buf, sizeof(buf), MSG_DONTWAIT, (sockaddr *)&src_addr, &addrlen);
         if (len < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNREFUSED ||
