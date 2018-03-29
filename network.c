@@ -144,7 +144,7 @@ void evdns_log_cb(int severity, const char *msg)
 bufferevent* create_bev(event_base *base, void *userdata)
 {
     bufferevent* bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-    return obfoo_filter(bev, true);
+    return bev;//obfoo_filter(bev, true);
 }
 
 uint64 utp_callback_get_random(utp_callback_arguments *args)

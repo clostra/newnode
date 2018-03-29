@@ -345,10 +345,10 @@ void update_injector_proxy_swarm(network *n)
 {
     if (injector_reachable) {
         dht_announce(n->dht, (const uint8_t *)injector_proxy_swarm);
-        dht_announce(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm);
+        //dht_announce(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm);
     } else {
         dht_get_peers(n->dht, (const uint8_t *)injector_proxy_swarm);
-        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm);
+        //dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm);
     }
 }
 
@@ -1592,7 +1592,8 @@ network* client_init(port_t port)
     load_peers(n);
 
     timer_callback cb = ^{
-        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm);
+        dht_get_peers(n->dht, (const uint8_t *)injector_swarm);
+        //dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm);
         submit_trace_request(n);
         update_injector_proxy_swarm(n);
     };
