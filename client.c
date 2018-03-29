@@ -1501,7 +1501,9 @@ void save_peer_file(const char *s, peer_array *pa)
     FILE *f = fopen(s, "wb");
     if (f) {
         for (size_t i = 0; i < pa->length; i++) {
-            fwrite(pa->peers[i], sizeof(peer), 1, f);
+            if (time(NULL) - pa->peers[i]->last_verified < 7 * 24 * 60 * 60) {
+                fwrite(pa->peers[i], sizeof(peer), 1, f);
+            }
         }
         fclose(f);
     }
