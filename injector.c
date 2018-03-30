@@ -122,7 +122,7 @@ void request_done_cb(evhttp_request *req, void *arg)
                 evhttp_send_reply(p->server_req, 304, "Not Modified", NULL);
             } else {
                 debug("If-None-Match: %s != %s\n", ifnonematch, etag);
-                debug("input_buffer:%zu\n", evbuffer_get_length(p->pending_output));
+                debug("input_buffer:%zu\n", p->pending_output ? evbuffer_get_length(p->pending_output) : 0);
                 evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, p->pending_output);
             }
             free(etag);
