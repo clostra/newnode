@@ -891,7 +891,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
     }
 
     //join_url_swarm(p->n, uri);
-    evhttp_uri *evuri = evhttp_uri_parse(req->uri);
+    evhttp_uri *evuri = evhttp_uri_parse_with_flags(req->uri, EVHTTP_URI_NONCONFORMANT);
     const char *host = evhttp_uri_get_host(evuri);
     evhttp_uri_free(evuri);
     join_url_swarm(p->n, host);
