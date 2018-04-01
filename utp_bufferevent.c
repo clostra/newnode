@@ -36,7 +36,7 @@ void ubev_cleanup(utp_bufferevent *u)
 
 void ubev_utp_close(utp_bufferevent *u)
 {
-    debug("ubev_utp_close u:%p utp:%p\n", u, u->utp);
+    //debug("ubev_utp_close u:%p utp:%p\n", u, u->utp);
     utp_set_userdata(u->utp, NULL);
     utp_close(u->utp);
     u->utp = NULL;
@@ -48,7 +48,7 @@ void ubev_utp_close(utp_bufferevent *u)
 
 void ubev_bev_close(utp_bufferevent *u)
 {
-    debug("ubev_bev_close %p\n", u);
+    //debug("ubev_bev_close %p\n", u);
     bufferevent_free_checked(u->bev);
     u->bev = NULL;
 }
@@ -115,7 +115,7 @@ void utp_bufferevent_flush(utp_bufferevent *u)
 uint64 utp_on_error(utp_callback_arguments *a)
 {
     utp_bufferevent *u = (utp_bufferevent*)utp_get_userdata(a->socket);
-    debug("utp error: %s %p\n", utp_error_code_names[a->error_code], u);
+    //debug("utp error: %s %p\n", utp_error_code_names[a->error_code], u);
     if (u) {
         ubev_utp_close(u);
         ubev_bev_graceful_close(u);
@@ -147,7 +147,7 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
 {
     utp_bufferevent *u = (utp_bufferevent*)utp_get_userdata(a->socket);
     if (a->state != UTP_STATE_WRITABLE) {
-        debug("utp_on_state_change state:%d %s\n", a->state, utp_state_names[a->state]);
+        //debug("utp_on_state_change state:%d %s\n", a->state, utp_state_names[a->state]);
     }
 
     switch (a->state) {
@@ -217,7 +217,7 @@ void ubev_write_cb(bufferevent *bev, void *ctx)
 
 void ubev_event_cb(bufferevent *bev, short events, void *ctx)
 {
-    debug("ubev_event_cb %p %x\n", ctx, events);
+    //debug("ubev_event_cb %p %x\n", ctx, events);
     utp_bufferevent* u = (utp_bufferevent*)ctx;
     if (events & BEV_EVENT_ERROR || events & (BEV_EVENT_EOF|BEV_EVENT_WRITING)) {
         evbuffer_clear(bufferevent_get_output(u->bev));
