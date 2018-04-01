@@ -206,7 +206,7 @@ uint64 utp_on_accept(utp_callback_arguments *a)
     char host[NI_MAXHOST];
     char serv[NI_MAXSERV];
     getnameinfo((sockaddr *)&addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-    debug("Accepted inbound socket %p %s:%s\n", a->socket, host, serv);
+    //debug("utp_on_accept %p %s:%s\n", a->socket, host, serv);
     int fd = utp_socket_create_fd(n->evbase, a->socket);
     evutil_make_socket_closeonexec(fd);
     evutil_make_socket_nonblocking(fd);
