@@ -69,7 +69,7 @@ void bev_splice_event_cb(bufferevent *bev, short events, void *ctx)
         if (evbuffer_get_length(bufferevent_get_output(other))) {
             bufferevent_setcb(other, NULL, bev_splice_free_write_cb, bev_splice_free_event_cb, NULL);
         } else {
-            bufferevent_disable(bev, EV_WRITE);
+            bufferevent_disable(other, EV_WRITE);
             bufferevent_free_checked(other);
         }
         bufferevent_free_checked(bev);
