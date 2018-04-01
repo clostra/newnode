@@ -127,6 +127,15 @@ void evbuffer_clear(evbuffer *buf)
     assert(!evbuffer_get_length(buf));
 }
 
+
+void bufferevent_free_checked(bufferevent *bev)
+{
+    assert(!bufferevent_get_enabled(bev));
+    assert(!evbuffer_get_length(bufferevent_get_input(bev)));
+    assert(!evbuffer_get_length(bufferevent_get_output(bev)));
+    bufferevent_free(bev);
+}
+
 void libevent_log_cb(int severity, const char *msg)
 {
     if (severity > EVENT_LOG_DEBUG || o_debug > 1) {

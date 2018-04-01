@@ -49,10 +49,7 @@ void ubev_utp_close(utp_bufferevent *u)
 void ubev_bev_close(utp_bufferevent *u)
 {
     debug("ubev_bev_close %p\n", u);
-    assert(!bufferevent_get_enabled(u->bev));
-    assert(!evbuffer_get_length(bufferevent_get_input(u->bev)));
-    assert(!evbuffer_get_length(bufferevent_get_output(u->bev)));
-    bufferevent_free(u->bev);
+    bufferevent_free_checked(u->bev);
     u->bev = NULL;
 }
 
