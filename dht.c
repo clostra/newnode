@@ -153,15 +153,20 @@ void dht_save(dht *d)
     memcpy(d->save_hash, hash, sizeof(hash));
 
     ddebug("dht saving num:%d num6:%d\n", num, num6);
-    FILE *f = fopen("dht.dat", "wb");
-    if (f) {
-        fwrite(sin, sizeof(sockaddr_in), num, f);
-        fclose(f);
+    FILE *f;
+    if (num) {
+        f = fopen("dht.dat", "wb");
+        if (f) {
+            fwrite(sin, sizeof(sockaddr_in), num, f);
+            fclose(f);
+        }
     }
-    f = fopen("dht6.dat", "wb");
-    if (f) {
-        fwrite(sin6, sizeof(sockaddr_in6), num6, f);
-        fclose(f);
+    if (num6) {
+        f = fopen("dht6.dat", "wb");
+        if (f) {
+            fwrite(sin6, sizeof(sockaddr_in6), num6, f);
+            fclose(f);
+        }
     }
 }
 
