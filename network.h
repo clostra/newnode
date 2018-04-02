@@ -41,6 +41,7 @@ typedef struct bufferevent bufferevent;
 typedef struct timeval timeval;
 typedef struct timespec timespec;
 typedef struct addrinfo addrinfo;
+typedef struct rlimit rlimit;
 typedef struct in_addr in_addr;
 typedef struct sockaddr sockaddr;
 typedef struct sockaddr_in sockaddr_in;

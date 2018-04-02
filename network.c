@@ -187,9 +187,32 @@ void sockaddr_set_port(sockaddr* sa, port_t port)
     }
 }
 
+void set_max_nofile()
+{
+    rlimit nofile;
+    int r = getrlimit(RLIMIT_NOFILE, &nofile);
+    debug("getrlimit: r:%d cur:%llu max:%llu\n", r, nofile.rlim_cur, nofile.rlim_max);
+    for (rlim_t max = nofile.rlim_max; ;) {
+        rlim_t mid = (max - nofile.rlim_cur) / 2;
+        if (!mid) {
+            break;
+        }
+        nofile.rlim_cur += mid;
+        r = setrlimit(RLIMIT_NOFILE, &nofile);
+        if (r) {
+            max = nofile.rlim_cur;
+            nofile.rlim_cur -= mid;
+        }
+    }
+    r = getrlimit(RLIMIT_NOFILE, &nofile);
+    debug("getrlimit: r:%d cur:%llu max:%llu\n", r, nofile.rlim_cur, nofile.rlim_max);
+}
+
 network* network_setup(char *address, port_t port)
 {
     signal(SIGPIPE, SIG_IGN);
+
+    set_max_nofile();
 
     addrinfo hints;
     memset(&hints, 0, sizeof(hints));
