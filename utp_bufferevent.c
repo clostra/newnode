@@ -66,15 +66,9 @@ void ubev_bev_graceful_close(utp_bufferevent *u)
     ubev_cleanup(u);
 }
 
-bool bufferevent_input_done(bufferevent *bev)
-{
-    return !(bufferevent_get_enabled(bev) & EV_READ ||
-        evbuffer_get_length(bufferevent_get_input(bev)));
-}
-
 bool ubev_check_close(utp_bufferevent *u)
 {
-    if (bufferevent_get_enabled(u->bev) || !bufferevent_input_done(u->bev)) {
+    if (bufferevent_get_enabled(u->bev) || evbuffer_get_length(bufferevent_get_input(u->bev))) {
         return false;
     }
     if (u->utp) {
@@ -103,12 +97,6 @@ void utp_bufferevent_flush(utp_bufferevent *u)
             break;
         }
         evbuffer_drain(in, r);
-    }
-    if (bufferevent_input_done(u->bev)) {
-        if (ubev_check_close(u)) {
-            return;
-        }
-        utp_shutdown(u->utp, SHUT_WR);
     }
 }
 
@@ -164,6 +152,13 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
         }
     case UTP_STATE_WRITABLE:
         utp_bufferevent_flush(u);
+        if (!(bufferevent_get_enabled(u->bev) & EV_READ ||
+              evbuffer_get_length(bufferevent_get_input(u->bev)))) {
+            if (ubev_check_close(u)) {
+                return 0;
+            }
+            utp_shutdown(u->utp, SHUT_WR);
+        }
         break;
     case UTP_STATE_EOF:
         u->utp_eof = true;
@@ -219,18 +214,19 @@ void ubev_event_cb(bufferevent *bev, short events, void *ctx)
 {
     //debug("ubev_event_cb %p %x\n", ctx, events);
     utp_bufferevent* u = (utp_bufferevent*)ctx;
-    if (events & BEV_EVENT_ERROR || events & (BEV_EVENT_EOF|BEV_EVENT_WRITING)) {
-        evbuffer_clear(bufferevent_get_output(u->bev));
-        if (ubev_check_close(u)) {
-            return;
+    if (!(bufferevent_get_enabled(bev) & EV_READ)) {
+        utp_bufferevent_flush(u);
+        if (u->utp && !evbuffer_get_length(bufferevent_get_input(u->bev))) {
+            utp_shutdown(u->utp, SHUT_WR);
         }
+    }
+    if (!(bufferevent_get_enabled(bev) & EV_WRITE)) {
+        evbuffer_clear(bufferevent_get_output(u->bev));
         if (u->utp) {
             utp_shutdown(u->utp, SHUT_RD);
         }
     }
-    if (events & (BEV_EVENT_EOF|BEV_EVENT_READING)) {
-        utp_bufferevent_flush(u);
-    }
+    ubev_check_close(u);
 }
 
 utp_bufferevent* utp_bufferevent_new(event_base *base, utp_socket *s, int fd)
