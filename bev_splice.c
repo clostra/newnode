@@ -54,11 +54,11 @@ void bev_splice_event_cb(bufferevent *bev, short events, void *ctx)
         bev_splice_write_cb(bev, other);
         return;
     }
-    if (events & BEV_EVENT_READING && events & (BEV_EVENT_ERROR|BEV_EVENT_EOF)) {
+    if (!(bufferevent_get_enabled(bev) & EV_READ)) {
         bufferevent_write_buffer(other, bufferevent_get_input(bev));
         bev_splice_shutdown_write(other);
     }
-    if (events & BEV_EVENT_WRITING && events & (BEV_EVENT_ERROR|BEV_EVENT_EOF)) {
+    if (!(bufferevent_get_enabled(bev) & EV_WRITE)) {
         evbuffer_clear(bufferevent_get_input(other));
         evbuffer_clear(bufferevent_get_output(bev));
         bufferevent_disable(other, EV_READ);

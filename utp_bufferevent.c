@@ -20,9 +20,9 @@ typedef struct evbuffer evbuffer;
 
 typedef struct {
     utp_socket *utp;
-    bool utp_eof:1;
     bufferevent *bev;
     bufferevent *other_bev;
+    bool utp_eof:1;
 } utp_bufferevent;
 
 
