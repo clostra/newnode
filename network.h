@@ -35,6 +35,7 @@ typedef struct evhttp evhttp;
 typedef struct evbuffer evbuffer;
 typedef struct evbuffer_ptr evbuffer_ptr;
 typedef struct evbuffer_iovec evbuffer_iovec;
+typedef struct evbuffer_cb_info evbuffer_cb_info;
 typedef struct evconnlistener evconnlistener;
 typedef struct evutil_addrinfo evutil_addrinfo;
 typedef struct bufferevent bufferevent;

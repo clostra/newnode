@@ -27,7 +27,7 @@
 
 #include "log.h"
 #include "lsd.h"
-#include "obfoo.h"
+#include "http.h"
 #include "timer.h"
 #include "network.h"
 #include "icmp_handler.h"
@@ -152,8 +152,7 @@ void evdns_log_cb(int severity, const char *msg)
 
 bufferevent* create_bev(event_base *base, void *userdata)
 {
-    bufferevent* bev = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-    return bev;//obfoo_filter(bev, true);
+    return bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 }
 
 uint64 utp_callback_get_random(utp_callback_arguments *args)
@@ -350,6 +349,7 @@ network* network_setup(char *address, port_t port)
     utp_set_callback(n->utp, UTP_LOG, &utp_callback_log);
     utp_set_callback(n->utp, UTP_SENDTO, &utp_callback_sendto);
     utp_set_callback(n->utp, UTP_ON_FIREWALL, &utp_on_firewall);
+    utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
     utp_set_callback(n->utp, UTP_ON_ERROR, &utp_on_error);
     utp_set_callback(n->utp, UTP_ON_STATE_CHANGE, &utp_on_state_change);
     utp_set_callback(n->utp, UTP_ON_READ, &utp_on_read);

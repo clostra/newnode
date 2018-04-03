@@ -216,16 +216,13 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
 {
     utp_socket *s = utp_create_socket(n->utp);
     address *a = &p->addr;
-    debug("evhttp_utp_connect %s:%d\n", inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port));
+    debug("evhttp_utp_connect %s:%d e:%d\n", inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port), p->encrypted);
     sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
     p->last_connect_attempt = time(NULL);
     peer_connection *pc = alloc(peer_connection);
     pc->n = n;
     pc->peer = p;
-    pc->bev = utp_socket_create_bev(n->evbase, s);
-    if (p->encrypted) {
-        pc->bev = obfoo_filter(pc->bev, false);
-    }
+    pc->bev = utp_socket_create_bev(n->evbase, s, p->encrypted);
     utp_connect(s, (sockaddr*)&sin, sizeof(sin));
     bufferevent_setcb(pc->bev, NULL, NULL, bev_event_cb, pc);
     bufferevent_enable(pc->bev, EV_READ);
@@ -344,11 +341,11 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
 void update_injector_proxy_swarm(network *n)
 {
     if (injector_reachable) {
-        dht_announce(n->dht, (const uint8_t *)injector_proxy_swarm);
-        //dht_announce(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm);
+        //dht_announce(n->dht, (const uint8_t *)injector_proxy_swarm);
+        dht_announce(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm);
     } else {
-        dht_get_peers(n->dht, (const uint8_t *)injector_proxy_swarm);
-        //dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm);
+        //dht_get_peers(n->dht, (const uint8_t *)injector_proxy_swarm);
+        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm);
     }
 }
 
@@ -1582,8 +1579,6 @@ network* client_init(port_t port)
         fclose(f);
     }
 
-    utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
-
     evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_HEAD | EVHTTP_REQ_CONNECT | EVHTTP_REQ_TRACE);
     evhttp_set_gencb(n->http, http_request_cb, n);
     evhttp_bind_socket_with_handle(n->http, "127.0.0.1", port);
@@ -1592,8 +1587,8 @@ network* client_init(port_t port)
     load_peers(n);
 
     timer_callback cb = ^{
-        dht_get_peers(n->dht, (const uint8_t *)injector_swarm);
-        //dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm);
+        //dht_get_peers(n->dht, (const uint8_t *)injector_swarm);
+        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm);
         submit_trace_request(n);
         update_injector_proxy_swarm(n);
     };

@@ -470,8 +470,6 @@ int main(int argc, char *argv[])
     port_t port = atoi(port_s);
     network *n = network_setup(address, port);
 
-    utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
-
     timer_callback cb = ^{
         dht_announce(n->dht, (const uint8_t *)injector_swarm);
         dht_announce(n->dht, (const uint8_t *)encrypted_injector_swarm);
