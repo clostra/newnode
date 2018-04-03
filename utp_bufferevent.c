@@ -162,6 +162,9 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
     if (a->state != UTP_STATE_WRITABLE) {
         //debug("utp_on_state_change state:%d %s\n", a->state, utp_state_names[a->state]);
     }
+    if (!u) {
+        return 0;
+    }
 
     switch (a->state) {
     case UTP_STATE_CONNECT:
@@ -191,21 +194,8 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
             ubev_bev_stop_writing(u);
         }
         break;
-    case UTP_STATE_DESTROYING: {
-        utp_socket_stats *stats = utp_get_stats(a->socket);
-        if (o_debug >= 2 && stats) {
-            debug("Socket Statistics:\n");
-            debug("    Bytes sent:          %llu\n", stats->nbytes_xmit);
-            debug("    Bytes received:      %llu\n", stats->nbytes_recv);
-            debug("    Packets received:    %d\n", stats->nrecv);
-            debug("    Packets sent:        %d\n", stats->nxmit);
-            debug("    Duplicate receives:  %d\n", stats->nduprecv);
-            debug("    Retransmits:         %d\n", stats->rexmit);
-            debug("    Fast Retransmits:    %d\n", stats->fastrexmit);
-            debug("    Best guess at MTU:   %d\n", stats->mtu_guess);
-        }
+    case UTP_STATE_DESTROYING:
         break;
-    }
     }
 
     return 0;
