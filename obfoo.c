@@ -91,7 +91,7 @@ ssize_t evbuffer_filter(evbuffer *in, evbuffer *out, bool (^cb)(evbuffer_iovec v
 
 ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
 {
-    debug("%s: o:%p state:%d incoming:%d\n", __func__, o, o->state, o->incoming);
+    //debug("%s: o:%p state:%d incoming:%d\n", __func__, o, o->state, o->incoming);
     switch(o->state) {
     case OF_STATE_DISABLED:
         return evbuffer_add_buffer(out, in);
@@ -244,7 +244,7 @@ ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
 
 ssize_t obfoo_output_filter(evbuffer *in, evbuffer *out, obfoo *o)
 {
-    debug("%s: o:%p state:%d incoming:%d\n", __func__, o, o->state, o->incoming);
+    //debug("%s: o:%p state:%d incoming:%d\n", __func__, o, o->state, o->incoming);
     switch(o->state) {
     case OF_STATE_DISABLED:
         return evbuffer_add_buffer(out, in);
