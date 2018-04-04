@@ -86,10 +86,7 @@ void ubev_read_cb(bufferevent *bev, void *ctx)
 {
     //debug("%s %p\n", __func__, ctx);
     utp_bufferevent* u = (utp_bufferevent*)ctx;
-    ssize_t r = obfoo_output_filter(bufferevent_get_input(u->bev), u->utp_output, u->obfoo);
-    if (r < 0) {
-        // XXX: TODO: close socket or something
-    }
+    obfoo_output_filter(bufferevent_get_input(u->bev), u->utp_output, u->obfoo);
 }
 
 void utp_bufferevent_flush(utp_bufferevent *u)
@@ -134,9 +131,10 @@ uint64 utp_on_read(utp_callback_arguments *a)
         }
         evbuffer_add(u->utp_input, a->buf, a->len);
         of_state s = u->obfoo->state;
-        ssize_t r = obfoo_input_filter(u->utp_input, bufferevent_get_output(u->bev), u->obfoo);
-        if (r < 0) {
-            // XXX: TODO: close socket or something
+        if (obfoo_input_filter(u->utp_input, bufferevent_get_output(u->bev), u->obfoo) < 0) {
+            ubev_utp_close(u);
+            ubev_bev_graceful_close(u);
+            return 0;
         }
         if (s < OF_STATE_DISCARD && u->obfoo->state >= OF_STATE_DISCARD) {
             // writing is now possible, flush
