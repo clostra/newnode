@@ -191,7 +191,7 @@ void set_max_nofile()
 {
     rlimit nofile;
     int r = getrlimit(RLIMIT_NOFILE, &nofile);
-    debug("getrlimit: r:%d cur:%llu max:%llu\n", r, nofile.rlim_cur, nofile.rlim_max);
+    debug("getrlimit: r:%d cur:%zu max:%zu\n", r, (size_t)nofile.rlim_cur, (size_t)nofile.rlim_max);
     for (rlim_t max = nofile.rlim_max; ;) {
         rlim_t mid = (max - nofile.rlim_cur) / 2;
         if (!mid) {
@@ -205,7 +205,7 @@ void set_max_nofile()
         }
     }
     r = getrlimit(RLIMIT_NOFILE, &nofile);
-    debug("getrlimit: r:%d cur:%llu max:%llu\n", r, nofile.rlim_cur, nofile.rlim_max);
+    debug("getrlimit: r:%d cur:%zu max:%zu\n", r, (size_t)nofile.rlim_cur, (size_t)nofile.rlim_max);
 }
 
 network* network_setup(char *address, port_t port)
