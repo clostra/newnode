@@ -8,7 +8,7 @@
 #include "network.h"
 
 
-network* client_init();
+network* client_init(port_t port);
 int client_run(network *n);
 
 int pfd[2];

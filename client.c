@@ -1560,7 +1560,7 @@ network* client_init(port_t port)
     // "1.1 _.dcdn"
     via_tag[4] = 'a' + randombytes_uniform(26);
 
-    uint16_t port_pref = 0;
+    port_t port_pref = 0;
     FILE *f = fopen("port.dat", "rb");
     if (f) {
         fread(&port_pref, sizeof(port_pref), 1, f);
