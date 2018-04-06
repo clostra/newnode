@@ -4,7 +4,7 @@
 
 [![Stories in Ready](https://badge.waffle.io/clostra/newnode.svg?label=ready&title=Ready)](http://waffle.io/clostra/newnode)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/fbeb689ec190470a90645fb016cbcfb7)](https://www.codacy.com/app/shalunov/newnode)
-[ ![Download](https://api.bintray.com/packages/clostra/newnode/newnode/images/download.svg) ](https://bintray.com/clostra/newnode/newnode/_latestVersion)
+[ ![Download](https://api.bintray.com/packages/clostra/NewNode/newnode/images/download.svg) ](https://bintray.com/clostra/NewNode/newnode/_latestVersion)
 
 ## How to contribute
 
