@@ -242,7 +242,7 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     evhttp_remove_header(client_req->output_headers, "Range");
     evhttp_remove_header(client_req->output_headers, "If-Range");
 
-    overwrite_header(client_req, "User-Agent", "dcdn/" VERSION);
+    overwrite_header(client_req, "User-Agent", "newnode/" VERSION);
 
     evhttp_request_set_header_cb(client_req, header_cb);
     evhttp_request_set_error_cb(client_req, error_cb);

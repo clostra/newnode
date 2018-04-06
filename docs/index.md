@@ -1,2 +1,2 @@
-# Decentralized Content Distribution Network
-* [Spec](./dcdn-spec)
+# NewNode decentralized Content Distribution Network
+* [Spec](./newnode-spec)

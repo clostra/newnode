@@ -24,9 +24,9 @@ dependencies {
     implementation 'com.android.support.constraint:constraint-layout:+'
 
     // include AAR directly (must include dependencies)
-    implementation project(':dcdn')
+    implementation project(':newnode')
     implementation 'com.bugsnag:bugsnag-android-ndk:1.+'
 
     // use jcenter
-    //implementation 'com.clostra.dcdn:dcdn:+'
+    //implementation 'com.clostra.newnode:newnode:+'
 }

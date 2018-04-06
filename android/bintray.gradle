@@ -36,12 +36,12 @@ bintray {
 
     configurations = ['archives']
     pkg {
-        repo = 'dcdn'
-        name = 'dcdn'
+        repo = 'NewNode'
+        name = 'newnode'
         userOrg = 'clostra'
         desc = ''
-        websiteUrl = 'https://github.com/clostra/dcdn'
-        vcsUrl = 'https://github.com/clostra/dcdn.git'
+        websiteUrl = 'https://github.com/clostra/newnode'
+        vcsUrl = 'https://github.com/clostra/newnode.git'
         licenses = ["GPL-2.0"]
         publish = true
         version {

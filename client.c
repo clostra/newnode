@@ -113,7 +113,7 @@ peer_array *all_peers;
 
 peer_connection *peer_connections[10];
 
-char via_tag[] = "1.1 _.dcdn";
+char via_tag[] = "1.1 _.newnode";
 time_t last_trace;
 time_t injector_reachable;
 timer *saving_peers;
@@ -1214,10 +1214,10 @@ void trace_submit_request_on_con(trace_request *t, evhttp_connection *evcon)
     __system_property_get("ro.build.version.sdk", sdk_ver);
     char os_ver[PROP_VALUE_MAX];
     __system_property_get("ro.build.version.release", os_ver);
-    snprintf(user_agent, sizeof(user_agent), "dcdn/%s (Android %s (%s); %s)", VERSION, sdk_ver, os_ver, abi_list);
+    snprintf(user_agent, sizeof(user_agent), "newnode/%s (Android %s (%s); %s)", VERSION, sdk_ver, os_ver, abi_list);
     debug("user_agent:%s\n", user_agent);
 #else
-    snprintf(user_agent, sizeof(user_agent), "dcdn/%s", VERSION);
+    snprintf(user_agent, sizeof(user_agent), "newnode/%s", VERSION);
 #endif
     overwrite_header(req, "User-Agent", user_agent);
     evhttp_request_set_error_cb(req, trace_error_cb);
@@ -1556,8 +1556,8 @@ network* client_init(port_t port)
     all_peers = alloc(peer_array);
     TAILQ_INIT(&pending_requests);
 
-    // 1.1 is the version of HTTP, not dcdn
-    // "1.1 _.dcdn"
+    // 1.1 is the version of HTTP, not newnode
+    // "1.1 _.newnode"
     via_tag[4] = 'a' + randombytes_uniform(26);
 
     port_t port_pref = 0;

@@ -23,7 +23,7 @@ void* stdio_thread(void *useradata)
             --readSize;
         }
         buf[readSize] = 0;
-        __android_log_write(ANDROID_LOG_VERBOSE, "dcdn", buf);
+        __android_log_write(ANDROID_LOG_VERBOSE, "newnode", buf);
     }
     return NULL;
 }
@@ -48,7 +48,7 @@ void* android_main(void *userdata)
     return NULL;
 }
 
-JNIEXPORT void JNICALL Java_com_clostra_dcdn_Dcdn_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
+JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
 {
     const char* cCacheDir = (*env)->GetStringUTFChars(env, cacheDir, NULL);
     chdir(cCacheDir);

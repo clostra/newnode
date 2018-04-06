@@ -10,7 +10,7 @@
 extern int o_debug;
 
 #ifdef ANDROID
-#define debug(...) if (o_debug) { __android_log_print(ANDROID_LOG_VERBOSE, "dcdn", __VA_ARGS__); }
+#define debug(...) if (o_debug) { __android_log_print(ANDROID_LOG_VERBOSE, "newnode", __VA_ARGS__); }
 #else
 void debug(const char *fmt, ...);
 #endif

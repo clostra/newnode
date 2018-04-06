@@ -1,4 +1,4 @@
-# Decentralized Content Distribution Network (dCDN)
+# NewNode decentralized Content Distribution Network
 
 ## WARNING—Evolving draft
 
@@ -7,9 +7,9 @@ substantial change.
 
 ## Introduction
 
-dCDN is a mobile SDK that builds a peer-to-peer and a device-to-device
+NewNode is a mobile SDK that builds a peer-to-peer and a device-to-device
 network to deliver web objects.  Each mobile device running an app
-incorporating dCDN becomes a part of the network.  The dCDN has several
+incorporating NewNode becomes a part of the network.  The NewNode has several
 benefits:
 * content delivery is faster;
 * content delivery is more reliable;
@@ -210,10 +210,10 @@ Here, sign() and hash() are the default primitives in libsodium.
 
 ## Policy Settings
 
-An app incorporating dCDN MAY change the defaults for policy settings.
+An app incorporating NewNode MAY change the defaults for policy settings.
 In addition, an app MAY expose some or all of these settings to a user
 and allow the user to override the app's defaults.  There are, thus,
-three levels of decision-making: the dCDN spec, which provides the
+three levels of decision-making: the NewNode spec, which provides the
 defaults suitable for the widest variety of apps, an app developer,
 who can change the defaults to what makes the most sense for the specific
 app and its users, and, finally, the user.

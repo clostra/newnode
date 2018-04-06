@@ -1,4 +1,4 @@
-package com.clostra.dcdn;
+package com.clostra.newnode;
 
 import android.app.Application;
 import android.os.Build;
@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 
 
-public class Dcdn {
+public class NewNode {
     static String VERSION = "v" + BuildConfig.VERSION_NAME;
 
     static {
@@ -33,7 +33,7 @@ public class Dcdn {
         for (int i = files.length - 1; i >= 0; i--) {
             File f = files[i];
             String name = f.getName();
-            Pattern p = Pattern.compile("^libdcdn.(v[\\.0-9]*).so$");
+            Pattern p = Pattern.compile("^libnewnode.(v[\\.0-9]*).so$");
             Matcher m = p.matcher(name);
             if (!m.find()) {
                 continue;
@@ -51,9 +51,9 @@ public class Dcdn {
         }
         if (VERSION.equals("v" + BuildConfig.VERSION_NAME)) {
             try {
-                System.loadLibrary("dcdn");
+                System.loadLibrary("newnode");
             } catch (UnsatisfiedLinkError e) {
-                Log.e("dcdn", "", e);
+                Log.e("newnode", "", e);
             }
         }
     }
@@ -69,7 +69,7 @@ public class Dcdn {
 
     private static void update() throws Exception {
         Application app = app();
-        URL url = new URL("https://api.github.com/repos/clostra/dcdn/releases");
+        URL url = new URL("https://api.github.com/repos/clostra/newnode/releases");
         URLConnection urlConnection = url.openConnection();
         InputStream in = urlConnection.getInputStream();
         BufferedReader r = new BufferedReader(new InputStreamReader(in, "UTF-8"));
@@ -102,7 +102,7 @@ public class Dcdn {
                     String downloadUrl = asset.getString("browser_download_url");
                     InputStream ins = new URL(downloadUrl).openConnection().getInputStream();
                     GZIPInputStream gis = new GZIPInputStream(ins);
-                    File tmp = File.createTempFile("libdcdn", null, app.getFilesDir());
+                    File tmp = File.createTempFile("libnewnode", null, app.getFilesDir());
                     FileOutputStream fos = new FileOutputStream(tmp);
                     byte[] buffer = new byte[4096];
                     int len;
@@ -111,13 +111,13 @@ public class Dcdn {
                     }
                     fos.close();
                     gis.close();
-                    File updated = new File(app.getFilesDir(), "libdcdn." + version + ".so");
+                    File updated = new File(app.getFilesDir(), "libnewnode." + version + ".so");
                     if (tmp.renameTo(updated)) {
-                        Log.e("dcdn", "Updated to " + version + ", will take effect on restart");
+                        Log.e("newnode", "Updated to " + version + ", will take effect on restart");
                         return;
                     }
                 } catch (Exception e) {
-                    Log.e("dcdn", "", e);
+                    Log.e("newnode", "", e);
                 }
             }
         }
@@ -137,10 +137,10 @@ public class Dcdn {
 
             try {
                 setCacheDir(app().getCacheDir().getAbsolutePath());
-                Log.e("dcdn", "version " + VERSION + " started");
+                Log.e("newnode", "version " + VERSION + " started");
                 started = true;
             } catch (UnsatisfiedLinkError e) {
-                Log.e("dcdn", "", e);
+                Log.e("newnode", "", e);
             }
         }
 
@@ -157,7 +157,7 @@ public class Dcdn {
                     try {
                         update();
                     } catch(Exception e) {
-                        Log.e("dcdn", "", e);
+                        Log.e("newnode", "", e);
                     }
                     try {
                         sleep((long) (1 + Math.random() * (24 * 60 * 60 * 1000)));

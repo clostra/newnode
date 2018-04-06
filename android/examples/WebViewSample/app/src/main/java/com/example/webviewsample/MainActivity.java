@@ -18,7 +18,7 @@ import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
-import com.clostra.dcdn.Dcdn;
+import com.clostra.newnode.NewNode;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -43,7 +43,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        Dcdn.init();
+        NewNode.init();
         setContentView(R.layout.activity_main);
         mEditText = (EditText) findViewById(R.id.editText);
         mEditText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
