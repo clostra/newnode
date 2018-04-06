@@ -3,7 +3,7 @@
 ## Integration status
 
 [![Stories in Ready](https://badge.waffle.io/clostra/dcdn.svg?label=ready&title=Ready)](http://waffle.io/clostra/dcdn)
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/fbeb689ec190470a90645fb016cbcfb7)](https://www.codacy.com/app/shalunov/dcdn)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/fbeb689ec190470a90645fb016cbcfb7)](https://www.codacy.com/app/shalunov/newnode)
 [ ![Download](https://api.bintray.com/packages/clostra/newnode/newnode/images/download.svg) ](https://bintray.com/clostra/newnode/newnode/_latestVersion)
 
 ## How to contribute
