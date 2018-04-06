@@ -1,10 +1,10 @@
-# dCDN
+# NewNode
 
 ## Integration status
 
 [![Stories in Ready](https://badge.waffle.io/clostra/dcdn.svg?label=ready&title=Ready)](http://waffle.io/clostra/dcdn)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/fbeb689ec190470a90645fb016cbcfb7)](https://www.codacy.com/app/shalunov/dcdn)
-[ ![Download](https://api.bintray.com/packages/clostra/dcdn/dcdn/images/download.svg) ](https://bintray.com/clostra/dcdn/dcdn/_latestVersion)
+[ ![Download](https://api.bintray.com/packages/clostra/newnode/newnode/images/download.svg) ](https://bintray.com/clostra/newnode/newnode/_latestVersion)
 
 ## How to contribute
 
@@ -15,10 +15,9 @@
 ## How to prepare your dev environment
 
 1. Fork the repo
-2. `git clone --recursive git@github.com:`〈*your username*〉`/dcdn.git` (NB: **--recursive**)
+2. `git clone --recursive git@github.com:`〈*your username*〉`/newnode.git` (NB: **--recursive**)
 3. `./build.sh && ./test.sh`
-4. If this fails, read `.travis.yml` and install requirements
-5. When your build works and tests pass, you're ready to contribute
+4. When your build works and tests pass, you're ready to contribute
 
 ## How to deal with an issue
 
