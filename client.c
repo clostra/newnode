@@ -164,6 +164,8 @@ void on_utp_connect(network *n, peer_connection *pc)
     char serv[NI_MAXSERV];
     getnameinfo((sockaddr*)&sin, sizeof(sin), host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
     bufferevent_disable(pc->bev, EV_READ|EV_WRITE);
+    assert(pc->bev);
+    assert(bufferevent_getfd(pc->bev) != -1);
     pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, pc->bev, host, atoi(serv));
     debug("on_utp_connect %s:%s bev:%p con:%p\n", host, serv, pc->bev, pc->evcon);
     pc->bev = NULL;
