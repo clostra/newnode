@@ -324,7 +324,7 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
     } else if (memeq(info_hash, encrypted_injector_proxy_swarm, sizeof(encrypted_injector_proxy_swarm))) {
         add_addresses(n, &injector_proxies, peers, num_peers, true);
     } else {
-        add_addresses(n, &all_peers, peers, num_peers, false);
+        add_addresses(n, &all_peers, peers, num_peers, true);
     }
     if (o_debug >= 2) {
         printf("Received %d values.\n", (int)(data_len / 6));
