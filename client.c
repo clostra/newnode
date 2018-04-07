@@ -212,11 +212,19 @@ void bev_event_cb(bufferevent *bufev, short events, void *arg)
     }
 }
 
+const char* peer_addr_str(peer *p)
+{
+    static char buf[64];
+    address *a = &p->addr;
+    snprintf(buf, sizeof(buf), "%s:%d e:%d", inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port), p->encrypted);
+    return buf;
+}
+
 peer_connection* evhttp_utp_connect(network *n, peer *p)
 {
     utp_socket *s = utp_create_socket(n->utp);
     address *a = &p->addr;
-    debug("evhttp_utp_connect %s:%d e:%d\n", inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port), p->encrypted);
+    debug("evhttp_utp_connect %s\n", peer_addr_str(p));
     sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
     p->last_connect_attempt = time(NULL);
     peer_connection *pc = alloc(peer_connection);
@@ -271,8 +279,7 @@ void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_a
         } else if (*pa == injector_proxies) {
             label = "injector proxy";
         }
-        debug("new %s%s %s:%d\n", p->encrypted?"encrypted ":"", label,
-            inet_ntoa((in_addr){.s_addr = p->addr.ip}), ntohs(p->addr.port));
+        debug("new %s %s\n", label, peer_addr_str(p));
 
         if (!TAILQ_EMPTY(&pending_requests)) {
             for (uint k = 0; k < lenof(peer_connections); k++) {
@@ -998,8 +1005,8 @@ peer* select_peer(peer_array *pa)
         address *a = &p->addr;
         sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
         /*
-        debug("peer %s:%d failed:%d verified_ago:%d last_connect:%d never_connected:%d salt:%d p:%p\n",
-            inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port),
+        debug("peer %s failed:%d verified_ago:%d last_connect:%d never_connected:%d salt:%d p:%p\n",
+            peer_addr_str(p),
             c.failed, c.time_since_verified, c.last_connect_attempt, c.never_connected, c.salt, c.peer);
         */
         if (!i || peer_sort_cmp(&c, &best) < 0) {
@@ -1187,7 +1194,7 @@ void trace_request_done_cb(evhttp_request *req, void *arg)
             crypto_generichash_final(&content_state, content_hash, sizeof(content_hash));
             debug("verifying sig for TRACE %s %s\n", evhttp_request_get_uri(req), sign);
             if (verify_signature(content_hash, sign)) {
-                debug("signature good!\n");
+                debug("signature good! %s\n", peer_addr_str(t->pc->peer));
                 t->pc->peer->last_connect = time(NULL);
                 t->pc->peer->last_verified = time(NULL);
                 save_peers(t->n);
@@ -1229,7 +1236,7 @@ void trace_submit_request_on_con(trace_request *t, evhttp_connection *evcon)
     snprintf(request_uri, sizeof(request_uri), "/%u-%u%u",
              instance, randombytes_random(), randombytes_random());
     evhttp_make_request(evcon, req, EVHTTP_REQ_TRACE, request_uri);
-    debug("t:%p con:%p trace request submitted: %s\n", t, req->evcon, request_uri);
+    debug("t:%p con:%p %s trace request submitted: %s\n", t, peer_addr_str(t->pc->peer), req->evcon, request_uri);
 }
 
 void submit_trace_request(network *n)
