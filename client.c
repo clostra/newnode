@@ -1238,7 +1238,7 @@ void trace_submit_request_on_con(trace_request *t, evhttp_connection *evcon)
     snprintf(request_uri, sizeof(request_uri), "/%u-%u%u",
              instance, randombytes_random(), randombytes_random());
     evhttp_make_request(evcon, req, EVHTTP_REQ_TRACE, request_uri);
-    debug("t:%p con:%p %s trace request submitted: %s\n", t, peer_addr_str(t->pc->peer), req->evcon, request_uri);
+    debug("t:%p con:%p %s trace request submitted: %s\n", t, req->evcon, peer_addr_str(t->pc->peer), request_uri);
 }
 
 void submit_trace_request(network *n)
