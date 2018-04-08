@@ -2,7 +2,6 @@
 set -e
 
 
-
 function build_android {
     TRIPLE=`python -c "import sys; sys.path.append(sys.argv[1]); import make_standalone_toolchain; print(make_standalone_toolchain.get_triple(sys.argv[2]))" $ANDROID_NDK_HOME/build/tools $ARCH`
     TOOLCHAIN="$(pwd)/android-toolchain-$TRIPLE"
@@ -17,7 +16,7 @@ function build_android {
     cd Libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
-        ./configure --disable-shared --disable-openssl $LIBEVENT_CONFIG --host=$TRIPLE --prefix="$(pwd)/$TRIPLE"
+        ./configure --disable-shared --disable-openssl $LIBEVENT_CONFIG --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
         make clean
         make -j3
         make install
@@ -28,12 +27,11 @@ function build_android {
 
 
     cd libsodium
-    LIBSODIUM_DIR="$(pwd)/libsodium-android-$CPU_ARCH"
     test -f configure || ./autogen.sh
-    test -f ${LIBSODIUM_DIR}/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
+    test -f libsodium-android-$CPU_ARCH/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
     cd ..
-    LIBSODIUM_CFLAGS=-I${LIBSODIUM_DIR}/include
-    LIBSODIUM=${LIBSODIUM_DIR}/lib/libsodium.a
+    LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-android-$CPU_ARCH/include
+    LIBSODIUM=libsodium/libsodium-android-$CPU_ARCH/lib/libsodium.a
 
 
     if [ "$ABI" = "mips64" ]; then
@@ -66,6 +64,7 @@ function build_android {
     FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
+      -fvisibility=hidden -fvisibility-inlines-hidden -flto \
       -D__FAVOR_BSD -D_BSD_SOURCE -DANDROID $ABI_FLAGS"
     if [ ! -z "$DEBUG" ]; then
         FLAGS="$FLAGS -O0 -DDEBUG=1"
@@ -81,7 +80,7 @@ function build_android {
     for file in android.c bev_splice.c base64.c client.c dht.c http.c log.c lsd.c icmp_handler.c hash_table.c network.c obfoo.c sha1.c timer.c utp_bufferevent.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
     done
-    clang++ $CPPFLAGS -shared -o libnewnode.so *.o -static-libstdc++ -lm $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -llog
+    clang++ $CPPFLAGS -shared -o libnewnode.so *.o -static-libstdc++ -fuse-ld=gold -lm -llog $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
     if [ -z "$DEBUG" ]; then
         strip -x libnewnode.so
     fi
