@@ -58,6 +58,12 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env,
     (*env)->ReleaseStringUTFChars(env, cacheDir, cCacheDir);
 }
 
+// XXX: compat
+JNIEXPORT void JNICALL Java_com_clostra_dcdn_Dcdn_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
+{
+    Java_com_clostra_newnode_NewNode_setCacheDir(env, thiz, cacheDir);
+}
+
 jint JNI_OnLoad(JavaVM* vm, void* reserved)
 {
     JNIEnv* env;
