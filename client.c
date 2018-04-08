@@ -239,14 +239,15 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
     return pc;
 }
 
-bool has_address(peer_array *pa, address *a)
+peer* get_peer(peer_array *pa, address *a)
 {
     for (uint i = 0; i < pa->length; i++) {
-        if (memeq(a, (const uint8_t *)&(pa->peers[i]->addr), sizeof(address))) {
-            return true;
+        peer *p = pa->peers[i];
+        if (memeq(a, (const uint8_t *)&p->addr, sizeof(address))) {
+            return p;
         }
     }
-    return false;
+    return NULL;
 }
 
 void add_peer(peer_array **pa, peer *p)
@@ -263,14 +264,16 @@ void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_a
 {
     for (uint i = 0; i < num_addrs; i++) {
         address *a = (address *)&addrs[sizeof(address) * i];
-        if (has_address(*pa, a)) {
+        peer *p = get_peer(*pa, a);
+        if (p) {
+            p->encrypted = encrypted;
             return;
         }
         // paper over a bug in some DHT implementation that winds up with 1 for the port
         if (ntohs(a->port) == 1) {
             continue;
         }
-        peer *p = alloc(peer);
+        p = alloc(peer);
         p->addr = *a;
         p->encrypted = encrypted;
         add_peer(pa, p);
@@ -1534,7 +1537,7 @@ void load_peer_file(const char *s, peer_array **pa)
     if (f) {
         peer p;
         while (fread(&p, sizeof(p), 1, f) == 1) {
-            if (!has_address(*pa, &p.addr)) {
+            if (!get_peer(*pa, &p.addr)) {
                 add_peer(pa, memdup(&p, sizeof(p)));
             }
         }
