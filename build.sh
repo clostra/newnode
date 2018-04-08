@@ -8,14 +8,14 @@ export CXX=clang++
 cd Libevent
 if [ ! -d native ]; then
     ./autogen.sh
-    ./configure --disable-shared --disable-openssl --prefix="$(pwd)/native"
+    ./configure --disable-shared --disable-openssl --prefix=$(pwd)/native
     make clean
     make -j3
     make install
 fi
 cd ..
 LIBEVENT_CFLAGS=-ILibevent/native/include
-LIBEVENT="$LIBEVENT_CFLAGS Libevent/native/lib/libevent.a Libevent/native/lib/libevent_pthreads.a"
+LIBEVENT="Libevent/native/lib/libevent.a Libevent/native/lib/libevent_pthreads.a"
 
 
 cd libsodium
@@ -28,7 +28,7 @@ if [ ! -d native ]; then
 fi
 cd ..
 LIBSODIUM_CFLAGS=-Ilibsodium/native/include
-LIBSODIUM="$LIBSODIUM_CFLAGS libsodium/native/lib/libsodium.a"
+LIBSODIUM=libsodium/native/lib/libsodium.a
 
 
 cd libutp
@@ -41,6 +41,7 @@ LIBUTP=libutp/libutp.a
 FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Wno-error=shadow -Wfatal-errors \
   -fPIC -fblocks -fdata-sections -ffunction-sections \
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
+  -fvisibility=hidden -fvisibility-inlines-hidden -flto \
   -D__FAVOR_BSD -D_BSD_SOURCE"
 if [ ! -z "$DEBUG" ]; then
     FLAGS="$FLAGS -O0 -DDEBUG=1 -fsanitize=address --coverage"
