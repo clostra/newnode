@@ -114,7 +114,6 @@ peer_array *all_peers;
 peer_connection *peer_connections[10];
 
 char via_tag[] = "1.1 _.newnode";
-time_t last_trace;
 time_t injector_reachable;
 timer *saving_peers;
 
