@@ -77,7 +77,7 @@ void bev_splice_event_cb(bufferevent *bev, short events, void *ctx)
 
 void bev_splice(bufferevent *bev, bufferevent *other)
 {
-    debug("bev_splice bev:%p other:%p\n", bev, other);
+    //debug("bev_splice bev:%p other:%p\n", bev, other);
     bufferevent_setcb(bev, bev_splice_read_cb, bev_splice_write_cb, bev_splice_event_cb, other);
     bufferevent_setcb(other, bev_splice_read_cb, bev_splice_write_cb, bev_splice_event_cb, bev);
     bufferevent_setwatermark(bev, EV_READ, 0, READ_WATERMARK);
