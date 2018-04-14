@@ -170,8 +170,8 @@ void on_utp_connect(network *n, peer_connection *pc)
     debug("on_utp_connect %s:%s bev:%p con:%p\n", host, serv, pc->bev, pc->evcon);
     pc->bev = NULL;
     // handle waiting requests first
-    if (!TAILQ_EMPTY(&pending_requests)) {
-        pending_request *r = TAILQ_FIRST(&pending_requests);
+    pending_request *r = TAILQ_FIRST(&pending_requests);
+    if (r) {
         TAILQ_REMOVE(&pending_requests, r, next);
         pending_requests_len--;
         debug("on_utp_connect request:%p (outstanding:%zu)\n", r, pending_requests_len);
@@ -432,8 +432,8 @@ void proxy_request_cleanup(proxy_request *p)
 void peer_reuse(network *n, peer_connection *pc)
 {
     // handle waiting requests first
-    if (!TAILQ_EMPTY(&pending_requests)) {
-        pending_request *r = TAILQ_FIRST(&pending_requests);
+    pending_request *r = TAILQ_FIRST(&pending_requests);
+    if (r) {
         TAILQ_REMOVE(&pending_requests, r, next);
         pending_requests_len--;
         debug("reusing pc:%p con:%p for request:%p (outstanding:%zu)\n", pc, pc->evcon, r, pending_requests_len);
