@@ -74,6 +74,7 @@ typedef struct {
 
 typedef void (^peer_connected)(peer_connection *p);
 typedef struct pending_request {
+    time_t queued;
     peer_connected connected;
     TAILQ_ENTRY(pending_request) next;
 } pending_request;
@@ -189,6 +190,8 @@ void on_utp_connect(network *n, peer_connection *pc)
     }
 }
 
+void connect_more_injectors(network *n);
+
 void bev_event_cb(bufferevent *bufev, short events, void *arg)
 {
     peer_connection *pc = (peer_connection *)arg;
@@ -208,6 +211,10 @@ void bev_event_cb(bufferevent *bufev, short events, void *arg)
         }
         assert(!pc->evcon);
         free(pc);
+        pending_request *r = TAILQ_FIRST(&pending_requests);
+        if (r && time(NULL) - r->queued < 30) {
+            connect_more_injectors(pc->n);
+        }
     } else if (events & BEV_EVENT_CONNECTED) {
         on_utp_connect(pc->n, pc);
     }
@@ -1062,6 +1069,7 @@ void queue_request(network *n, pending_request *r, peer_connected connected)
         }
     }
     r->connected = Block_copy(connected);
+    r->queued = time(NULL);
     TAILQ_INSERT_TAIL(&pending_requests, r, next);
     pending_requests_len++;
     debug("queued request:%p (outstanding:%zu)\n", r, pending_requests_len);
