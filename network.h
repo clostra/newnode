@@ -44,7 +44,7 @@ typedef struct timespec timespec;
 typedef struct addrinfo addrinfo;
 typedef struct rlimit rlimit;
 typedef struct in_addr in_addr;
-typedef struct in_addr6 in_addr6;
+typedef struct in6_addr in6_addr;
 typedef struct sockaddr sockaddr;
 typedef struct sockaddr_in sockaddr_in;
 typedef struct sockaddr_in6 sockaddr_in6;
