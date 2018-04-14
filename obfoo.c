@@ -97,11 +97,11 @@ ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
     case OF_STATE_INTRO: {
 
         // XXX: temporary plaintext support
-        if (evbuffer_get_length(in) < 8) {
-            return 0;
-        }
 #define method_matches(s, m) strncaseeq((char*)s, m, lenof(m) - 1)
         uint8_t *start = evbuffer_pullup(in, 8);
+        if (!start) {
+            return 0;
+        }
         if (method_matches(start, "GET ") ||
             method_matches(start, "PUT ") ||
             method_matches(start, "POST ") ||
