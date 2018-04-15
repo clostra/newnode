@@ -15,6 +15,7 @@
 #include <sodium.h>
 
 #include <event2/buffer.h>
+#include <event2/listener.h>
 #include <event2/bufferevent.h>
 
 #include "dht/dht.h"
@@ -957,8 +958,11 @@ address parse_address(const char *addr)
 
 void append_via(evhttp_request *from, evhttp_request *to)
 {
-    const char *via = evhttp_find_header(from->input_headers, "Via");
+    const char *via = NULL;
     char viab[2048];
+    if (from) {
+        via = evhttp_find_header(from->input_headers, "Via");
+    }
     assert(!via || strlen(via) < sizeof(viab)/2);
     snprintf(viab, sizeof(viab), "%s%s%s", via?:"", via ? ", " : "", via_tag);
     overwrite_header(to, "Via", viab);
@@ -1262,13 +1266,41 @@ void submit_trace_request(network *n)
     });
 }
 
+#define SOCKS5_REPLY_GRANTED 0x00 // request granted
+#define SOCKS5_REPLY_FAILURE 0x01 // general failure
+#define SOCKS5_REPLY_NOT_ALLOWED 0x02 // connection not allowed by ruleset
+#define SOCKS5_REPLY_NETUNREACH 0x03 // network unreachable
+#define SOCKS5_REPLY_HOSTUNREACH 0x04 // host unreachable
+#define SOCKS5_REPLY_CONNREFUSED 0x05 // connection refused by destination host
+#define SOCKS5_REPLY_TIMEDOUT 0x06 // TTL expired
+#define SOCKS5_REPLY_INVAL 0x07 // command not supported / protocol error
+#define SOCKS5_REPLY_AFNOSUPPORT 0x08 // address type not supported
+
 typedef struct {
+    // HTTP CONNECT request
     evhttp_request *server_req;
+    // SOCKS5 request
+    bufferevent *server_bev;
+
     evhttp_request *proxy_req;
     bufferevent *direct;
     pending_request r;
     peer_connection *pc;
 } connect_req;
+
+void free_write_cb(bufferevent *bev, void *ctx)
+{
+    debug("%s bev:%p\n", __func__, bev);
+    bufferevent_free(bev);
+}
+
+void socks_reply(bufferevent *bev, uint8_t resp)
+{
+    debug("%s bev:%p reply:%02x\n", __func__, bev, resp);
+    bufferevent_setcb(bev, NULL, free_write_cb, NULL, NULL);
+    uint8_t r[] = {0x05, resp};
+    bufferevent_write(bev, r, sizeof(r));
+}
 
 void connect_cleanup(connect_req *c)
 {
@@ -1282,6 +1314,10 @@ void connect_cleanup(connect_req *c)
         evhttp_send_error(c->server_req, 504, "Gateway Timeout");
         c->server_req = NULL;
     }
+    if (c->server_bev) {
+        socks_reply(c->server_bev, SOCKS5_REPLY_TIMEDOUT);
+        c->server_bev = NULL;
+    }
     if (c->pc) {
         peer_disconnect(c->pc);
         c->pc = NULL;
@@ -1292,14 +1328,24 @@ void connect_cleanup(connect_req *c)
 void connected(connect_req *c, bufferevent *other)
 {
     debug("c:%p connected other:%p\n", c, other);
-    evhttp_connection *evcon = c->server_req->evcon;
-    bufferevent *bev = evhttp_connection_detach_bufferevent(evcon);
-    debug("c:%p detach from server evcon:%p bev:%p\n", c, evcon, bev);
-    bufferevent_setcb(bev, NULL, NULL, NULL, NULL);
-    evhttp_connection_set_closecb(evcon, NULL, NULL);
-    c->server_req = NULL;
+    bufferevent *bev;
+    if (c->server_req) {
+        evhttp_connection *evcon = c->server_req->evcon;
+        bev = evhttp_connection_detach_bufferevent(evcon);
+        debug("c:%p detach from server evcon:%p bev:%p\n", c, evcon, bev);
+        bufferevent_setcb(bev, NULL, NULL, NULL, NULL);
+        evhttp_connection_set_closecb(evcon, NULL, NULL);
+        c->server_req = NULL;
+        evbuffer_add_printf(bufferevent_get_output(bev), "HTTP/1.0 200 Connection established\r\n\r\n");
+    } else {
+        bev = c->server_bev;
+        c->server_bev = NULL;
+        bufferevent_setcb(bev, NULL, NULL, NULL, NULL);
+        // XXX: should contain ipv4/v6:port instead of 0x00s
+        uint8_t r[] = {0x05, SOCKS5_REPLY_GRANTED, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+        bufferevent_write(bev, r, sizeof(r));
+    }
     connect_cleanup(c);
-    evbuffer_add_printf(bufferevent_get_output(bev), "HTTP/1.0 200 Connection established\r\n\r\n");
     bev_splice(bev, other);
     bufferevent_enable(bev, EV_READ|EV_WRITE);
     bufferevent_enable(other, EV_READ|EV_WRITE);
@@ -1566,6 +1612,204 @@ void load_peers(network *n)
     load_peer_file("peers.dat", &all_peers);
 }
 
+void socks_connect_event_cb(bufferevent *bev, short events, void *ctx)
+{
+    connect_req *c = ctx;
+    debug("c:%p %s events:0x%x bev:%p\n", c, __func__, events, bev);
+
+    if (events & BEV_EVENT_TIMEOUT) {
+        socks_reply(bev, SOCKS5_REPLY_TIMEDOUT);
+    } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
+        int err = EVUTIL_SOCKET_ERROR();
+        switch (err) {
+        case ENETUNREACH: socks_reply(bev, SOCKS5_REPLY_NETUNREACH); break;
+        case EHOSTUNREACH: socks_reply(bev, SOCKS5_REPLY_HOSTUNREACH); break;
+        case ECONNREFUSED: socks_reply(bev, SOCKS5_REPLY_CONNREFUSED); break;
+        case ETIMEDOUT: socks_reply(bev, SOCKS5_REPLY_TIMEDOUT); break;
+        default:
+        case 0: socks_reply(bev, SOCKS5_REPLY_FAILURE); break;
+        }
+        c->direct = NULL;
+        connect_cleanup(c);
+    } else if (events & BEV_EVENT_CONNECTED) {
+        connect_proxy_cancel(c);
+        c->direct = NULL;
+        connected(c, bev);
+    }
+}
+
+void socks_connect_req_event_cb(bufferevent *bev, short events, void *ctx)
+{
+    connect_req *c = ctx;
+    debug("%s bev:%p events:0x%x\n", __func__, bev, events);
+    connect_cleanup(c);
+}
+
+void socks_event_cb(bufferevent *bev, short events, void *ctx)
+{
+    debug("%s bev:%p events:0x%x\n", __func__, bev, events);
+    bufferevent_free(bev);
+}
+
+bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *host, port_t port)
+{
+    if (port != 443 && port != 80) {
+        debug("SOCK5 port not allowed %s:%u\n", host, port);
+        socks_reply(bev, SOCKS5_REPLY_NOT_ALLOWED);
+        return NULL;
+    }
+
+    debug("%s bev:%p SOCKS5 CONNECT %s:%u\n", __func__, bev, host, port);
+
+    connect_req *c = alloc(connect_req);
+    c->server_bev = bev;
+
+    bufferevent_setcb(bev, NULL, NULL, socks_connect_req_event_cb, c);
+
+    queue_request(n, &c->r, ^(peer_connection *pc) {
+        debug("%s queue_request_complete bev:%p direct:%p\n", __func__, bev, c->direct);
+        c->pc = pc;
+        c->proxy_req = evhttp_request_new(connect_done_cb, c);
+
+        append_via(NULL, c->proxy_req);
+
+        evhttp_request_set_header_cb(c->proxy_req, connect_header_cb);
+        evhttp_request_set_error_cb(c->proxy_req, connect_error_cb);
+        char authority[1024];
+        snprintf(authority, sizeof(authority), "%s:%u", host, port);
+        evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, authority);
+    });
+
+#if !NO_DIRECT
+    c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
+    debug("%s bev:%p direct:%p\n", __func__, bev, c->direct);
+    bufferevent_setcb(c->direct, NULL, NULL, socks_connect_event_cb, c);
+    bufferevent_enable(c->direct, EV_READ);
+#endif
+    return c->direct;
+}
+
+void socks_read_req_cb(bufferevent *bev, void *ctx);
+
+void socks_read_auth_cb(bufferevent *bev, void *ctx)
+{
+    evbuffer *input = bufferevent_get_input(bev);
+    uint8_t *p = evbuffer_pullup(input, 2);
+    if (!p) {
+        return;
+    }
+    if (p[0] != 0x05) {
+        bufferevent_free(bev);
+        return;
+    }
+    p = evbuffer_pullup(input, 2 + p[1]);
+    if (!p) {
+        return;
+    }
+    if (!p[1] || !memchr(&p[2], 0x00, p[1])) {
+        bufferevent_free(bev);
+        return;
+    }
+    evbuffer_drain(input, 2 + p[1]);
+    uint8_t r[] = {0x05, 0x00};
+    bufferevent_write(bev, r, sizeof(r));
+
+    bufferevent_setcb(bev, socks_read_req_cb, NULL, socks_event_cb, ctx);
+}
+
+void socks_read_req_cb(bufferevent *bev, void *ctx)
+{
+    network *n = ctx;
+    evbuffer *input = bufferevent_get_input(bev);
+    uint8_t *p = evbuffer_pullup(input, 4);
+    if (!p) {
+        return;
+    }
+    if (p[0] != 0x05 || p[1] != 0x01 || p[2] != 0x00) {
+        debug("%s bev:%p error: %02x%02x%02x\n", __func__, bev, p[0], p[1], p[2]);
+        bufferevent_free(bev);
+        return;
+    }
+    debug("%s bev:%p cmd:%u\n", __func__, bev, p[3]);
+    switch(p[3]) {
+    // ipv4
+    case 0x01: {
+        p = evbuffer_pullup(input, 4 + sizeof(in_addr_t) + sizeof(port_t));
+        if (!p) {
+            return;
+        }
+        sockaddr_in sin = {
+            .sin_family = AF_INET,
+            .sin_addr.s_addr = *(in_addr_t*)&p[4],
+            .sin_port = *(port_t*)&p[4 + sizeof(in_addr_t)]
+        };
+        evbuffer_drain(input, 4 + sizeof(in_addr_t) + sizeof(port_t));
+
+        char host[NI_MAXHOST];
+        getnameinfo((sockaddr*)&sin, sizeof(sin), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
+        bufferevent *b = socks_connect_request(n, bev, host, ntohs(sin.sin_port));
+        if (b) {
+            bufferevent_socket_connect(b, (sockaddr*)&sin, sizeof(sin));
+        }
+        break;
+    }
+    // domain name
+    case 0x03: {
+        p = evbuffer_pullup(input, 4 + sizeof(uint8_t));
+        if (!p) {
+            return;
+        }
+        p = evbuffer_pullup(input, 4 + sizeof(uint8_t) + p[4] + sizeof(port_t));
+        if (!p) {
+            return;
+        }
+        port_t port = ntohs(*(port_t*)&p[4 + sizeof(uint8_t) + p[4]]);
+
+        char host[NI_MAXHOST];
+        snprintf(host, sizeof(host), "%.*s", p[4], &p[4 + sizeof(uint8_t)]);
+        evbuffer_drain(input, 4 + sizeof(uint8_t) + p[4] + sizeof(port_t));
+
+        bufferevent *b = socks_connect_request(n, bev, host, port);
+        if (b) {
+            // XXX: disable IPv6, since evdns waits for *both* and the v6 request often times out
+            bufferevent_socket_connect_hostname(b, n->evdns, AF_INET, host, port);
+        }
+        break;
+    }
+    // ipv6
+    case 0x04: {
+        p = evbuffer_pullup(input, 4 + sizeof(in6_addr) + sizeof(port_t));
+        if (!p) {
+            return;
+        }
+        sockaddr_in6 sin6 = {
+            .sin6_family = AF_INET6,
+            .sin6_port = *(port_t*)&p[4 + sizeof(in6_addr)],
+        };
+        memcpy(&sin6.sin6_addr, &p[4], sizeof(sin6.sin6_addr));
+        evbuffer_drain(input, 4 + sizeof(in6_addr) + sizeof(port_t));
+        bufferevent_setcb(bev, NULL, NULL, socks_event_cb, ctx);
+
+        char host[NI_MAXHOST];
+        getnameinfo((sockaddr*)&sin6, sizeof(sin6), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
+        bufferevent *b = socks_connect_request(n, bev, host, ntohs(sin6.sin6_port));
+        if (b) {
+            bufferevent_socket_connect(b, (sockaddr*)&sin6, sizeof(sin6));
+        }
+        break;
+    }
+    }
+}
+
+void socks_accept_cb(evconnlistener *listener, evutil_socket_t nfd, sockaddr *peer_sa, int peer_socklen, void *arg)
+{
+    network *n = arg;
+    bufferevent *bev = bufferevent_socket_new(n->evbase, nfd, BEV_OPT_CLOSE_ON_FREE);
+    debug("%s bev:%p\n", __func__, bev);
+    bufferevent_setcb(bev, socks_read_auth_cb, NULL, socks_event_cb, n);
+    bufferevent_enable(bev, EV_READ|EV_WRITE);
+}
+
 network* client_init(port_t port)
 {
     //o_debug = 0;
@@ -1601,7 +1845,13 @@ network* client_init(port_t port)
     evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_HEAD | EVHTTP_REQ_CONNECT | EVHTTP_REQ_TRACE);
     evhttp_set_gencb(n->http, http_request_cb, n);
     evhttp_bind_socket_with_handle(n->http, "127.0.0.1", port);
-    printf("listening on TCP:%s:%d\n", "127.0.0.1", port);
+
+    sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = inet_addr("127.0.0.1"), .sin_port = htons(port + 1)};
+    evconnlistener *l = evconnlistener_new_bind(n->evbase, socks_accept_cb, n,
+        LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_CLOSE_ON_FREE, 128,
+        (sockaddr *)&sin, sizeof(sin));
+
+    printf("listening on TCP:%s:%d,%d\n", "127.0.0.1", port, port+1);
 
     load_peers(n);
 
