@@ -404,9 +404,9 @@ void proxy_cache_delete(proxy_request *p)
     }
 }
 
-void proxy_request_cleanup(proxy_request *p)
+void proxy_send_error(proxy_request *p, int error, const char *reason)
 {
-    if (p->dont_free || p->proxy_req || p->direct_req || p->r.connected) {
+    if (p->direct_req) {
         return;
     }
     if (p->server_req) {
@@ -414,8 +414,18 @@ void proxy_request_cleanup(proxy_request *p)
         if (p->server_req->evcon) {
             evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
         }
-        evhttp_send_error(p->server_req, 504, "Gateway Timeout");
+        evhttp_send_error(p->server_req, error, reason);
         p->server_req = NULL;
+    }
+}
+
+void proxy_request_cleanup(proxy_request *p)
+{
+    if (p->dont_free || p->proxy_req || p->direct_req || p->r.connected) {
+        return;
+    }
+    if (p->server_req) {
+        proxy_send_error(p, 504, "Gateway Timeout");
     }
     if (p->pc) {
         peer_disconnect(p->pc);
@@ -702,20 +712,6 @@ void copy_response_headers(evhttp_request *from, evhttp_request *to)
     if (!evcon_is_local_browser(to->evcon)) {
         copy_header(from, to, "Content-Location");
         copy_header(from, to, "X-Sign");
-    }
-}
-
-void proxy_send_error(proxy_request *p, int error, const char *reason)
-{
-    if (p->direct_req) {
-        return;
-    }
-    if (p->server_req) {
-        if (p->server_req->evcon) {
-            evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
-        }
-        evhttp_send_error(p->server_req, error, reason);
-        p->server_req = NULL;
     }
 }
 
@@ -1302,17 +1298,22 @@ void socks_reply(bufferevent *bev, uint8_t resp)
     bufferevent_write(bev, r, sizeof(r));
 }
 
+void connect_send_error(connect_req *c, int error, const char *reason)
+{
+    if (c->server_req->evcon) {
+        evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
+    }
+    evhttp_send_error(c->server_req, error, reason);
+    c->server_req = NULL;
+}
+
 void connect_cleanup(connect_req *c)
 {
     if (c->direct || c->proxy_req || c->r.connected) {
         return;
     }
     if (c->server_req) {
-        if (c->server_req->evcon) {
-            evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
-        }
-        evhttp_send_error(c->server_req, 504, "Gateway Timeout");
-        c->server_req = NULL;
+        connect_send_error(c, 504, "Gateway Timeout");
     }
     if (c->server_bev) {
         socks_reply(c->server_bev, SOCKS5_REPLY_TIMEDOUT);
@@ -1412,7 +1413,13 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
     connect_req *c = (connect_req *)ctx;
     debug("c:%p connect_event_cb events:0x%x bev:%p req:%s\n", c, events, bev, evhttp_request_get_uri(c->server_req));
 
-    if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
+    if (events & BEV_EVENT_TIMEOUT) {
+        connect_send_error(c, 504, "Gateway Timeout");
+        bufferevent_free(bev);
+        c->direct = NULL;
+        connect_cleanup(c);
+    } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+        connect_send_error(c, 523, "Origin Is Unreachable");
         bufferevent_free(bev);
         c->direct = NULL;
         connect_cleanup(c);
@@ -1495,7 +1502,8 @@ void http_request_cb(evhttp_request *req, void *arg)
 
     const char *via = evhttp_find_header(req->input_headers, "Via");
     if (via && strstr(via, via_tag)) {
-        evhttp_send_error(req, 403, "Via Loop");
+        evhttp_send_error(req, 508, "Via Loop");
+        return;
     }
 
     if (req->type == EVHTTP_REQ_CONNECT) {
@@ -1619,7 +1627,9 @@ void socks_connect_event_cb(bufferevent *bev, short events, void *ctx)
 
     if (events & BEV_EVENT_TIMEOUT) {
         socks_reply(bev, SOCKS5_REPLY_TIMEDOUT);
-    } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
+        c->direct = NULL;
+        connect_cleanup(c);
+    } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
         int err = EVUTIL_SOCKET_ERROR();
         switch (err) {
         case ENETUNREACH: socks_reply(bev, SOCKS5_REPLY_NETUNREACH); break;
