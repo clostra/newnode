@@ -78,9 +78,9 @@ function build_android {
     rm *.o || true
     clang $CFLAGS -c dht/dht.c -o dht_dht.o
     for file in android.c bev_splice.c base64.c client.c dht.c http.c log.c lsd.c icmp_handler.c hash_table.c network.c obfoo.c sha1.c timer.c utp_bufferevent.c; do
-        clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBBTDHT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
+        clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
     done
-    clang++ $CPPFLAGS -shared -o libnewnode.so *.o -static-libstdc++ -fuse-ld=gold -lm -llog $LIBUTP $LIBBTDHT $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
+    clang++ $CPPFLAGS -shared -o libnewnode.so *.o -static-libstdc++ -fuse-ld=gold -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
     if [ -z "$DEBUG" ]; then
         strip -x libnewnode.so
     fi
