@@ -94,7 +94,8 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
                 utp_issue_deferred_acks(n->utp);
                 break;
             }
-            pdie("recv");
+            debug("%s recvfrom error %d %s\n", __func__, errno, strerror(errno));
+            break;
         }
 
         if (o_debug) {
