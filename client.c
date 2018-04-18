@@ -425,7 +425,7 @@ void proxy_request_cleanup(proxy_request *p)
         return;
     }
     if (p->server_req) {
-        proxy_send_error(p, 504, "Gateway Timeout");
+        proxy_send_error(p, 502, "Bad Gateway (default)");
     }
     if (p->pc) {
         peer_disconnect(p->pc);
@@ -1313,7 +1313,7 @@ void connect_cleanup(connect_req *c)
         return;
     }
     if (c->server_req) {
-        connect_send_error(c, 504, "Gateway Timeout");
+        connect_send_error(c, 502, "Bad Gateway (default)");
     }
     if (c->server_bev) {
         socks_reply(c->server_bev, SOCKS5_REPLY_TIMEDOUT);
@@ -1405,6 +1405,26 @@ void connect_error_cb(evhttp_request_error error, void *arg)
     debug("c:%p connect_error_cb %d\n", c, error);
     c->proxy_req = NULL;
     assert(!c->r.connected);
+    if (c->server_req) {
+        switch (error) {
+        case EVREQ_HTTP_TIMEOUT: connect_send_error(c, 504, "Gateway Timeout"); break;
+        case EVREQ_HTTP_EOF: connect_send_error(c, 502, "Bad Gateway (EOF)"); break;
+        case EVREQ_HTTP_INVALID_HEADER: connect_send_error(c, 502, "Bad Gateway (header)"); break;
+        case EVREQ_HTTP_BUFFER_ERROR: connect_send_error(c, 502, "Bad Gateway (buffer)"); break;
+        case EVREQ_HTTP_REQUEST_CANCEL: connect_send_error(c, 499, "Client Closed Request"); break;
+        case EVREQ_HTTP_DATA_TOO_LONG: connect_send_error(c, 502, "Bad Gateway (too long)"); break;
+        }
+    }
+    if (c->server_bev) {
+        switch (error) {
+        case EVREQ_HTTP_TIMEOUT: socks_reply(c->server_bev, SOCKS5_REPLY_TIMEDOUT); break;
+        case EVREQ_HTTP_EOF: socks_reply(c->server_bev, SOCKS5_REPLY_FAILURE); break;
+        case EVREQ_HTTP_INVALID_HEADER: socks_reply(c->server_bev, SOCKS5_REPLY_INVAL); break;
+        case EVREQ_HTTP_BUFFER_ERROR: socks_reply(c->server_bev, SOCKS5_REPLY_INVAL); break;
+        case EVREQ_HTTP_REQUEST_CANCEL: socks_reply(c->server_bev, SOCKS5_REPLY_FAILURE); break;
+        case EVREQ_HTTP_DATA_TOO_LONG: socks_reply(c->server_bev, SOCKS5_REPLY_INVAL); break;
+        }
+    }
     connect_cleanup(c);
 }
 
@@ -1741,7 +1761,7 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
         return;
     }
     debug("%s bev:%p cmd:%u\n", __func__, bev, p[3]);
-    switch(p[3]) {
+    switch (p[3]) {
     // ipv4
     case 0x01: {
         p = evbuffer_pullup(input, 4 + sizeof(in_addr_t) + sizeof(port_t));
@@ -1822,7 +1842,7 @@ void socks_accept_cb(evconnlistener *listener, evutil_socket_t nfd, sockaddr *pe
 
 network* client_init(port_t port)
 {
-    //o_debug = 0;
+    //o_debug = 2;
 
     injectors = alloc(peer_array);
     injector_proxies = alloc(peer_array);
