@@ -38,7 +38,7 @@
 #endif
 
 
-#define NO_DIRECT 1
+#define NO_DIRECT 0
 #define NO_CACHE 0
 
 typedef struct {
