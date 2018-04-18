@@ -64,12 +64,12 @@ function build_android {
     FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
-      -fvisibility=hidden -fvisibility-inlines-hidden -flto=thin \
       -D__FAVOR_BSD -D_BSD_SOURCE -DANDROID $ABI_FLAGS"
+    # -fvisibility=hidden -fvisibility-inlines-hidden -flto=thin \
     if [ ! -z "$DEBUG" ]; then
         FLAGS="$FLAGS -O0 -DDEBUG=1"
     else
-        FLAGS="$FLAGS -O3"
+        FLAGS="$FLAGS -O0"
     fi
 
     CFLAGS="$FLAGS -std=gnu11"
@@ -80,10 +80,8 @@ function build_android {
     for file in android.c bev_splice.c base64.c client.c dht.c http.c log.c lsd.c icmp_handler.c hash_table.c network.c obfoo.c sha1.c timer.c utp_bufferevent.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
     done
-    clang++ $CPPFLAGS -shared -o libnewnode.so *.o -static-libstdc++ -fuse-ld=gold -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
-    if [ -z "$DEBUG" ]; then
-        strip -x libnewnode.so
-    fi
+    clang++ $CPPFLAGS -shared -o libnewnode.so *.o -static-libstdc++ -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
+    # -fuse-ld=gold
     OUT=android/src/main/jniLibs/$ABI
     test -d $OUT || mkdir -p $OUT
     cp libnewnode.so $OUT
