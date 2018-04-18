@@ -38,7 +38,7 @@
 #endif
 
 
-#define NO_DIRECT 0
+#define NO_DIRECT 1
 #define NO_CACHE 0
 
 typedef struct {
@@ -75,7 +75,6 @@ typedef struct {
 
 typedef void (^peer_connected)(peer_connection *p);
 typedef struct pending_request {
-    time_t queued;
     peer_connected connected;
     TAILQ_ENTRY(pending_request) next;
 } pending_request;
@@ -117,6 +116,7 @@ peer_connection *peer_connections[10];
 
 char via_tag[] = "1.1 _.newnode";
 time_t injector_reachable;
+time_t last_request;
 timer *saving_peers;
 
 size_t pending_requests_len;
@@ -157,6 +157,8 @@ bool peer_is_injector(peer *p)
     return false;
 }
 
+void connect_more_injectors(network *n);
+
 void on_utp_connect(network *n, peer_connection *pc)
 {
     address *a = &pc->peer->addr;
@@ -188,10 +190,11 @@ void on_utp_connect(network *n, peer_connection *pc)
         r->connected(pc);
         Block_release(r->connected);
         r->connected = NULL;
+        if (!TAILQ_EMPTY(&pending_requests)) {
+            connect_more_injectors(n);
+        }
     }
 }
-
-void connect_more_injectors(network *n);
 
 void bev_event_cb(bufferevent *bufev, short events, void *arg)
 {
@@ -213,7 +216,7 @@ void bev_event_cb(bufferevent *bufev, short events, void *arg)
         assert(!pc->evcon);
         free(pc);
         pending_request *r = TAILQ_FIRST(&pending_requests);
-        if (r && time(NULL) - r->queued < 30) {
+        if (r && time(NULL) - last_request < 30) {
             connect_more_injectors(pc->n);
         }
     } else if (events & BEV_EVENT_CONNECTED) {
@@ -1069,9 +1072,9 @@ void queue_request(network *n, pending_request *r, peer_connected connected)
         }
     }
     r->connected = Block_copy(connected);
-    r->queued = time(NULL);
     TAILQ_INSERT_TAIL(&pending_requests, r, next);
     pending_requests_len++;
+    last_request = time(NULL);
     debug("queued request:%p (outstanding:%zu)\n", r, pending_requests_len);
 }
 
@@ -1842,7 +1845,7 @@ void socks_accept_cb(evconnlistener *listener, evutil_socket_t nfd, sockaddr *pe
 
 network* client_init(port_t port)
 {
-    //o_debug = 2;
+    //o_debug = 1;
 
     injectors = alloc(peer_array);
     injector_proxies = alloc(peer_array);
