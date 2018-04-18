@@ -368,6 +368,7 @@ network* network_setup(char *address, port_t port)
         return NULL;
     }
 
+    // XXX: TODO: only run while (ctx->utp_sockets->GetCount() && ctx->rst_info.GetCount())
     timer_repeating(n, 500, ^{
         utp_check_timeouts(n->utp);
     });
