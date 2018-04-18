@@ -1414,8 +1414,9 @@ void connect_error_cb(evhttp_request_error error, void *arg)
         case EVREQ_HTTP_EOF: connect_send_error(c, 502, "Bad Gateway (EOF)"); break;
         case EVREQ_HTTP_INVALID_HEADER: connect_send_error(c, 502, "Bad Gateway (header)"); break;
         case EVREQ_HTTP_BUFFER_ERROR: connect_send_error(c, 502, "Bad Gateway (buffer)"); break;
-        case EVREQ_HTTP_REQUEST_CANCEL: connect_send_error(c, 499, "Client Closed Request"); break;
         case EVREQ_HTTP_DATA_TOO_LONG: connect_send_error(c, 502, "Bad Gateway (too long)"); break;
+        default:
+        case EVREQ_HTTP_REQUEST_CANCEL: break;
         }
     }
     if (c->server_bev) {
@@ -1424,8 +1425,9 @@ void connect_error_cb(evhttp_request_error error, void *arg)
         case EVREQ_HTTP_EOF: socks_reply(c->server_bev, SOCKS5_REPLY_FAILURE); break;
         case EVREQ_HTTP_INVALID_HEADER: socks_reply(c->server_bev, SOCKS5_REPLY_INVAL); break;
         case EVREQ_HTTP_BUFFER_ERROR: socks_reply(c->server_bev, SOCKS5_REPLY_INVAL); break;
-        case EVREQ_HTTP_REQUEST_CANCEL: socks_reply(c->server_bev, SOCKS5_REPLY_FAILURE); break;
         case EVREQ_HTTP_DATA_TOO_LONG: socks_reply(c->server_bev, SOCKS5_REPLY_INVAL); break;
+        default:
+        case EVREQ_HTTP_REQUEST_CANCEL: break;
         }
     }
     connect_cleanup(c);
