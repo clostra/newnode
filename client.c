@@ -1301,8 +1301,27 @@ void socks_reply(bufferevent *bev, uint8_t resp)
     bufferevent_write(bev, r, sizeof(r));
 }
 
+bool connect_exhausted(connect_req *c)
+{
+    return !(c->direct || c->proxy_req || c->r.connected);
+}
+
+void connect_socks_reply(connect_req *c, uint8_t resp)
+{
+    if (!connect_exhausted(c)) {
+        return;
+    }
+    debug("c:%p %s bev:%p reply:%02x\n", c, __func__, c->server_bev, resp);
+    socks_reply(c->server_bev, resp);
+    c->server_bev = NULL;
+}
+
 void connect_send_error(connect_req *c, int error, const char *reason)
 {
+    if (!connect_exhausted(c)) {
+        return;
+    }
+    debug("c:%p %s req:%p reply:%d %s\n", c, __func__, c->server_req, error, reason);
     if (c->server_req->evcon) {
         evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
     }
@@ -1312,16 +1331,11 @@ void connect_send_error(connect_req *c, int error, const char *reason)
 
 void connect_cleanup(connect_req *c)
 {
-    if (c->direct || c->proxy_req || c->r.connected) {
+    if (!connect_exhausted(c)) {
         return;
     }
-    if (c->server_req) {
-        connect_send_error(c, 502, "Bad Gateway (default)");
-    }
-    if (c->server_bev) {
-        socks_reply(c->server_bev, SOCKS5_REPLY_TIMEDOUT);
-        c->server_bev = NULL;
-    }
+    assert(!c->server_req);
+    assert(!c->server_bev);
     if (c->pc) {
         peer_disconnect(c->pc);
         c->pc = NULL;
@@ -1421,11 +1435,11 @@ void connect_error_cb(evhttp_request_error error, void *arg)
     }
     if (c->server_bev) {
         switch (error) {
-        case EVREQ_HTTP_TIMEOUT: socks_reply(c->server_bev, SOCKS5_REPLY_TIMEDOUT); break;
-        case EVREQ_HTTP_EOF: socks_reply(c->server_bev, SOCKS5_REPLY_FAILURE); break;
-        case EVREQ_HTTP_INVALID_HEADER: socks_reply(c->server_bev, SOCKS5_REPLY_INVAL); break;
-        case EVREQ_HTTP_BUFFER_ERROR: socks_reply(c->server_bev, SOCKS5_REPLY_INVAL); break;
-        case EVREQ_HTTP_DATA_TOO_LONG: socks_reply(c->server_bev, SOCKS5_REPLY_INVAL); break;
+        case EVREQ_HTTP_TIMEOUT: connect_socks_reply(c, SOCKS5_REPLY_TIMEDOUT); break;
+        case EVREQ_HTTP_EOF: connect_socks_reply(c, SOCKS5_REPLY_FAILURE); break;
+        case EVREQ_HTTP_INVALID_HEADER: connect_socks_reply(c, SOCKS5_REPLY_INVAL); break;
+        case EVREQ_HTTP_BUFFER_ERROR: connect_socks_reply(c, SOCKS5_REPLY_INVAL); break;
+        case EVREQ_HTTP_DATA_TOO_LONG: connect_socks_reply(c, SOCKS5_REPLY_INVAL); break;
         default:
         case EVREQ_HTTP_REQUEST_CANCEL: break;
         }
@@ -1436,17 +1450,18 @@ void connect_error_cb(evhttp_request_error error, void *arg)
 void connect_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p connect_event_cb events:0x%x bev:%p req:%s\n", c, events, bev, evhttp_request_get_uri(c->server_req));
+    debug("c:%p connect_event_cb events:0x%x bev:%p req:%s\n", c, events, bev,
+        c->server_req ? evhttp_request_get_uri(c->server_req) : "(null)");
 
     if (events & BEV_EVENT_TIMEOUT) {
-        connect_send_error(c, 504, "Gateway Timeout");
         bufferevent_free(bev);
         c->direct = NULL;
+        connect_send_error(c, 504, "Gateway Timeout");
         connect_cleanup(c);
     } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
-        connect_send_error(c, 523, "Origin Is Unreachable");
         bufferevent_free(bev);
         c->direct = NULL;
+        connect_send_error(c, 523, "Origin Is Unreachable");
         connect_cleanup(c);
     } else if (events & BEV_EVENT_CONNECTED) {
         connect_proxy_cancel(c);
@@ -1648,7 +1663,8 @@ void load_peers(network *n)
 void socks_connect_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = ctx;
-    debug("c:%p %s events:0x%x bev:%p\n", c, __func__, events, bev);
+    debug("c:%p %s events:0x%x bev:%p req:%s\n", c, __func__, events, bev,
+        c->server_req ? evhttp_request_get_uri(c->server_req) : "(null)");
 
     if (events & BEV_EVENT_TIMEOUT) {
         socks_reply(bev, SOCKS5_REPLY_TIMEDOUT);
