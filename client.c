@@ -1779,6 +1779,7 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
             .sin_port = *(port_t*)&p[4 + sizeof(in_addr_t)]
         };
         evbuffer_drain(input, 4 + sizeof(in_addr_t) + sizeof(port_t));
+        bufferevent_setcb(bev, NULL, NULL, socks_event_cb, ctx);
 
         char host[NI_MAXHOST];
         getnameinfo((sockaddr*)&sin, sizeof(sin), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
@@ -1803,6 +1804,7 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
         char host[NI_MAXHOST];
         snprintf(host, sizeof(host), "%.*s", p[4], &p[4 + sizeof(uint8_t)]);
         evbuffer_drain(input, 4 + sizeof(uint8_t) + p[4] + sizeof(port_t));
+        bufferevent_setcb(bev, NULL, NULL, socks_event_cb, ctx);
 
         bufferevent *b = socks_connect_request(n, bev, host, port);
         if (b) {
