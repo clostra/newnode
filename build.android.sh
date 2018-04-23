@@ -41,7 +41,7 @@ function build_android {
     cd libutp
     if [ ! -f $TRIPLE/libutp.a ]; then
         make clean
-        CPPFLAGS=$ABI_FLAGS make -j3 libutp.a
+        OPT=-O0 CPPFLAGS="$ABI_FLAGS -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" make -j3 libutp.a
         mkdir $TRIPLE
         mv libutp.a $TRIPLE
     fi
@@ -84,7 +84,7 @@ function build_android {
     # -fuse-ld=gold
     OUT=android/src/main/jniLibs/$ABI
     test -d $OUT || mkdir -p $OUT
-    cp libnewnode.so $OUT
+    mv libnewnode.so $OUT
     ls -ld $OUT/*
 }
 
