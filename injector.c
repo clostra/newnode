@@ -216,10 +216,14 @@ void error_cb(evhttp_request_error error, void *arg)
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p error_cb %d\n", p, error);
     if (p->server_req) {
-        if (error == EVREQ_HTTP_TIMEOUT) {
-            evhttp_send_error(p->server_req, 504, "Gateway Timeout");
-        } else {
-            evhttp_send_error(p->server_req, 502, "Bad Gateway");
+        switch (error) {
+        case EVREQ_HTTP_TIMEOUT: evhttp_send_error(p->server_req, 504, "Gateway Timeout"); break;
+        case EVREQ_HTTP_EOF: evhttp_send_error(p->server_req, 502, "Bad Gateway (EOF)"); break;
+        case EVREQ_HTTP_INVALID_HEADER: evhttp_send_error(p->server_req, 502, "Bad Gateway (header)"); break;
+        case EVREQ_HTTP_BUFFER_ERROR: evhttp_send_error(p->server_req, 502, "Bad Gateway (buffer)"); break;
+        case EVREQ_HTTP_DATA_TOO_LONG: evhttp_send_error(p->server_req, 502, "Bad Gateway (too long)"); break;
+        default:
+        case EVREQ_HTTP_REQUEST_CANCEL: break;
         }
         p->server_req = NULL;
     }
