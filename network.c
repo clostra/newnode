@@ -138,6 +138,16 @@ void bufferevent_free_checked(bufferevent *bev)
     bufferevent_free(bev);
 }
 
+int bufferevent_get_error(bufferevent *bev)
+{
+    int dns_err = bufferevent_socket_get_dns_error(bev);
+    int err = evutil_socket_geterror(bufferevent_getfd(bev));
+    if (dns_err) {
+        err = EHOSTUNREACH;
+    }
+    return err;
+}
+
 void libevent_log_cb(int severity, const char *msg)
 {
     if (severity > EVENT_LOG_DEBUG || o_debug > 1) {

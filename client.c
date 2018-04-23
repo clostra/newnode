@@ -1293,6 +1293,7 @@ typedef struct {
     pending_request r;
     peer_connection *pc;
     network *n;
+    int attempts;
 } connect_req;
 
 void free_write_cb(bufferevent *bev, void *ctx)
@@ -1311,6 +1312,7 @@ void socks_reply(bufferevent *bev, uint8_t resp)
 
 bool connect_exhausted(connect_req *c)
 {
+    debug("%s direct:%p proxy_req:%p on_connect:%p\n", __func__, c->direct, c->proxy_req, c->r.on_connect);
     return !(c->direct || c->proxy_req || c->r.on_connect);
 }
 
@@ -1358,7 +1360,7 @@ void connected(connect_req *c, bufferevent *other)
     if (c->server_req) {
         evhttp_connection *evcon = c->server_req->evcon;
         bev = evhttp_connection_detach_bufferevent(evcon);
-        debug("c:%p detach from server evcon:%p bev:%p\n", c, evcon, bev);
+        debug("c:%p detach from server r:%p evcon:%p bev:%p\n", c, c->server_req, evcon, bev);
         bufferevent_setcb(bev, NULL, NULL, NULL, NULL);
         evhttp_connection_set_closecb(evcon, NULL, NULL);
         c->server_req = NULL;
@@ -1403,6 +1405,10 @@ void connect_done_cb(evhttp_request *req, void *arg)
         return;
     }
     c->proxy_req = NULL;
+    if (c->server_req || c->server_bev) {
+        assert(c->direct);
+        return;
+    }
     connect_cleanup(c);
 }
 
@@ -1410,8 +1416,11 @@ void connect_peer(connect_req *c, bool injector_preference);
 
 void connect_invalid_reply(connect_req *c)
 {
-    debug("c:%p %s\n", c, __func__);
-    connect_peer(c, true);
+    c->attempts++;
+    debug("c:%p %s attempts:%d\n", c, __func__, c->attempts);
+    if (c->attempts < 10) {
+        connect_peer(c, true);
+    }
 }
 
 int connect_header_cb(evhttp_request *req, void *arg)
@@ -1433,9 +1442,37 @@ int connect_header_cb(evhttp_request *req, void *arg)
             crypto_generichash_final(&content_state, content_hash, sizeof(content_hash));
 
             if (verify_signature(content_hash, sign)) {
-                evhttp_send_reply(c->server_req, req->response_code, req->response_code_line, NULL);
-                evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
-                c->server_req = NULL;
+                debug("c:%p signature good!\n", c);
+
+                c->pc->peer->last_verified = time(NULL);
+                save_peers(c->n);
+                if (peer_is_injector(c->pc->peer)) {
+                    injector_reachable = time(NULL);
+                    update_injector_proxy_swarm(c->n);
+                }
+
+                c->proxy_req = NULL;
+
+                if (c->server_req) {
+                    if (connect_exhausted(c)) {
+                        if (!evcon_is_local_browser(c->server_req->evcon)) {
+                            copy_header(req, c->server_req, "Content-Location");
+                            copy_header(req, c->server_req, "X-Sign");
+                        }
+                        evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
+                        evhttp_send_reply(c->server_req, req->response_code, req->response_code_line, NULL);
+                        c->server_req = NULL;
+                    }
+                }
+                if (c->server_bev) {
+                    switch (req->response_code) {
+                    case 504: connect_socks_reply(c, SOCKS5_REPLY_TIMEDOUT); break;
+                    case 523: connect_socks_reply(c, SOCKS5_REPLY_HOSTUNREACH); break;
+                    case 521: connect_socks_reply(c, SOCKS5_REPLY_CONNREFUSED); break;
+                    default:
+                    case 0: connect_socks_reply(c, SOCKS5_REPLY_FAILURE); break;
+                    }
+                }
                 return 0;
             }
             fprintf(stderr, "signature failed!\n");
@@ -1448,7 +1485,7 @@ int connect_header_cb(evhttp_request *req, void *arg)
 
     connect_direct_cancel(c);
 
-    debug("c:%p detach from client evcon:%p\n", c, req->evcon);
+    debug("c:%p detach from client r:%p evcon:%p\n", c, req, req->evcon);
     connected(c, evhttp_connection_detach_bufferevent(req->evcon));
     return -1;
 }
@@ -1458,7 +1495,7 @@ void connect_error_cb(evhttp_request_error error, void *arg)
     connect_req *c = (connect_req *)arg;
     debug("c:%p connect_error_cb req:%p %d\n", c, c->proxy_req, error);
     c->proxy_req = NULL;
-    if (error != EVREQ_HTTP_REQUEST_CANCEL) {
+    if (error != EVREQ_HTTP_REQUEST_CANCEL && (c->server_req || c->server_bev)) {
         connect_invalid_reply(c);
     }
     if (c->server_req) {
@@ -1468,19 +1505,15 @@ void connect_error_cb(evhttp_request_error error, void *arg)
         case EVREQ_HTTP_INVALID_HEADER: connect_send_error(c, 502, "Bad Gateway (header)"); break;
         case EVREQ_HTTP_BUFFER_ERROR: connect_send_error(c, 502, "Bad Gateway (buffer)"); break;
         case EVREQ_HTTP_DATA_TOO_LONG: connect_send_error(c, 502, "Bad Gateway (too long)"); break;
-        default:
         case EVREQ_HTTP_REQUEST_CANCEL: break;
         }
     }
     if (c->server_bev) {
         switch (error) {
         case EVREQ_HTTP_TIMEOUT: connect_socks_reply(c, SOCKS5_REPLY_TIMEDOUT); break;
-        case EVREQ_HTTP_EOF: connect_socks_reply(c, SOCKS5_REPLY_FAILURE); break;
-        case EVREQ_HTTP_INVALID_HEADER: connect_socks_reply(c, SOCKS5_REPLY_INVAL); break;
-        case EVREQ_HTTP_BUFFER_ERROR: connect_socks_reply(c, SOCKS5_REPLY_INVAL); break;
-        case EVREQ_HTTP_DATA_TOO_LONG: connect_socks_reply(c, SOCKS5_REPLY_INVAL); break;
-        default:
         case EVREQ_HTTP_REQUEST_CANCEL: break;
+        default:
+        case EVREQ_HTTP_EOF: connect_socks_reply(c, SOCKS5_REPLY_FAILURE); break;
         }
     }
     connect_cleanup(c);
@@ -1498,9 +1531,19 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
         connect_send_error(c, 504, "Gateway Timeout");
         connect_cleanup(c);
     } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+        int err = bufferevent_get_error(bev);
         bufferevent_free(bev);
         c->direct = NULL;
-        connect_send_error(c, 523, "Origin Is Unreachable");
+        debug("err:%d\n", err);
+        int code = 502;
+        const char *reason = "Bad Gateway";
+        switch (err) {
+        case ENETUNREACH:
+        case EHOSTUNREACH: code = 523; reason = "Origin Is Unreachable"; break;
+        case ECONNREFUSED: code = 521; reason = "Web Server Is Down"; break;
+        case ETIMEDOUT: code = 504; reason = "Gateway Timeout"; break;
+        }
+        connect_send_error(c, code, reason);
         connect_cleanup(c);
     } else if (events & BEV_EVENT_CONNECTED) {
         connect_proxy_cancel(c);
@@ -1724,7 +1767,7 @@ void socks_connect_event_cb(bufferevent *bev, short events, void *ctx)
         c->direct = NULL;
         connect_cleanup(c);
     } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
-        int err = EVUTIL_SOCKET_ERROR();
+        int err = bufferevent_get_error(bev);
         switch (err) {
         case ENETUNREACH: socks_reply(bev, SOCKS5_REPLY_NETUNREACH); break;
         case EHOSTUNREACH: socks_reply(bev, SOCKS5_REPLY_HOSTUNREACH); break;

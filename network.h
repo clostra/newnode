@@ -69,6 +69,7 @@ struct network {
 
 void evbuffer_clear(evbuffer *buf);
 void bufferevent_free_checked(bufferevent *bev);
+int bufferevent_get_error(bufferevent *bev);
 port_t sockaddr_get_port(const sockaddr* sa);
 void sockaddr_set_port(sockaddr* sa, port_t port);
 
