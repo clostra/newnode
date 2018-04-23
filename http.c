@@ -138,6 +138,14 @@ void hash_headers(evkeyvalq *in, crypto_generichash_state *content_state)
     }
 }
 
+void hash_request(evhttp_request *req, evkeyvalq *hdrs, crypto_generichash_state *content_state)
+{
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d\r\n", req->response_code);
+    crypto_generichash_update(content_state, (const uint8_t *)buf, strlen(buf));
+    hash_headers(hdrs, content_state);
+}
+
 evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
 {
     const char *scheme = evhttp_uri_get_scheme(uri);

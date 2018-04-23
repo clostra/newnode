@@ -183,6 +183,7 @@ int header_cb(evhttp_request *req, void *arg)
     overwrite_header(p->server_req, "Content-Location", evhttp_request_get_uri(p->server_req));
 
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
+    // TODO: switch to hash_request
     hash_headers(p->server_req->output_headers, &p->content_state);
 
     // unfortunately, responses with no body also can't use chunking, so we can't send trailers
@@ -272,10 +273,28 @@ void connect_cleanup(connect_req *c, bool timeout)
         if (c->server_req->evcon) {
             evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
         }
+        char buf[2048];
+        snprintf(buf, sizeof(buf), "https://%s", evhttp_request_get_uri(c->server_req));
+        overwrite_header(c->server_req, "Content-Location", buf);
+
+        crypto_generichash_state content_state;
+        crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
+        hash_request(c->server_req, c->server_req->output_headers, &content_state);
+
+        uint8_t content_hash[crypto_generichash_BYTES];
+        crypto_generichash_final(&content_state, content_hash, sizeof(content_hash));
+        content_sig sig;
+        content_sign(&sig, content_hash);
+        size_t out_len;
+        char *hex_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
+        debug("returning sig for %s %s\n", evhttp_request_get_uri(c->server_req), hex_sig);
+        overwrite_header(c->server_req, "X-Sign", hex_sig);
+        free(hex_sig);
+
         if (timeout) {
-            evhttp_send_error(c->server_req, 504, "Gateway Timeout");
+            evhttp_send_reply(c->server_req, 504, "Gateway Timeout", NULL);
         } else {
-            evhttp_send_error(c->server_req, 502, "Bad Gateway");
+            evhttp_send_reply(c->server_req, 502, "Bad Gateway", NULL);
         }
     }
     free(c);
@@ -387,6 +406,7 @@ void http_request_cb(evhttp_request *req, void *arg)
         evhttp_add_header(req->output_headers, "Content-Type", "message/http");
         crypto_generichash_state content_state;
         crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
+        // TODO: switch to hash_request
         hash_headers(req->output_headers, &content_state);
         unsigned char *out_body = evbuffer_pullup(output, evbuffer_get_length(output));
         crypto_generichash_update(&content_state, out_body, evbuffer_get_length(output));

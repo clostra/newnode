@@ -33,6 +33,7 @@ void overwrite_header(evhttp_request *to, const char *key, const char *value);
 void copy_header(evhttp_request *from, evhttp_request *to, const char *key);
 void copy_all_headers(evhttp_request *from, evhttp_request *to);
 void hash_headers(evkeyvalq *in, crypto_generichash_state *content_state);
+void hash_request(evhttp_request *req, evkeyvalq *hdrs, crypto_generichash_state *content_state);
 
 evhttp_connection *make_connection(network *n, const evhttp_uri *uri);
 void return_connection(evhttp_connection *evcon);
