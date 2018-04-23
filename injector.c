@@ -264,7 +264,7 @@ typedef struct {
     bufferevent *direct;
 } connect_req;
 
-void connect_cleanup(connect_req *c, bool timeout)
+void connect_cleanup(connect_req *c, int err)
 {
     if (c->direct) {
         return;
@@ -277,11 +277,17 @@ void connect_cleanup(connect_req *c, bool timeout)
         snprintf(buf, sizeof(buf), "https://%s", evhttp_request_get_uri(c->server_req));
         overwrite_header(c->server_req, "Content-Location", buf);
 
-        if (timeout) {
-            c->server_req->response_code = 504;
-        } else {
-            c->server_req->response_code = 502;
+        int code = 502;
+        const char *reason = "Bad Gateway";
+        switch (err) {
+        case ENETUNREACH:
+        case EHOSTUNREACH: code = 523; reason = "Origin Is Unreachable"; break;
+        case ECONNREFUSED: code = 521; reason = "Web Server Is Down"; break;
+        case ETIMEDOUT: code = 504; reason = "Gateway Timeout"; break;
         }
+
+        // set the code early so we can hash it
+        c->server_req->response_code = code;
 
         crypto_generichash_state content_state;
         crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
@@ -297,11 +303,7 @@ void connect_cleanup(connect_req *c, bool timeout)
         overwrite_header(c->server_req, "X-Sign", hex_sig);
         free(hex_sig);
 
-        if (timeout) {
-            evhttp_send_reply(c->server_req, 504, "Gateway Timeout", NULL);
-        } else {
-            evhttp_send_reply(c->server_req, 502, "Bad Gateway", NULL);
-        }
+        evhttp_send_reply(c->server_req, code, reason, NULL);
     }
     free(c);
 }
@@ -311,7 +313,7 @@ void connected(connect_req *c, bufferevent *other)
     bufferevent *bev = evhttp_connection_detach_bufferevent(c->server_req->evcon);
     evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
     c->server_req = NULL;
-    connect_cleanup(c, false);
+    connect_cleanup(c, 0);
     evbuffer_add_printf(bufferevent_get_output(bev), "HTTP/1.0 200 Connection established\r\n\r\n");
     bev_splice(bev, other);
     bufferevent_enable(bev, EV_READ|EV_WRITE);
@@ -322,10 +324,12 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
     connect_req *c = (connect_req *)ctx;
     debug("c:%p connect_event_cb events:0x%x bev:%p req:%s\n", c, events, bev, evhttp_request_get_uri(c->server_req));
 
-    if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
+    if (events & BEV_EVENT_TIMEOUT) {
+        connect_cleanup(c, ETIMEDOUT);
+    } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
         bufferevent_free(bev);
         c->direct = NULL;
-        connect_cleanup(c, events & BEV_EVENT_TIMEOUT);
+        connect_cleanup(c, EVUTIL_SOCKET_ERROR());
     } else if (events & BEV_EVENT_CONNECTED) {
         bufferevent_set_timeouts(c->direct, NULL, NULL);
         c->direct = NULL;
@@ -343,7 +347,7 @@ void close_cb(evhttp_connection *evcon, void *ctx)
         bufferevent_free(c->direct);
         c->direct = NULL;
     }
-    connect_cleanup(c, false);
+    connect_cleanup(c, 0);
 }
 
 void connect_request(network *n, evhttp_request *req)
