@@ -196,7 +196,7 @@ int header_cb(evhttp_request *req, void *arg)
         debug("returning sig for %s %s\n", evhttp_request_get_uri(req), hex_sig);
         overwrite_header(p->server_req, "X-Sign", hex_sig);
         free(hex_sig);
-        evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, evbuffer_new());
+        evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, NULL);
         p->server_req = NULL;
         return 0;
     }
