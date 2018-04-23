@@ -75,7 +75,7 @@ typedef struct {
 
 typedef void (^peer_connected)(peer_connection *p);
 typedef struct pending_request {
-    peer_connected connected;
+    peer_connected on_connect;
     TAILQ_ENTRY(pending_request) next;
 } pending_request;
 
@@ -157,7 +157,15 @@ bool peer_is_injector(peer *p)
     return false;
 }
 
-void connect_more_injectors(network *n);
+void connect_more_injectors(network *n, bool injector_preference);
+
+void pending_request_complete(pending_request *r, peer_connection *pc)
+{
+    peer_connected on_connect = r->on_connect;
+    r->on_connect = NULL;
+    on_connect(pc);
+    Block_release(on_connect);
+}
 
 void on_utp_connect(network *n, peer_connection *pc)
 {
@@ -187,11 +195,9 @@ void on_utp_connect(network *n, peer_connection *pc)
         }
         assert(found);
         debug("using new pc:%p con:%p for request:%p\n", pc, pc->evcon, r);
-        r->connected(pc);
-        Block_release(r->connected);
-        r->connected = NULL;
+        pending_request_complete(r, pc);
         if (!TAILQ_EMPTY(&pending_requests)) {
-            connect_more_injectors(n);
+            connect_more_injectors(n, false);
         }
     }
 }
@@ -217,7 +223,7 @@ void bev_event_cb(bufferevent *bufev, short events, void *arg)
         free(pc);
         pending_request *r = TAILQ_FIRST(&pending_requests);
         if (r && time(NULL) - last_request < 30) {
-            connect_more_injectors(pc->n);
+            connect_more_injectors(pc->n, false);
         }
     } else if (events & BEV_EVENT_CONNECTED) {
         on_utp_connect(pc->n, pc);
@@ -373,12 +379,12 @@ void update_injector_proxy_swarm(network *n)
 
 void abort_connect(pending_request *r)
 {
-    if (!r->connected) {
+    if (!r->on_connect) {
         return;
     }
     debug("aborting request:%p\n", r);
-    Block_release(r->connected);
-    r->connected = NULL;
+    Block_release(r->on_connect);
+    r->on_connect = NULL;
     TAILQ_REMOVE(&pending_requests, r, next);
     pending_requests_len--;
     debug("abort_connect request:%p (outstanding:%zu)\n", r, pending_requests_len);
@@ -424,7 +430,7 @@ void proxy_send_error(proxy_request *p, int error, const char *reason)
 
 void proxy_request_cleanup(proxy_request *p)
 {
-    if (p->dont_free || p->proxy_req || p->direct_req || p->r.connected) {
+    if (p->dont_free || p->proxy_req || p->direct_req || p->r.on_connect) {
         return;
     }
     if (p->server_req) {
@@ -451,9 +457,7 @@ void peer_reuse(network *n, peer_connection *pc)
         TAILQ_REMOVE(&pending_requests, r, next);
         pending_requests_len--;
         debug("reusing pc:%p con:%p for request:%p (outstanding:%zu)\n", pc, pc->evcon, r, pending_requests_len);
-        r->connected(pc);
-        Block_release(r->connected);
-        r->connected = NULL;
+        pending_request_complete(r, pc);
         return;
     }
     // add to the pool if there's a slot
@@ -1040,8 +1044,9 @@ peer_connection* start_peer_connection(network *n, peer_array *peers)
     return evhttp_utp_connect(n, p);
 }
 
-void queue_request(network *n, pending_request *r, peer_connected connected)
+void queue_request(network *n, pending_request *r, peer_connected on_connect)
 {
+    debug("%s r:%p pending:%zu first:%p\n", __func__, r, pending_requests_len, TAILQ_FIRST(&pending_requests));
     bool any_connected = false;
     for (uint i = 0; i < lenof(peer_connections); i++) {
         if (peer_connections[i]) {
@@ -1067,25 +1072,27 @@ void queue_request(network *n, pending_request *r, peer_connected connected)
         if (pc && pc->evcon) {
             peer_connections[i] = NULL;
             debug("using pc:%p evcon:%p for request:%p\n", pc, pc->evcon, r);
-            connected(pc);
+            on_connect(pc);
             return;
         }
     }
-    r->connected = Block_copy(connected);
+    assert(!r->on_connect);
+    r->on_connect = Block_copy(on_connect);
     TAILQ_INSERT_TAIL(&pending_requests, r, next);
     pending_requests_len++;
     last_request = time(NULL);
     debug("queued request:%p (outstanding:%zu)\n", r, pending_requests_len);
 }
 
-void connect_more_injectors(network *n)
+void connect_more_injectors(network *n, bool injector_preference)
 {
+    debug("%s injector_pref:%d\n", __func__, injector_preference);
     for (uint i = 0; i < lenof(peer_connections); i++) {
         if (peer_connections[i]) {
             continue;
         }
         peer_array *o[2] = {injectors, injector_proxies};
-        if (random() & 1) {
+        if (!injector_preference && random() & 1) {
             o[0] = injector_proxies;
             o[1] = injectors;
         }
@@ -1258,7 +1265,7 @@ void submit_trace_request(network *n)
 {
     trace_request *t = alloc(trace_request);
     t->n = n;
-    connect_more_injectors(n);
+    connect_more_injectors(n, true);
     queue_request(n, &t->r, ^(peer_connection *pc) {
         t->pc = pc;
         trace_submit_request_on_con(t, t->pc->evcon);
@@ -1285,6 +1292,7 @@ typedef struct {
     bufferevent *direct;
     pending_request r;
     peer_connection *pc;
+    network *n;
 } connect_req;
 
 void free_write_cb(bufferevent *bev, void *ctx)
@@ -1303,7 +1311,7 @@ void socks_reply(bufferevent *bev, uint8_t resp)
 
 bool connect_exhausted(connect_req *c)
 {
-    return !(c->direct || c->proxy_req || c->r.connected);
+    return !(c->direct || c->proxy_req || c->r.on_connect);
 }
 
 void connect_socks_reply(connect_req *c, uint8_t resp)
@@ -1398,11 +1406,40 @@ void connect_done_cb(evhttp_request *req, void *arg)
     connect_cleanup(c);
 }
 
+void connect_peer(connect_req *c, bool injector_preference);
+
+void connect_invalid_reply(connect_req *c)
+{
+    debug("c:%p %s\n", c, __func__);
+    connect_peer(c, true);
+}
+
 int connect_header_cb(evhttp_request *req, void *arg)
 {
     connect_req *c = (connect_req *)arg;
-    debug("c:%p connect_header_cb %d %s\n", c, req->response_code, req->response_code_line);
+    debug("c:%p connect_header_cb req:%p %d %s\n", c, req, req->response_code, req->response_code_line);
     if (req->response_code != 200) {
+        debug("%s req->response_code:%d\n", __func__, req->response_code);
+
+        const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
+        if (sign) {
+            debug("c:%p verifying sig for %s %s\n", c, evhttp_request_get_uri(req), sign);
+
+            crypto_generichash_state content_state;
+            crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
+            hash_request(req, req->input_headers, &content_state);
+
+            uint8_t content_hash[crypto_generichash_BYTES];
+            crypto_generichash_final(&content_state, content_hash, sizeof(content_hash));
+
+            if (verify_signature(content_hash, sign)) {
+                evhttp_send_reply(c->server_req, req->response_code, req->response_code_line, NULL);
+                evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
+                c->server_req = NULL;
+                return 0;
+            }
+            fprintf(stderr, "signature failed!\n");
+        }
         return -1;
     }
 
@@ -1419,9 +1456,11 @@ int connect_header_cb(evhttp_request *req, void *arg)
 void connect_error_cb(evhttp_request_error error, void *arg)
 {
     connect_req *c = (connect_req *)arg;
-    debug("c:%p connect_error_cb %d\n", c, error);
+    debug("c:%p connect_error_cb req:%p %d\n", c, c->proxy_req, error);
     c->proxy_req = NULL;
-    assert(!c->r.connected);
+    if (error != EVREQ_HTTP_REQUEST_CANCEL) {
+        connect_invalid_reply(c);
+    }
     if (c->server_req) {
         switch (error) {
         case EVREQ_HTTP_TIMEOUT: connect_send_error(c, 504, "Gateway Timeout"); break;
@@ -1481,6 +1520,28 @@ void connect_evcon_close_cb(evhttp_connection *evcon, void *ctx)
     connect_cleanup(c);
 }
 
+void connect_peer(connect_req *c, bool injector_preference)
+{
+    connect_more_injectors(c->n, injector_preference);
+
+    assert(!c->r.on_connect);
+    assert(!c->proxy_req);
+    queue_request(c->n, &c->r, ^(peer_connection *pc) {
+        debug("c:%p %s on_connect\n", c, __func__);
+        assert(!c->r.on_connect);
+        c->pc = pc;
+        assert(!c->proxy_req);
+        c->proxy_req = evhttp_request_new(connect_done_cb, c);
+        debug("c:%p %s made req:%p\n", c, __func__, c->proxy_req);
+
+        append_via(c->server_req, c->proxy_req);
+
+        evhttp_request_set_header_cb(c->proxy_req, connect_header_cb);
+        evhttp_request_set_error_cb(c->proxy_req, connect_error_cb);
+        evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, evhttp_request_get_uri(c->server_req));
+    });
+}
+
 void connect_request(network *n, evhttp_request *req)
 {
     char buf[2048];
@@ -1502,20 +1563,12 @@ void connect_request(network *n, evhttp_request *req)
     }
 
     connect_req *c = alloc(connect_req);
+    c->n = n;
     c->server_req = req;
 
     evhttp_connection_set_closecb(c->server_req->evcon, connect_evcon_close_cb, c);
 
-    queue_request(n, &c->r, ^(peer_connection *pc) {
-        c->pc = pc;
-        c->proxy_req = evhttp_request_new(connect_done_cb, c);
-
-        append_via(c->server_req, c->proxy_req);
-
-        evhttp_request_set_header_cb(c->proxy_req, connect_header_cb);
-        evhttp_request_set_error_cb(c->proxy_req, connect_error_cb);
-        evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, evhttp_request_get_uri(c->server_req));
-    });
+    connect_peer(c, false);
 
 #if !NO_DIRECT
     c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
@@ -1538,7 +1591,7 @@ void http_request_cb(evhttp_request *req, void *arg)
     debug("req:%p evcon:%p %s:%u received %s %s\n", req, req->evcon, e_host, e_port,
         evhttp_method(req->type), evhttp_request_get_uri(req));
 
-    connect_more_injectors(n);
+    connect_more_injectors(n, false);
 
     const char *via = evhttp_find_header(req->input_headers, "Via");
     if (via && strstr(via, via_tag)) {
@@ -1704,6 +1757,7 @@ void socks_event_cb(bufferevent *bev, short events, void *ctx)
 
 bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *host, port_t port)
 {
+    // proxied CONNECT requests to port 80 will be rejected, but direct connections might work
     if (port != 443 && port != 80) {
         debug("SOCK5 port not allowed %s:%u\n", host, port);
         socks_reply(bev, SOCKS5_REPLY_NOT_ALLOWED);
@@ -1717,8 +1771,10 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
 
     bufferevent_setcb(bev, NULL, NULL, socks_connect_req_event_cb, c);
 
+    assert(!c->r.on_connect);
     queue_request(n, &c->r, ^(peer_connection *pc) {
         debug("%s queue_request_complete bev:%p direct:%p\n", __func__, bev, c->direct);
+        assert(!c->r.on_connect);
         c->pc = pc;
         c->proxy_req = evhttp_request_new(connect_done_cb, c);
 
