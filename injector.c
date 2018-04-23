@@ -277,6 +277,12 @@ void connect_cleanup(connect_req *c, bool timeout)
         snprintf(buf, sizeof(buf), "https://%s", evhttp_request_get_uri(c->server_req));
         overwrite_header(c->server_req, "Content-Location", buf);
 
+        if (timeout) {
+            c->server_req->response_code = 504;
+        } else {
+            c->server_req->response_code = 502;
+        }
+
         crypto_generichash_state content_state;
         crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
         hash_request(c->server_req, c->server_req->output_headers, &content_state);
