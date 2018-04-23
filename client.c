@@ -846,6 +846,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
     debug("p:%p (%.2fms) verifying sig for %s %s\n", p, pdelta(p), evhttp_request_get_uri(req), sign);
     if (!verify_signature(p->content_hash, sign)) {
         fprintf(stderr, "signature failed!\n");
+        p->pc->peer->last_verified = 0;
         proxy_send_error(p, 502, "Bad Gateway Signature");
         p->proxy_req = NULL;
         proxy_request_cleanup(p);
@@ -1226,6 +1227,8 @@ void trace_request_done_cb(evhttp_request *req, void *arg)
                 }
                 peer_reuse(t->n, t->pc);
                 t->pc = NULL;
+            } else {
+                t->pc->peer->last_verified = 0;
             }
         }
     }
@@ -1287,6 +1290,8 @@ typedef struct {
     evhttp_request *server_req;
     // SOCKS5 request
     bufferevent *server_bev;
+    char *host;
+    port_t port;
 
     evhttp_request *proxy_req;
     bufferevent *direct;
@@ -1350,6 +1355,7 @@ void connect_cleanup(connect_req *c)
         peer_disconnect(c->pc);
         c->pc = NULL;
     }
+    free(c->host);
     free(c);
 }
 
@@ -1476,6 +1482,7 @@ int connect_header_cb(evhttp_request *req, void *arg)
                 return 0;
             }
             fprintf(stderr, "signature failed!\n");
+            c->pc->peer->last_verified = 0;
         }
         return -1;
     }
@@ -1581,7 +1588,14 @@ void connect_peer(connect_req *c, bool injector_preference)
 
         evhttp_request_set_header_cb(c->proxy_req, connect_header_cb);
         evhttp_request_set_error_cb(c->proxy_req, connect_error_cb);
-        evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, evhttp_request_get_uri(c->server_req));
+        if (c->server_req) {
+            evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, evhttp_request_get_uri(c->server_req));
+        } else {
+            assert(c->server_bev);
+            char authority[1024];
+            snprintf(authority, sizeof(authority), "%s:%u", c->host, c->port);
+            evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, authority);
+        }
     });
 }
 
@@ -1812,24 +1826,12 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
     connect_req *c = alloc(connect_req);
     c->n = n;
     c->server_bev = bev;
+    c->host = strdup(host);
+    c->port = port;
 
     bufferevent_setcb(bev, NULL, NULL, socks_connect_req_event_cb, c);
 
-    assert(!c->r.on_connect);
-    queue_request(n, &c->r, ^(peer_connection *pc) {
-        debug("%s queue_request_complete bev:%p direct:%p\n", __func__, bev, c->direct);
-        assert(!c->r.on_connect);
-        c->pc = pc;
-        c->proxy_req = evhttp_request_new(connect_done_cb, c);
-
-        append_via(NULL, c->proxy_req);
-
-        evhttp_request_set_header_cb(c->proxy_req, connect_header_cb);
-        evhttp_request_set_error_cb(c->proxy_req, connect_error_cb);
-        char authority[1024];
-        snprintf(authority, sizeof(authority), "%s:%u", host, port);
-        evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, authority);
-    });
+    connect_peer(c, false);
 
 #if !NO_DIRECT
     c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
