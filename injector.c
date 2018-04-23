@@ -327,9 +327,10 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
     if (events & BEV_EVENT_TIMEOUT) {
         connect_cleanup(c, ETIMEDOUT);
     } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
+        int err = bufferevent_get_error(bev);
         bufferevent_free(bev);
         c->direct = NULL;
-        connect_cleanup(c, EVUTIL_SOCKET_ERROR());
+        connect_cleanup(c, err);
     } else if (events & BEV_EVENT_CONNECTED) {
         bufferevent_set_timeouts(c->direct, NULL, NULL);
         c->direct = NULL;
