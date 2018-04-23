@@ -1810,6 +1810,7 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
     debug("%s bev:%p SOCKS5 CONNECT %s:%u\n", __func__, bev, host, port);
 
     connect_req *c = alloc(connect_req);
+    c->n = n;
     c->server_bev = bev;
 
     bufferevent_setcb(bev, NULL, NULL, socks_connect_req_event_cb, c);
