@@ -24,7 +24,7 @@ import java.util.zip.GZIPInputStream;
 
 
 public class NewNode {
-    static String VERSION = "v" + BuildConfig.VERSION_NAME;
+    static String VERSION = BuildConfig.VERSION_NAME;
 
     static {
         Application app = app();
@@ -33,7 +33,7 @@ public class NewNode {
         for (int i = files.length - 1; i >= 0; i--) {
             File f = files[i];
             String name = f.getName();
-            Pattern p = Pattern.compile("^libnewnode.(v[\\.0-9]*).so$");
+            Pattern p = Pattern.compile("^libnewnode.v?([\\.0-9]*).so$");
             Matcher m = p.matcher(name);
             if (!m.find()) {
                 continue;
@@ -49,7 +49,7 @@ public class NewNode {
             } catch (UnsatisfiedLinkError e) {
             }
         }
-        if (VERSION.equals("v" + BuildConfig.VERSION_NAME)) {
+        if (VERSION.equals(BuildConfig.VERSION_NAME)) {
             try {
                 System.loadLibrary("newnode");
             } catch (UnsatisfiedLinkError e) {
@@ -81,7 +81,7 @@ public class NewNode {
         in.close();
         JSONArray a = new JSONArray(b.toString());
         JSONObject release = a.getJSONObject(0);
-        String version = release.getString("name");
+        String version = release.getString("name").replaceAll("^v", "");
         if (VERSION.compareTo(version) >= 0) {
             return;
         }
@@ -130,7 +130,7 @@ public class NewNode {
         if (!started) {
 
             Configuration config = new Configuration(BuildConfig.BUGSNAG_API_KEY);
-            config.setAppVersion(BuildConfig.VERSION_NAME);
+            config.setAppVersion(VERSION);
             config.setPersistUserBetweenSessions(true);
             config.setAutoCaptureSessions(true);
             Bugsnag.init(app(), config);
