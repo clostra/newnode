@@ -23,8 +23,13 @@ allprojects {
 }
 
 apply plugin: 'com.android.library'
+apply plugin: 'com.bugsnag.android.gradle'
 
-def bugsnagApiKey = "141ea25aa72c276c49d3a154b82f2b1f"
+bugsnag {
+    apiKey "141ea25aa72c276c49d3a154b82f2b1f"
+    ndk true
+    sharedObjectPath android.sourceSets.main.jniLibs.source[0]
+}
 
 android {
     compileSdkVersion = 27
@@ -40,7 +45,7 @@ android {
             }
         }
         versionCode versionName.replace(".", "").toInteger()
-        buildConfigField("String", "BUGSNAG_API_KEY", "\"${bugsnagApiKey}\"")
+        buildConfigField("String", "BUGSNAG_API_KEY", "\"${project.bugsnag.apiKey}\"")
     }
     buildTypes {
         release {
@@ -56,10 +61,3 @@ dependencies {
 
 apply from: 'maven.gradle'
 apply from: 'bintray.gradle'
-apply plugin: 'com.bugsnag.android.gradle'
-
-bugsnag {
-    apiKey bugsnagApiKey
-    ndk true
-    sharedObjectPath android.sourceSets.main.jniLibs.source[0]
-}
