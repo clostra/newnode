@@ -1,3 +1,4 @@
+#include <string.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -6,6 +7,8 @@
 #include <android/log.h>
 
 #include "network.h"
+#include "constants.h"
+#include "log.h"
 
 
 network* client_init(port_t port);
@@ -48,10 +51,52 @@ void* android_main(void *userdata)
     return NULL;
 }
 
+void set_version_name(JNIEnv* env)
+{
+    jclass cBugsnag = (*env)->FindClass(env, "com/bugsnag/android/Bugsnag");
+    if (!cBugsnag) {
+        (*env)->ExceptionClear(env);
+        return;
+    }
+    jmethodID msetAppVersion = (*env)->GetStaticMethodID(env, cBugsnag, "setAppVersion", "(Ljava/lang/String;)V");
+    if (!msetAppVersion) {
+        (*env)->ExceptionClear(env);
+        return;
+    }
+    jstring version = (*env)->NewStringUTF(env, VERSION);
+    (*env)->CallStaticVoidMethod(env, cBugsnag, msetAppVersion, version);
+    debug("version set: %s\n", VERSION);
+}
+
+void backwards_compat_set_version(JNIEnv* env)
+{
+    jclass cBuildConfig = (*env)->FindClass(env, "com/clostra/newnode/BuildConfig");
+    if (!cBuildConfig) {
+        (*env)->ExceptionClear(env);
+        set_version_name(env);
+    } else {
+        jfieldID fVersionName = (*env)->GetStaticFieldID(env, cBuildConfig, "VERSION_NAME", "Ljava/lang/String;");
+        jstring jVersionName = (*env)->GetStaticObjectField(env, cBuildConfig, fVersionName);
+        if (!jVersionName) {
+            (*env)->ExceptionClear(env);
+            set_version_name(env);
+        } else {
+            const char *cVersionName = (*env)->GetStringUTFChars(env, jVersionName, NULL);
+            if (strcmp(cVersionName, "1.3.7") < 0) {
+                set_version_name(env);
+            }
+            (*env)->ReleaseStringUTFChars(env, jVersionName, cVersionName);
+        }
+    }
+}
+
 JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
 {
     const char* cCacheDir = (*env)->GetStringUTFChars(env, cacheDir, NULL);
     chdir(cCacheDir);
+
+    backwards_compat_set_version(env);
+
     network *n = client_init(8006);
     pthread_t t;
     pthread_create(&t, NULL, android_main, n);
