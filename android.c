@@ -65,6 +65,7 @@ void set_version_name(JNIEnv* env)
     }
     jstring version = (*env)->NewStringUTF(env, VERSION);
     (*env)->CallStaticVoidMethod(env, cBugsnag, msetAppVersion, version);
+    (*env)->ExceptionClear(env);
     debug("version set: %s\n", VERSION);
 }
 
