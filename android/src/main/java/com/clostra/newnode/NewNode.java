@@ -4,8 +4,9 @@ import android.app.Application;
 import android.os.Build;
 import android.util.Log;
 
-import com.bugsnag.android.Bugsnag;
+import com.bugsnag.android.Client;
 import com.bugsnag.android.Configuration;
+import com.bugsnag.android.NativeInterface;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -25,6 +26,7 @@ import java.util.zip.GZIPInputStream;
 
 public class NewNode {
     static String VERSION = BuildConfig.VERSION_NAME;
+    static Client client;
 
     static {
         Application app = app();
@@ -133,7 +135,8 @@ public class NewNode {
             config.setAppVersion(VERSION);
             config.setPersistUserBetweenSessions(true);
             config.setAutoCaptureSessions(true);
-            Bugsnag.init(app(), config);
+            client = new Client(app(), config);
+            NativeInterface.setClient(client);
 
             try {
                 setCacheDir(app().getCacheDir().getAbsolutePath());
