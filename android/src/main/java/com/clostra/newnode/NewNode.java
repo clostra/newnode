@@ -148,10 +148,10 @@ public class NewNode {
         }
 
         if (started) {
-            System.setProperty("http.proxyHost", "127.0.0.1");
-            System.setProperty("https.proxyHost", "127.0.0.1");
-            System.setProperty("http.proxyPort", "8006");
-            System.setProperty("https.proxyPort", "8006");
+            System.setProperty("socksProxyHost", "127.0.0.1");
+            System.setProperty("socksProxyPort", "8007");
+            System.setProperty("proxyHost", "127.0.0.1");
+            System.setProperty("proxyPort", "8006");
         }
 
         if (updateThread == null) {
@@ -173,10 +173,10 @@ public class NewNode {
     }
 
     public static void shutdown() {
-        System.clearProperty("http.proxyHost");
-        System.clearProperty("https.proxyHost");
-        System.clearProperty("http.proxyPort");
-        System.clearProperty("https.proxyPort");
+        System.clearProperty("socksProxyHost");
+        System.clearProperty("socksProxyPort");
+        System.clearProperty("proxyHost");
+        System.clearProperty("proxyPort");
 
         if (updateThread != null) {
             updateThread.interrupt();
