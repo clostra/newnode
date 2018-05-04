@@ -1502,7 +1502,7 @@ void connect_error_cb(evhttp_request_error error, void *arg)
     connect_req *c = (connect_req *)arg;
     debug("c:%p connect_error_cb req:%p %d\n", c, c->proxy_req, error);
     c->proxy_req = NULL;
-    if (error != EVREQ_HTTP_REQUEST_CANCEL && (c->server_req || c->server_bev)) {
+    if (error != EVREQ_HTTP_REQUEST_CANCEL && !c->direct && (c->server_req || c->server_bev)) {
         connect_invalid_reply(c);
     }
     if (c->server_req) {
@@ -1821,13 +1821,13 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
         return NULL;
     }
 
-    debug("%s bev:%p SOCKS5 CONNECT %s:%u\n", __func__, bev, host, port);
-
     connect_req *c = alloc(connect_req);
     c->n = n;
     c->server_bev = bev;
     c->host = strdup(host);
     c->port = port;
+
+    debug("c:%p %s bev:%p SOCKS5 CONNECT %s:%u\n", c, __func__, bev, host, port);
 
     bufferevent_setcb(bev, NULL, NULL, socks_connect_req_event_cb, c);
 
