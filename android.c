@@ -168,13 +168,11 @@ void bugsnag_client_setup(JNIEnv* env)
     CALL_VOID(cClient, client, setProjectPackages, [Ljava/lang/String;, packages);
     CATCH(return);
 
-    // client.setReleaseStage("production");
-    CALL_VOID(cClient, client, setReleaseStage, Ljava/lang/String;, JSTR("production"));
-    CATCH(return);
-
     // client.setLoggingEnabled(true);
+    /*
     CALL_VOID_BOOL(cClient, client, setLoggingEnabled, true);
     CATCH(return);
+    */
 
     // NativeInterface.client = client;
     IMPORT(com/bugsnag/android, NativeInterface);
