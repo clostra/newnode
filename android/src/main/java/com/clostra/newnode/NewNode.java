@@ -4,9 +4,7 @@ import android.app.Application;
 import android.os.Build;
 import android.util.Log;
 
-import com.bugsnag.android.Client;
-import com.bugsnag.android.Configuration;
-import com.bugsnag.android.NativeInterface;
+import com.bugsnag.android.NotifyType;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -19,6 +17,8 @@ import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Arrays;
+import java.util.Observable;
+import java.util.Observer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
@@ -26,7 +26,6 @@ import java.util.zip.GZIPInputStream;
 
 public class NewNode {
     static String VERSION = BuildConfig.VERSION_NAME;
-    static Client client;
 
     static {
         Application app = app();
@@ -130,14 +129,6 @@ public class NewNode {
 
     public static void init() {
         if (!started) {
-
-            Configuration config = new Configuration(BuildConfig.BUGSNAG_API_KEY);
-            config.setAppVersion(VERSION);
-            config.setPersistUserBetweenSessions(true);
-            config.setAutoCaptureSessions(true);
-            client = new Client(app(), config);
-            NativeInterface.setClient(client);
-
             try {
                 setCacheDir(app().getCacheDir().getAbsolutePath());
                 Log.e("newnode", "version " + VERSION + " started");
@@ -184,5 +175,17 @@ public class NewNode {
         }
     }
 
+    static class BugsnagObserver implements Observer {
+        @Override
+        public void update(Observable observable, Object arg) {
+            if (arg instanceof Integer) {
+                NewNode.updateBugsnagDetails((Integer)arg);
+            } else {
+                NewNode.updateBugsnagDetails(NotifyType.ALL.getValue());
+            }
+        }
+    }
+
     public static native void setCacheDir(String cacheDir);
+    public static native void updateBugsnagDetails(int notifyType);
 }

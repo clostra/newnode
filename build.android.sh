@@ -77,7 +77,14 @@ function build_android {
 
     rm *.o || true
     clang $CFLAGS -c dht/dht.c -o dht_dht.o
-    for file in android.c bev_splice.c base64.c client.c dht.c http.c log.c lsd.c icmp_handler.c hash_table.c network.c obfoo.c sha1.c timer.c utp_bufferevent.c; do
+    for file in android.c bev_splice.c base64.c client.c dht.c http.c log.c lsd.c \
+                icmp_handler.c hash_table.c network.c obfoo.c sha1.c timer.c utp_bufferevent.c \
+                bugsnag/bugsnag_ndk.c \
+                bugsnag/bugsnag_ndk_report.c \
+                bugsnag/bugsnag_unwind.c \
+                bugsnag/deps/bugsnag/report.c \
+                bugsnag/deps/bugsnag/serialize.c \
+                bugsnag/deps/deps/parson/parson.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
     done
     clang++ $CPPFLAGS -shared -o libnewnode.so *.o -static-libstdc++ -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
@@ -85,6 +92,7 @@ function build_android {
     OUT=android/src/main/jniLibs/$ABI
     test -d $OUT || mkdir -p $OUT
     mv libnewnode.so $OUT
+    objdump --disassemble --demangle --line-numbers --section=.text $OUT/libnewnode.so > $OUT/mapping.txt
     ls -ld $OUT/*
 }
 
@@ -117,19 +125,5 @@ NDK_API=21
 ARCH=x86_64
 ABI=x86_64
 CPU_ARCH=westmere
-SODIUM_SCRIPT=$ABI
-build_android
-
-NDK_API=21
-ARCH=mips
-ABI=mips
-CPU_ARCH=mips32
-SODIUM_SCRIPT=$CPU_ARCH
-build_android
-
-NDK_API=21
-ARCH=mips64
-ABI=mips64
-CPU_ARCH=mips64r6
 SODIUM_SCRIPT=$ABI
 build_android

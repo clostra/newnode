@@ -7,7 +7,6 @@ buildscript {
         classpath 'com.android.tools.build:gradle:3.1.1'
         classpath 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.+'
         classpath 'com.github.dcendents:android-maven-gradle-plugin:2.+'
-        classpath 'com.bugsnag:bugsnag-android-gradle-plugin:3.+'
     }
 }
 
@@ -23,13 +22,6 @@ allprojects {
 }
 
 apply plugin: 'com.android.library'
-apply plugin: 'com.bugsnag.android.gradle'
-
-bugsnag {
-    apiKey "141ea25aa72c276c49d3a154b82f2b1f"
-    ndk true
-    sharedObjectPath android.sourceSets.main.jniLibs.source[0]
-}
 
 android {
     compileSdkVersion = 27
@@ -45,7 +37,6 @@ android {
             }
         }
         versionCode versionName.replace(".", "").toInteger()
-        buildConfigField("String", "BUGSNAG_API_KEY", "\"${project.bugsnag.apiKey}\"")
     }
     buildTypes {
         release {
@@ -56,7 +47,7 @@ android {
 }
 
 dependencies {
-    implementation 'com.bugsnag:bugsnag-android-ndk:1.+'
+    implementation 'com.bugsnag:bugsnag-android:4.3.3'
 }
 
 apply from: 'maven.gradle'

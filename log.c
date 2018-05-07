@@ -28,6 +28,19 @@ void debug(const char *fmt, ...)
 }
 #endif
 
+#ifdef ANDROID
+void bugsnag_log(const char *fmt, ...)
+{
+    char buf[4096];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    void bugsnag_leave_breadcrumb_log(const char *buf);
+    bugsnag_leave_breadcrumb_log(buf);
+}
+#endif
+
 void die(const char *fmt, ...)
 {
     va_list ap;
