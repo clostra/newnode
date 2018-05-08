@@ -812,6 +812,10 @@ void bsg_populate_breadcrumbs(JNIEnv *env, bsg_event *event) {
     jarray breadcrumbs_value = (*env)->CallStaticObjectMethod(env, interface_class, get_breadcrumbs_method);
 
     jclass breadcrumb_class = (*env)->FindClass(env, "com/bugsnag/android/Breadcrumb");
+    if (!breadcrumb_class) {
+        (*env)->ExceptionClear(env);
+        breadcrumb_class = (*env)->FindClass(env, "com/bugsnag/android/Breadcrumbs$Breadcrumb");
+    }
     jfieldID timestamp_field = (*env)->GetFieldID(env, breadcrumb_class, "timestamp", "Ljava/lang/String;");
     jfieldID name_field = (*env)->GetFieldID(env, breadcrumb_class, "name", "Ljava/lang/String;");
     jfieldID type_field = (*env)->GetFieldID(env, breadcrumb_class, "type", "Lcom/bugsnag/android/BreadcrumbType;");
