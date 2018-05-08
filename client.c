@@ -220,11 +220,11 @@ void bev_event_cb(bufferevent *bufev, short events, void *arg)
             }
         }
         assert(!pc->evcon);
-        free(pc);
         pending_request *r = TAILQ_FIRST(&pending_requests);
         if (r && time(NULL) - last_request < 30) {
             connect_more_injectors(pc->n, false);
         }
+        free(pc);
     } else if (events & BEV_EVENT_CONNECTED) {
         on_utp_connect(pc->n, pc);
     }
