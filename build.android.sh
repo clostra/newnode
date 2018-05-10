@@ -34,14 +34,10 @@ function build_android {
     LIBSODIUM=libsodium/libsodium-android-$CPU_ARCH/lib/libsodium.a
 
 
-    if [ "$ABI" = "mips64" ]; then
-        ABI_FLAGS="-fintegrated-as"
-    fi
-
     cd libutp
     if [ ! -f $TRIPLE/libutp.a ]; then
         make clean
-        OPT=-O0 CPPFLAGS="$ABI_FLAGS -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" make -j3 libutp.a
+        OPT=-O0 CPPFLAGS="-fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" make -j3 libutp.a
         mkdir $TRIPLE
         mv libutp.a $TRIPLE
     fi
@@ -64,7 +60,7 @@ function build_android {
     FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
-      -D__FAVOR_BSD -D_BSD_SOURCE -DANDROID $ABI_FLAGS"
+      -D__FAVOR_BSD -D_BSD_SOURCE -DANDROID"
     # -fvisibility=hidden -fvisibility-inlines-hidden -flto=thin \
     if [ ! -z "$DEBUG" ]; then
         FLAGS="$FLAGS -O0 -DDEBUG=1"
