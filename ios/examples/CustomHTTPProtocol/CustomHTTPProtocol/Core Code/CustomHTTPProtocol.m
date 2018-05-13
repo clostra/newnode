@@ -137,7 +137,7 @@ static id<CustomHTTPProtocolDelegate> sDelegate;
         proxy[@"HTTPSEnable"] = @1;
         proxy[@"HTTPSProxy"] = @"127.0.0.1";
         proxy[@"HTTPSPort"] = @8006;
-        //config.connectionProxyDictionary = proxy;
+        config.connectionProxyDictionary = proxy;
 
         sDemux = [[QNSURLSessionDemux alloc] initWithConfiguration:config];
     });
