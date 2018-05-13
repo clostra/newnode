@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
+#include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/types.h>
@@ -2027,27 +2028,15 @@ int client_run(network *n)
     return network_loop(n);
 }
 
-int main(int argc, char *argv[])
+void* client_thread(void *userdata)
 {
-    char *port_s = "8006";
+    client_run((network*)userdata);
+    return NULL;
+}
 
-    for (;;) {
-        int c = getopt(argc, argv, "p:v");
-        if (c == -1) {
-            break;
-        }
-        switch (c) {
-        case 'p':
-            port_s = optarg;
-            break;
-        case 'v':
-            o_debug++;
-            break;
-        default:
-            die("Unhandled argument: %c\n", c);
-        }
-    }
-
-    network *n = client_init(atoi(port_s));
-    return client_run(n);
+void client_thread_start(port_t port)
+{
+    network *n = client_init(8006);
+    pthread_t t;
+    pthread_create(&t, NULL, client_thread, n);
 }
