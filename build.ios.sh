@@ -69,7 +69,7 @@ function build_ios {
     ar x ../../libsodium.a
     cd ../..
 
-    ld -arch $ARCH -lstdc++ -r *.o objects/libutp/*.o objects/libevent/*.o objects/libsodium/*.o -o libnewnode.o
+    ld -arch $ARCH -r *.o objects/libutp/*.o objects/libevent/*.o objects/libsodium/*.o -o libnewnode.o
     rm -rf $TRIPLE || true
     mkdir -p $TRIPLE
     #ar rs $TRIPLE/libnewnode.a *.o objects/libutp/*.o objects/libevent/*.o objects/libsodium/*.o
