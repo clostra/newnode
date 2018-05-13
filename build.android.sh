@@ -69,7 +69,6 @@ function build_android {
     fi
 
     CFLAGS="$FLAGS -std=gnu11"
-    CPPFLAGS="$FLAGS -std=c++14"
 
     rm *.o || true
     clang $CFLAGS -c dht/dht.c -o dht_dht.o
@@ -83,7 +82,7 @@ function build_android {
                 bugsnag/deps/deps/parson/parson.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
     done
-    clang++ $CPPFLAGS -shared -o libnewnode.so *.o -static-libstdc++ -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
+    clang $CFLAGS -shared -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
     # -fuse-ld=gold
     OUT=android/src/main/jniLibs/$ABI
     test -d $OUT || mkdir -p $OUT
