@@ -13,8 +13,7 @@
 #include "log.h"
 
 
-network* client_init(port_t port);
-int client_run(network *n);
+void client_thread_start(port_t port);
 
 int pfd[2];
 static JavaVM *g_jvm;
@@ -47,12 +46,6 @@ void start_stdio_thread()
         return;
     }
     pthread_detach(t);
-}
-
-void* android_main(void *userdata)
-{
-    client_run((network*)userdata);
-    return NULL;
 }
 
 #define BUGSNAG_API_KEY "141ea25aa72c276c49d3a154b82f2b1f"
@@ -236,9 +229,8 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env,
 
     bugsnag_client_setup(env);
 
-    network *n = client_init(8006);
-    pthread_t t;
-    pthread_create(&t, NULL, android_main, n);
+    client_thread_start(8006);
+
     (*env)->ReleaseStringUTFChars(env, cacheDir, cCacheDir);
 }
 
