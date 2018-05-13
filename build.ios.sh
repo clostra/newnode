@@ -4,7 +4,6 @@ set -e
 
 function build_ios {
 
-    echo "Libevent"
     cd Libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
@@ -18,7 +17,6 @@ function build_ios {
     LIBEVENT="Libevent/$TRIPLE/lib/libevent.a Libevent/$TRIPLE/lib/libevent_pthreads.a"
 
 
-    echo "libutp"
     cd libutp
     if [ ! -f $TRIPLE/libutp.a ]; then
         make clean
@@ -31,11 +29,10 @@ function build_ios {
     LIBUTP=libutp/$TRIPLE/libutp.a
 
 
-    echo "newnode"
     FLAGS="$CFLAGS -g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
-      -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
-      -fvisibility=hidden -fvisibility-inlines-hidden -flto=thin"
+      -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all
+      -flto"
     if [ ! -z "$DEBUG" ]; then
         FLAGS="$FLAGS -DDEBUG=1"
     fi
@@ -49,20 +46,36 @@ function build_ios {
     for file in bev_splice.c base64.c client.c dht.c http.c log.c lsd.c icmp_handler.c hash_table.c network.c obfoo.c sha1.c timer.c utp_bufferevent.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
     done
-    echo "C++ parts"
-    ar xv $LIBUTP
-    ar xv Libevent/$TRIPLE/lib/libevent.a
-    ar xv Libevent/$TRIPLE/lib/libevent_pthreads.a
-    echo "lipo -extract $ARCH $LIBSODIUM -o libsodium.a"
+
+    rm -rf objects || true
+
+    mkdir -p objects/libutp
+    cd objects/libutp
+    ar x ../../$LIBUTP
+    cd ../..
+    mkdir -p objects/libevent
+    cd objects/libevent
+    ar x ../../Libevent/$TRIPLE/lib/libevent.a
+    cd ../..
+    mkdir -p objects/libevent
+    cd objects/libevent
+    ar x ../../Libevent/$TRIPLE/lib/libevent_pthreads.a
+    cd ../..
 
     lipo $LIBSODIUM -thin $ARCH -o libsodium.a
-    ar x libsodium.a
-    ld -arch $ARCH -r *.o -o libnewnode.o
+
+    mkdir -p objects/libsodium
+    cd objects/libsodium
+    ar x ../../libsodium.a
+    cd ../..
+
+    #ld -arch $ARCH -r *.o -o libnewnode.o
+    rm -rf $TRIPLE || true
     mkdir -p $TRIPLE
-    ar rs $TRIPLE/libnewnode.a libnewnode.o
+    ar rs $TRIPLE/libnewnode.a *.o objects/libutp/*.o objects/libevent/*.o objects/libsodium/*.o
+    #libnewnode.o
 }
 
-echo "libsodium"
 cd libsodium
 test -f configure || ./autogen.sh
 test -f libsodium-ios/lib/libsodium.a || ./dist-build/ios.sh
@@ -98,3 +111,4 @@ build_ios
 
 rm libnewnode.a || true
 lipo -create -output libnewnode.a "x86_64-apple-darwin10/libnewnode.a" "arm-apple-darwin10/libnewnode.a"
+ls -la libnewnode.a
