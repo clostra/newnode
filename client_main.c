@@ -1,5 +1,11 @@
-#include "client.h"
+#include <stdlib.h>
 
+#include "network.h"
+#include "log.h"
+
+
+network* client_init(port_t port);
+int client_run(network *n);
 
 int main(int argc, char *argv[])
 {
