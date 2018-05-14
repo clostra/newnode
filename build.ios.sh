@@ -38,7 +38,6 @@ function build_ios {
     fi
 
     CFLAGS="$FLAGS -std=gnu11"
-    CPPFLAGS="$FLAGS -std=c++14"
 
     rm *.o || true
     rm libsodium.a || true
@@ -69,11 +68,11 @@ function build_ios {
     ar x ../../libsodium.a
     cd ../..
 
-    ld -arch $ARCH -r *.o objects/libutp/*.o objects/libevent/*.o objects/libsodium/*.o -o libnewnode.o
     rm -rf $TRIPLE || true
     mkdir -p $TRIPLE
-    #ar rs $TRIPLE/libnewnode.a *.o objects/libutp/*.o objects/libevent/*.o objects/libsodium/*.o
-    ar rs $TRIPLE/libnewnode.a *.o libnewnode.o
+
+    ld -arch $ARCH -r *.o objects/libutp/*.o objects/libevent/*.o objects/libsodium/*.o -o libnewnode.o
+    ar rs $TRIPLE/libnewnode.a libnewnode.o
 }
 
 cd libsodium
@@ -112,3 +111,16 @@ build_ios
 rm libnewnode.a || true
 lipo -create -output libnewnode.a "x86_64-apple-darwin10/libnewnode.a" "arm-apple-darwin10/libnewnode.a"
 ls -la libnewnode.a
+
+FRAMEWORK="NewNode.framework"
+rm -rf $FRAMEWORK || true
+
+mkdir -p "${FRAMEWORK}/Modules"
+echo -e "framework module NewNode {\n    header \"newnode.h\"\n    export *\n}" > "${FRAMEWORK}/Modules/module.modulemap"
+mkdir -p "${FRAMEWORK}/Versions/A/Headers"
+ln -sfh A "${FRAMEWORK}/Versions/Current"
+ln -sfh Versions/Current/Headers "${FRAMEWORK}/Headers"
+ln -sfh "Versions/Current/NewNode" "${FRAMEWORK}/NewNode"
+cp -a newnode.h "${FRAMEWORK}/Versions/A/Headers"
+cp -a libnewnode.a "${FRAMEWORK}/Versions/A/NewNode"
+du -ch $FRAMEWORK

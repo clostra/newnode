@@ -45,6 +45,8 @@
  
  */
 
+@import NewNode;
+
 #import "CustomHTTPProtocol.h"
 
 #import "CanonicalRequest.h"
@@ -127,8 +129,7 @@ static id<CustomHTTPProtocolDelegate> sDelegate;
         // otherwise you don't see redirects <rdar://problem/17384498>.
         config.protocolClasses = @[ self ];
 
-        void client_thread_start(uint16_t port);
-        client_thread_start(8006);
+        newnode_start(8006);
 
         NSMutableDictionary *proxy = NSMutableDictionary.dictionary;
         proxy[@"HTTPEnable"] = @1;
