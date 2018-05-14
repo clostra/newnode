@@ -2040,3 +2040,8 @@ void client_thread_start(port_t port)
     pthread_t t;
     pthread_create(&t, NULL, client_thread, n);
 }
+
+void newnode_start(port_t port)
+{
+    client_thread_start(port);
+}
