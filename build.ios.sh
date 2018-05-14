@@ -112,9 +112,9 @@ rm libnewnode.a || true
 lipo -create -output libnewnode.a "x86_64-apple-darwin10/libnewnode.a" "arm-apple-darwin10/libnewnode.a"
 ls -la libnewnode.a
 
+
 FRAMEWORK="NewNode.framework"
 rm -rf $FRAMEWORK || true
-
 mkdir -p "${FRAMEWORK}/Modules"
 echo -e "framework module NewNode {\n    header \"newnode.h\"\n    export *\n}" > "${FRAMEWORK}/Modules/module.modulemap"
 mkdir -p "${FRAMEWORK}/Versions/A/Headers"
