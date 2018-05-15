@@ -2036,12 +2036,17 @@ void* client_thread(void *userdata)
 
 void client_thread_start(port_t port)
 {
-    network *n = client_init(8006);
+    network *n = client_init(port);
     pthread_t t;
     pthread_create(&t, NULL, client_thread, n);
 }
 
-void newnode_start(port_t port)
+void newnode_init()
 {
-    client_thread_start(port);
+    static bool started = false;
+    if (started) {
+        return;
+    }
+    started = true;
+    client_thread_start(8006);
 }

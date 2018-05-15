@@ -11,9 +11,8 @@
 #include "network.h"
 #include "constants.h"
 #include "log.h"
+#include "newnode.h"
 
-
-void client_thread_start(port_t port);
 
 int pfd[2];
 static JavaVM *g_jvm;
@@ -229,7 +228,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env,
 
     bugsnag_client_setup(env);
 
-    client_thread_start(8006);
+    newnode_init();
 
     (*env)->ReleaseStringUTFChars(env, cacheDir, cCacheDir);
 }
