@@ -299,7 +299,7 @@ void connect_cleanup(connect_req *c, int err)
         content_sign(&sig, content_hash);
         size_t out_len;
         char *hex_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
-        debug("returning sig for %s %s\n", evhttp_request_get_uri(c->server_req), hex_sig);
+        debug("returning sig for %s %d %s %s\n", evhttp_request_get_uri(c->server_req), code, reason, hex_sig);
         overwrite_header(c->server_req, "X-Sign", hex_sig);
         free(hex_sig);
 
