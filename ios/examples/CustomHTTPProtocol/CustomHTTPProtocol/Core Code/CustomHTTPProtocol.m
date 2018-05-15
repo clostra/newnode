@@ -129,16 +129,7 @@ static id<CustomHTTPProtocolDelegate> sDelegate;
         // otherwise you don't see redirects <rdar://problem/17384498>.
         config.protocolClasses = @[ self ];
 
-        newnode_start(8006);
-
-        NSMutableDictionary *proxy = NSMutableDictionary.dictionary;
-        proxy[@"HTTPEnable"] = @1;
-        proxy[@"HTTPProxy"] = @"127.0.0.1";
-        proxy[@"HTTPPort"] = @8006;
-        proxy[@"HTTPSEnable"] = @1;
-        proxy[@"HTTPSProxy"] = @"127.0.0.1";
-        proxy[@"HTTPSPort"] = @8006;
-        config.connectionProxyDictionary = proxy;
+        config.connectionProxyDictionary = NewNode.connectionProxyDictionary;
 
         sDemux = [[QNSURLSessionDemux alloc] initWithConfiguration:config];
     });
