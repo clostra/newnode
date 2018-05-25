@@ -19,6 +19,7 @@
 /* Structure to store unwound frame */
 typedef struct unwind_struct_frame {
     void *frame_pointer;
+    char file[1024];
     char method[1024];
 } unwind_struct_frame;
 

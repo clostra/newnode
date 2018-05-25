@@ -350,41 +350,41 @@ static void bugsnag_signal_handler(int code, struct siginfo *si, void *sc) {
 
                 unwind_struct_frame *unwind_frame = &g_native_code->frames[i];
 
-                Dl_info info;
-                if (dladdr(unwind_frame->frame_pointer, &info) != 0) {
+                bsg_stackframe frame = {
+                    .method = unwind_frame->method,
+                    .file = unwind_frame->file,
+                    .line_number = (int) unwind_frame->frame_pointer,
+                    .frame_address = (uintptr_t) unwind_frame->frame_pointer
+                };
 
-                    bsg_stackframe frame;
+                if (strlen(unwind_frame->file) == 0) {
+                    Dl_info info;
+                    if (dladdr(unwind_frame->frame_pointer, &info) != 0) {
+                        if (info.dli_fname != NULL) {
+                            frame.file = info.dli_fname;
+                        }
 
-                    if (info.dli_fname != NULL) {
-                        frame.file = info.dli_fname;
-                    }
-
-                    // use the method from unwind if there is one
-                    if (strlen(unwind_frame->method) > 1) {
-                        frame.method = unwind_frame->method;
-                    } else {
                         frame.method = info.dli_sname;
+
+                        // Attempt to calculate the line numbers TODO: this gets the position in the file in bytes
+                        frame.load_address = (uintptr_t) info.dli_fbase;
+                        frame.symbol_address = (uintptr_t) info.dli_saddr;
+
+                        uintptr_t file_offset =
+                                (uintptr_t) unwind_frame->frame_pointer - (uintptr_t) info.dli_fbase;
+                        frame.line_number = (int) file_offset;
                     }
-
-                    // Attempt to calculate the line numbers TODO: this gets the position in the file in bytes
-                    frame.load_address = (uintptr_t) info.dli_fbase;
-                    frame.symbol_address = (uintptr_t) info.dli_saddr;
-                    frame.frame_address = (uintptr_t) unwind_frame->frame_pointer;
-
-                    uintptr_t file_offset =
-                            (uintptr_t) unwind_frame->frame_pointer - (uintptr_t) info.dli_fbase;
-                    frame.line_number = (int) file_offset;
-
-                    // Check if this is a system file, or handler function
-                    if (is_system_file(frame.file)
-                        || is_system_method(frame.method)) {
-                        frame.in_project = 0;
-                    } else {
-                        frame.in_project = 1;
-                    }
-
-                    bugsnag_exception_add_frame(exception, frame);
                 }
+
+                // Check if this is a system file, or handler function
+                if (is_system_file(frame.file)
+                    || is_system_method(frame.method)) {
+                    frame.in_project = 0;
+                } else {
+                    frame.in_project = 1;
+                }
+
+                bugsnag_exception_add_frame(exception, frame);
             }
         }
 
@@ -514,6 +514,11 @@ void bugsnag_set_user_env(JNIEnv *env, char* id, char* email, char* name) {
 void bugsnag_set_user(char *id, char *email, char *name) {
     assert(bugsnagGlobalEnv != NULL);
     bugsnag_set_user_env(bugsnagGlobalEnv, id, email, name);
+}
+
+void bugsnag_add_breadcrumb(bsg_breadcrumb* crumb)
+{
+    bugsnag_event_add_breadcrumb(g_bugsnag_report->event, crumb);
 }
 
 void bugsnag_leave_breadcrumb_env(JNIEnv *env, char *name, bsg_breadcrumb_t type) {
