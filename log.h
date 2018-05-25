@@ -13,6 +13,13 @@ extern int o_debug;
 void bugsnag_log(const char *fmt, ...);
 #define debug(...) if (o_debug) { __android_log_print(ANDROID_LOG_VERBOSE, "newnode", __VA_ARGS__); } \
     bugsnag_log(__VA_ARGS__);
+
+#undef assert
+#define assert(e) if (!(e)) { \
+    bugsnag_log("%s:%d: %s: assertion \"%s\" failed", __FILE__, __LINE__, __PRETTY_FUNCTION__, #e); \
+    __assert2(__FILE__, __LINE__, __PRETTY_FUNCTION__, #e); \
+}
+
 #else
 void debug(const char *fmt, ...);
 #endif
