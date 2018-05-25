@@ -194,31 +194,9 @@ void bugsnag_client_setup(JNIEnv* env)
 
 void bugsnag_leave_breadcrumb_log(const char *buf)
 {
-    JNIEnv *env;
-    if ((*g_jvm)->GetEnv(g_jvm, (void**)&env, JNI_VERSION_1_6) != JNI_OK) {
-        return;
-    }
-
-    (*env)->PushLocalFrame(env, 16);
-
-    IMPORT(com/bugsnag/android, BreadcrumbType);
-    jfieldID fType = (*env)->GetStaticFieldID(env, cBreadcrumbType , "LOG", "Lcom/bugsnag/android/BreadcrumbType;");
-    jobject jType = (*env)->GetStaticObjectField(env, cBreadcrumbType, fType);
-    jclass cClient = (*env)->GetObjectClass(env, bugsnagClient);
-
-    IMPORT(java/util, HashMap);
-    jmethodID hashMapInit = (*env)->GetMethodID(env, cHashMap, "<init>", "()V");
-    jobject jMeta = (*env)->NewObject(env, cHashMap, hashMapInit);
-    jmethodID mPut = (*env)->GetMethodID(env, cHashMap, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
-    (*env)->CallObjectMethod(env, jMeta, mPut, JSTR("stdout"), JSTR(buf));
-
-    CALL_VOID(cClient, bugsnagClient, leaveBreadcrumb, Ljava/lang/String;Lcom/bugsnag/android/BreadcrumbType;Ljava/util/Map;,
-              JSTR("newnode"), jType, jMeta);
-
-    // XXX: compat -- old Java code doesn't have com.clostra.newnode.NewNode.BugsnagObserver
-    Java_com_bugsnag_android_ndk_BugsnagObserver_populateBreadcumbDetails(env, NULL);
-
-    (*env)->PopLocalFrame(env, NULL);
+    bsg_breadcrumb *crumb = bugsnag_breadcrumb_init("newnode", BSG_CRUMB_LOG);
+    bugsnag_breadcrumb_add_metadata(crumb, "stdout", (char*)buf);
+    bugsnag_add_breadcrumb(crumb);
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)

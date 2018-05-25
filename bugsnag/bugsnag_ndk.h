@@ -64,6 +64,7 @@ void bugsnag_set_user_env(JNIEnv *env, char* id, char* email, char* name);
  */
 void bugsnag_leave_breadcrumb(char *name, bsg_breadcrumb_t type);
 void bugsnag_leave_breadcrumb_env(JNIEnv *env, char *name, bsg_breadcrumb_t type);
+void bugsnag_add_breadcrumb(bsg_breadcrumb *crumb);
 
 #ifdef __cplusplus
 }
