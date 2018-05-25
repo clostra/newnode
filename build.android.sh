@@ -57,6 +57,20 @@ function build_android {
     LIBBLOCKSRUNTIME=blocksruntime/$TRIPLE/libBlocksRuntime.a
 
 
+    cd libunwind-ndk
+    if [ ! -f $TRIPLE/libunwind.a ]; then
+        mkdir $TRIPLE
+        cd $TRIPLE
+        cmake -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
+            -DANDROID_NDK=$NDK -DANDROID_ABI=$ABI -DANDROID_PLATFORM=android-$NDK_API ..
+        make
+        cd ..
+    fi
+    cd ..
+    LIBUNWIND_CFLAGS="-Ilibunwind-ndk/include -Ilibunwind-ndk/include/tdep -Ilibunwind-ndk/src"
+    LIBUNWIND="libunwind-ndk/$TRIPLE/libunwind.a libunwind-ndk/$TRIPLE/lzma/liblzma.a"
+
+
     FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
@@ -80,9 +94,9 @@ function build_android {
                 bugsnag/deps/bugsnag/report.c \
                 bugsnag/deps/bugsnag/serialize.c \
                 bugsnag/deps/deps/parson/parson.c; do
-        clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
+        clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBUNWIND_CFLAGS -c $file
     done
-    clang $CFLAGS -shared -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME
+    clang $CFLAGS -shared -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND
     # -fuse-ld=gold
     OUT=android/src/main/jniLibs/$ABI
     test -d $OUT || mkdir -p $OUT
