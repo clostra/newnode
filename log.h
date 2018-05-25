@@ -24,7 +24,7 @@ void bugsnag_log(const char *fmt, ...);
 void debug(const char *fmt, ...);
 #endif
 
-#define ddebug if (o_debug >= 2) debug
+#define ddebug(...) if (o_debug >= 2) { debug(__VA_ARGS__); }
 
 void die(const char *fmt, ...);
 void pdie(const char *err);
