@@ -1,56 +1,14 @@
 #include <string.h>
+
+#define HAVE_CONFIG_H
+#include <libunwind.h>
+#include <mempool.h>
+
+#define _GNU_SOURCE
+#include <unwind.h>
+
 #include "bugsnag_unwind.h"
 
-/**
- * Get the program counter, given a pointer to a ucontext_t context.
- **/
-uintptr_t get_pc_from_ucontext(const ucontext_t *uc) {
-#if (defined(__arm__))
-    return uc->uc_mcontext.arm_pc;
-#elif defined(__aarch64__)
-    return uc->uc_mcontext.pc;
-#elif (defined(__x86_64__))
-    return uc->uc_mcontext.gregs[REG_RIP];
-#elif (defined(__i386))
-  return uc->uc_mcontext.gregs[REG_EIP];
-#elif (defined (__ppc__)) || (defined (__powerpc__))
-  return uc->uc_mcontext.regs->nip;
-#elif (defined(__hppa__))
-  return uc->uc_mcontext.sc_iaoq[0] & ~0x3UL;
-#elif (defined(__sparc__) && defined (__arch64__))
-  return uc->uc_mcontext.mc_gregs[MC_PC];
-#elif (defined(__sparc__) && !defined (__arch64__))
-  return uc->uc_mcontext.gregs[REG_PC];
-#else
-#error "Architecture is unknown, please report me!"
-#endif
-}
-
-/**
- * Get the stack pointer, given a pointer to a ucontext_t context.
- **/
-uintptr_t get_sp_from_ucontext(const ucontext_t *uc) {
-
-#if (defined(__arm__))
-    return uc->uc_mcontext.arm_sp;
-#elif defined(__aarch64__)
-    return uc->uc_mcontext.sp;
-#elif (defined(__x86_64__))
-    return uc->uc_mcontext.gregs[REG_RSP];
-#elif (defined(__i386))
-  return uc->uc_mcontext.gregs[REG_ESP];
-#elif (defined (__ppc__)) || (defined (__powerpc__))
-  return uc->uc_mcontext.regs->nsp;
-#elif (defined(__hppa__))
-  return uc->uc_mcontext.sc_iaoq[0] & ~0x3UL; //TODO: what should this be
-#elif (defined(__sparc__) && defined (__arch64__))
-  return uc->uc_mcontext.mc_gregs[MC_SP];
-#elif (defined(__sparc__) && !defined (__arch64__))
-  return uc->uc_mcontext.gregs[REG_SP];
-#else
-#error "Architecture is unknown, please report me!"
-#endif
-}
 
 /**
  * Checks to see if the given string starts with the given prefix
@@ -124,180 +82,96 @@ int is_system_method(const char *method) {
 /**
  * Checks if the given string should be considered a "system" file or not
  */
-int is_system_file(const char *file) {
-    if (starts_with("/system/", file)
-        || starts_with("libc.so", file)
-        || starts_with("libdvm.so", file)
-        || starts_with("libcutils.so", file)
-        || starts_with("base.odex", file)
-        || starts_with("[heap]", file)) {
-        return 1;
-    } else {
-        return 0;
-    }
+int is_system_file(const char *library_file_name) {
+    return strstr(library_file_name, "/system/") ||
+           strstr(library_file_name, "libc.so") ||
+           strstr(library_file_name, "libart.so") ||
+           strstr(library_file_name, "libdvm.so") ||
+           strstr(library_file_name, "libcutils.so") ||
+           strstr(library_file_name, "libandroid_runtime.so") ||
+           strstr(library_file_name, "libbcc.so") ||
+           strstr(library_file_name, "base.odex") ||
+           strstr(library_file_name, "[vdso]") ||
+           strstr(library_file_name, "[heap]");
 }
 
-/**
- * Just returns the first frame in the stack as we couldn't find a library to do it
- */
-int unwind_basic(unwind_struct* unwind, void* sc) {
-    ucontext_t *const uc = (ucontext_t*) sc;
-
-    // Just return a single stack frame here
-    unwind->frames[0].frame_pointer = (void*)get_pc_from_ucontext(uc);
-    return 1;
+static void ndcrash_libunwind_get_context(struct ucontext *context, unw_context_t *unw_ctx) {
+#if defined(__arm__)
+    struct sigcontext *sig_ctx = &context->uc_mcontext;
+    memcpy(unw_ctx->regs, &sig_ctx->arm_r0, sizeof(unw_ctx->regs));
+#elif defined(__i386__) || defined(__x86_64__) || defined(__aarch64__)
+    *unw_ctx = *context;
+#else
+#error Architecture is not supported.
+#endif
 }
 
-/**
- * Checks if the given address looks like a program counter or not
- */
-int is_valid_pc(void* addr) {
-    Dl_info info;
-    if (addr != NULL
-        && dladdr(addr, &info) != 0) {
+int unwind_libunwind(unwind_struct* unwind, int max_depth, struct ucontext *context)
+{
+    int size = 0;
 
-        if (!(is_system_file(info.dli_fname)
-              || is_system_method(info.dli_sname))) {
-            return 1;
-        }
-    }
+    // Parsing local /proc/pid/maps
+    unw_map_local_create();
 
-    return 0;
-}
+    // Cursor - the main structure used for unwinding with a huge size. Allocating on stack is undesirable
+    // due to limited alternate signal stack size. malloc isn't signal safe. Using libunwind memory pools.
+    struct mempool cursor_pool;
+    mempool_init(&cursor_pool, sizeof(unw_cursor_t), 0);
+    unw_cursor_t * const unw_cursor = mempool_alloc(&cursor_pool);
 
-/**
- * Scans through the memory looking for the next program counter
- */
-int look_for_next_frame(uintptr_t current_frame_base, uintptr_t* new_frame_base, uintptr_t* found_pc) {
+    // Buffer for function name.
+    char unw_function_name[64];
 
-    int j;
-    for (j = 0; j < WORDS_TO_SCAN; j++) {
-        uintptr_t stack_element = (current_frame_base + (j * (sizeof(uintptr_t))));
-        uintptr_t stack_value = *((uintptr_t*)stack_element);
+    // Initializing context instance (processor state).
+    unw_context_t unw_ctx;
+    ndcrash_libunwind_get_context(context, &unw_ctx);
 
-        if (is_valid_pc((void*)stack_value)) {
-            *found_pc = stack_value;
-            *new_frame_base = stack_element;
-            return 1;
-        }
-    }
+    // Initializing cursor for unwinding from passed processor context.
+    if (!unw_init_local(unw_cursor, &unw_ctx)) {
 
-    return 0;
-}
+        for (int i = 0; i < max_depth; ++i) {
+            // Getting program counter value for the a current stack frame.
+            unw_word_t regip;
+            unw_get_reg(unw_cursor, UNW_REG_IP, &regip);
 
-/**
- * A slightly hacky method that scans through the memory under the stack pointer
- * of the given context to try and create a stack trace
- */
-int unwind_frame(unwind_struct* unwind, int max_depth, void* sc) {
-    ucontext_t *const uc = (ucontext_t*) sc;
+            // Looking for a function name.
+            unw_word_t func_offset;
+            const bool func_name_found = unw_get_proc_name(
+                    unw_cursor, unw_function_name, sizeof(unw_function_name), &func_offset) > 0;
 
-    int current_output_frame = 0;
-
-    // Check the current pc to see if it is a valid frame
-    uintptr_t pc = get_pc_from_ucontext(uc);
-    if (is_valid_pc((void *)pc)) {
-        unwind_struct_frame *frame = &unwind->frames[current_output_frame];
-
-        sprintf(frame->method, "");
-        frame->frame_pointer = (void*)pc;
-        current_output_frame++;
-    }
-
-    // Get the stack pointer for this context
-    uintptr_t sp = get_sp_from_ucontext(uc);
-
-    // loop down the stack to see if there are more valid pointers
-    uintptr_t current_frame_base = sp;
-    while (current_output_frame < max_depth) {
-
-        uintptr_t new_frame_base;
-        uintptr_t found_pc;
-
-        if (look_for_next_frame(current_frame_base, &new_frame_base, &found_pc)) {
-            unwind_struct_frame *frame = &unwind->frames[current_output_frame];
-
-            sprintf(frame->method, "");
-            frame->frame_pointer = (void*)found_pc;
-
-            current_frame_base = new_frame_base + (sizeof(uintptr_t));
-            current_output_frame++;
-
-        } else {
-            break;
-        }
-    }
-
-    if (current_output_frame > 0) {
-        return current_output_frame;
-    } else {
-        return unwind_basic(unwind, sc);
-    }
-}
-
-/**
- * Uses libcorkscrew to unwind the stacktrace
- * This should work on android less than 5
- */
-int unwind_libcorkscrew(void *libcorkscrew, unwind_struct* unwind, int max_depth, struct siginfo* si, void* sc) {
-    ssize_t (*unwind_backtrace_signal_arch)
-            (siginfo_t*, void*, const map_info_t*, backtrace_frame_t*, size_t, size_t);
-    map_info_t* (*acquire_my_map_info_list)();
-    void (*release_my_map_info_list)(map_info_t*);
-    void (*get_backtrace_symbols)(const backtrace_frame_t*, size_t, backtrace_symbol_t*);
-    void (*free_backtrace_symbols)(backtrace_symbol_t*, size_t);
-
-    unwind_backtrace_signal_arch = dlsym(libcorkscrew, "unwind_backtrace_signal_arch");
-    acquire_my_map_info_list = dlsym(libcorkscrew, "acquire_my_map_info_list");
-    release_my_map_info_list = dlsym(libcorkscrew, "release_my_map_info_list");
-    get_backtrace_symbols = dlsym(libcorkscrew, "get_backtrace_symbols");
-    free_backtrace_symbols = dlsym(libcorkscrew, "free_backtrace_symbols");
-
-
-    if (unwind_backtrace_signal_arch != NULL
-        && acquire_my_map_info_list != NULL
-        && get_backtrace_symbols != NULL
-        && release_my_map_info_list != NULL
-        && free_backtrace_symbols != NULL) {
-
-        backtrace_frame_t frames[max_depth];
-        backtrace_symbol_t symbols[max_depth];
-
-        map_info_t*const info = acquire_my_map_info_list();
-        ssize_t size = unwind_backtrace_signal_arch(si, sc, info, frames, 0, (size_t)max_depth);
-        release_my_map_info_list(info);
-
-        get_backtrace_symbols(frames, (size_t)size, symbols);
-        int non_system_found = 0;
-        int i;
-        for (i = 0; i < size; i++) {
-            unwind_struct_frame *frame = &unwind->frames[i];
-
-            backtrace_frame_t backtrace_frame = frames[i];
-            backtrace_symbol_t backtrace_symbol = symbols[i];
-
-            if (backtrace_symbol.symbol_name != NULL) {
-                sprintf(frame->method, "%s", backtrace_symbol.symbol_name);
+            // Looking for a object (shared library) where a function is located.
+            unw_map_cursor_t proc_map_cursor;
+            unw_map_local_cursor_get(&proc_map_cursor);
+            bool maps_found = false;
+            unw_map_t proc_map_item;
+            while (unw_map_cursor_get_next(&proc_map_cursor, &proc_map_item) > 0) {
+                if (regip >= proc_map_item.start && regip < proc_map_item.end) {
+                    maps_found = true;
+                    regip -= proc_map_item.start; // Making relative.
+                    break;
+                }
             }
 
-            frame->frame_pointer = (void *)backtrace_frame.absolute_pc;
+            unwind_struct_frame *frame = &unwind->frames[size];
 
-            if (backtrace_symbol.map_name != NULL
-                && !is_system_file(backtrace_symbol.map_name)
-                && (backtrace_symbol.symbol_name == NULL || !is_system_method(backtrace_symbol.symbol_name))) {
-                non_system_found = 1;
-            }
-        }
-        free_backtrace_symbols(symbols, (size_t)size);
+            snprintf(frame->file, sizeof(frame->file), "%s", maps_found ? proc_map_item.path : NULL);
+            snprintf(frame->method, sizeof(frame->method), "%s", func_name_found ? unw_function_name : NULL);
+            frame->frame_pointer = (void*)regip;
 
-        if (non_system_found) {
-            return size;
-        } else {
-            return unwind_frame(unwind, max_depth, sc);
+            size++;
+
+            // Trying to switch to a previous stack frame.
+            if (unw_step(unw_cursor) <= 0) break;
         }
-    } else {
-        return unwind_frame(unwind, max_depth, sc);
     }
+
+    // Freeing a memory for cursor.
+    mempool_free(&cursor_pool, unw_cursor);
+
+    // Destroying local /proc/pid/maps
+    unw_map_local_destroy();
+
+    return size;
 }
 
 /**
@@ -305,17 +179,5 @@ int unwind_libcorkscrew(void *libcorkscrew, unwind_struct* unwind, int max_depth
  * falls back to simply returning the top frame information
  */
 int bugsnag_unwind_stack(unwind_struct* unwind, int max_depth, struct siginfo* si, void* sc) {
-
-    int size;
-
-    void *libcorkscrew = dlopen("libcorkscrew.so", RTLD_LAZY | RTLD_LOCAL);
-    if (libcorkscrew != NULL) {
-        size = unwind_libcorkscrew(libcorkscrew, unwind, max_depth, si, sc);
-
-        dlclose(libcorkscrew);
-    } else {
-        size = unwind_frame(unwind, max_depth, sc);
-    }
-
-    return size;
+    return unwind_libunwind(unwind, max_depth, sc);
 }
