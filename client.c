@@ -1662,6 +1662,19 @@ void http_request_cb(evhttp_request *req, void *arg)
         return;
     }
 
+    const evhttp_uri *uri = evhttp_request_get_evhttp_uri(req);
+    const char *scheme = evhttp_uri_get_scheme(uri);
+    const char *hostname = evhttp_uri_get_host(uri);
+    if (!hostname || !scheme ||
+        !(!evutil_ascii_strcasecmp(scheme, "http") ||
+          !evutil_ascii_strcasecmp(scheme, "https"))) {
+        debug("invalid proxy request: %s\n", evhttp_request_get_uri(req));
+        evhttp_send_error(req, 501, "Not Implemented");
+        return;
+    }
+
+    scheme = evhttp_uri_get_scheme(req->uri_elems);
+
     char *encoded_uri = cache_name_from_uri(evhttp_request_get_uri(req));
     char cache_path[PATH_MAX];
     char cache_headers_path[PATH_MAX];
