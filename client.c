@@ -915,7 +915,9 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
     evhttp_uri *evuri = evhttp_uri_parse_with_flags(req->uri, EVHTTP_URI_NONCONFORMANT);
     const char *host = evhttp_uri_get_host(evuri);
     evhttp_uri_free(evuri);
-    join_url_swarm(p->n, host);
+    if (host) {
+        join_url_swarm(p->n, host);
+    }
 
     peer_reuse(p->n, p->pc);
     p->pc = NULL;
@@ -945,7 +947,7 @@ void direct_submit_request(proxy_request *p)
     if (!evcon) {
         return;
     }
-    evhttp_make_request(evcon, p->direct_req, EVHTTP_REQ_GET, request_uri);
+    evhttp_make_request(evcon, p->direct_req, p->server_req->type, request_uri);
     if (p->direct_req) {
         debug("p:%p con:%p direct request submitted: %s\n", p, p->direct_req->evcon, evhttp_request_get_uri(p->server_req));
     }
@@ -1000,7 +1002,7 @@ void proxy_submit_request_on_con(proxy_request *p, evhttp_connection *evcon)
 {
     char *uri = p->proxy_req->uri;
     p->proxy_req->uri = NULL;
-    evhttp_make_request(evcon, p->proxy_req, EVHTTP_REQ_GET, uri);
+    evhttp_make_request(evcon, p->proxy_req, p->server_req->type, uri);
     free(uri);
     debug("p:%p con:%p proxy request submitted: %s\n", p, evhttp_request_get_connection(p->proxy_req), evhttp_request_get_uri(p->proxy_req));
 }
@@ -1121,7 +1123,9 @@ void proxy_submit_request(proxy_request *p)
 
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(p->server_req);
     const char *host = evhttp_uri_get_host(uri);
-    fetch_url_swarm(p->n, host);
+    if (host) {
+        fetch_url_swarm(p->n, host);
+    }
 
     queue_request(p->n, &p->r, ^(peer_connection *pc) {
         p->pc = pc;
@@ -1272,6 +1276,7 @@ void trace_submit_request_on_con(trace_request *t, evhttp_connection *evcon)
     snprintf(user_agent, sizeof(user_agent), "newnode/%s", VERSION);
 #endif
     overwrite_header(req, "User-Agent", user_agent);
+    append_via(NULL, req);
     evhttp_request_set_error_cb(req, trace_error_cb);
     char request_uri[256];
     static uint32_t instance = 0;
@@ -1683,11 +1688,11 @@ void http_request_cb(evhttp_request *req, void *arg)
 
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(req);
     const char *scheme = evhttp_uri_get_scheme(uri);
-    const char *hostname = evhttp_uri_get_host(uri);
-    if (!hostname || !scheme ||
-        !(!evutil_ascii_strcasecmp(scheme, "http") ||
-          !evutil_ascii_strcasecmp(scheme, "https"))) {
-        debug("invalid proxy request: %s\n", evhttp_request_get_uri(req));
+    const char *host = evhttp_uri_get_host(uri);
+    if (req->type != EVHTTP_REQ_TRACE &&
+        (!host || !scheme ||
+         (evutil_ascii_strcasecmp(scheme, "http") && evutil_ascii_strcasecmp(scheme, "https")))) {
+        debug("invalid proxy request: %s %s\n", evhttp_method(req->type), evhttp_request_get_uri(req));
         evhttp_send_error(req, 501, "Not Implemented");
         return;
     }
