@@ -1236,6 +1236,25 @@ void trace_request_done_cb(evhttp_request *req, void *arg)
     trace_request_cleanup(t);
 }
 
+/*
+#include <objc/runtime.h>
+#include <objc/message.h>
+
+#include <CoreFoundation/CoreFoundation.h>
+
+char *getsystemversion(void)
+{
+    char *sv = NULL;
+    id Dev = objc_msgSend(objc_getClass("UIDevice"), sel_getUid("currentDevice"));
+    CFStringRef SysVer = (CFStringRef) objc_msgSend(Dev, sel_getUid("systemVersion"));
+    CFIndex len = CFStringGetLength(SysVer);
+    CFIndex max = CFStringGetMaximumSizeForEncoding(len, kCFStringEncodingUTF8);
+    sv = (char *) malloc(max + 1);
+    CFStringGetCString(SysVer, sv, max, kCFStringEncodingUTF8);
+    return sv;
+}
+*/
+
 void trace_submit_request_on_con(trace_request *t, evhttp_connection *evcon)
 {
     evhttp_request *req = evhttp_request_new(trace_request_done_cb, t);
