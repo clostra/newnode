@@ -994,7 +994,8 @@ void proxy_make_request(proxy_request *p)
     evhttp_request_set_header_cb(p->proxy_req, proxy_header_cb);
     evhttp_request_set_error_cb(p->proxy_req, proxy_error_cb);
 
-    // a hack to keep the request url, even if the server_req dies
+    // a hack to keep the request method/url, even if the server_req dies
+    p->proxy_req->type = p->server_req->type;
     p->proxy_req->uri = strdup(evhttp_request_get_uri(p->server_req));
 }
 
@@ -1002,7 +1003,7 @@ void proxy_submit_request_on_con(proxy_request *p, evhttp_connection *evcon)
 {
     char *uri = p->proxy_req->uri;
     p->proxy_req->uri = NULL;
-    evhttp_make_request(evcon, p->proxy_req, p->server_req->type, uri);
+    evhttp_make_request(evcon, p->proxy_req, p->proxy_req->type, uri);
     free(uri);
     debug("p:%p con:%p proxy request submitted: %s\n", p, evhttp_request_get_connection(p->proxy_req), evhttp_request_get_uri(p->proxy_req));
 }
