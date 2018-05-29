@@ -32,7 +32,7 @@ function build_ios {
     FLAGS="$CFLAGS -g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks \
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
-      -flto"
+      -I."
     if [ ! -z "$DEBUG" ]; then
         FLAGS="$FLAGS -DDEBUG=1"
     fi
@@ -42,7 +42,7 @@ function build_ios {
     rm *.o || true
     rm libsodium.a || true
     clang $CFLAGS -c dht/dht.c -o dht_dht.o
-    for file in bev_splice.c base64.c client.c dht.c http.c log.c lsd.c icmp_handler.c ios.m hash_table.c network.c obfoo.c sha1.c timer.c utp_bufferevent.c; do
+    for file in bev_splice.c base64.c client.c dht.c http.c log.c lsd.c icmp_handler.c ios/Framework/NewNode.m hash_table.c network.c obfoo.c sha1.c timer.c utp_bufferevent.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
     done
 
@@ -71,8 +71,20 @@ function build_ios {
     rm -rf $TRIPLE || true
     mkdir -p $TRIPLE
 
-    ld $LDFLAGS -r *.o objects/libutp/*.o objects/libevent/*.o objects/libsodium/*.o -o libnewnode.o
-    ar -rcs $TRIPLE/libnewnode.a libnewnode.o
+    clang $CFLAGS -dynamiclib \
+        -install_name @rpath/NewNode.framework/NewNode \
+        -Xlinker -rpath -Xlinker @executable_path/Frameworks \
+        -Xlinker -rpath -Xlinker @loader_path/Frameworks \
+        -dead_strip \
+        -Xlinker -object_path_lto -Xlinker lto.o \
+        -Xlinker -export_dynamic \
+        -Xlinker -no_deduplicate \
+        -Xlinker -objc_abi_version -Xlinker 2 \
+        -framework Foundation \
+        *.o objects/libutp/*.o objects/libevent/*.o objects/libsodium/*.o \
+        -o $TRIPLE/libnewnode.dylib
+
+    dsymutil $TRIPLE/libnewnode.dylib -o $TRIPLE/libnewnode.dylib.dSYM
 }
 
 cd libsodium
@@ -88,10 +100,10 @@ XCODEDIR=$(xcode-select -p)
 
 BASEDIR="${XCODEDIR}/Platforms/iPhoneSimulator.platform/Developer"
 SDK="${BASEDIR}/SDKs/iPhoneSimulator.sdk"
-IOS_SIMULATOR_VERSION_MIN=${IOS_SIMULATOR_VERSION_MIN-"7.0.0"}
+IOS_SIMULATOR_VERSION_MIN=${IOS_SIMULATOR_VERSION_MIN-"8.0.0"}
 
 ARCH=x86_64
-CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -mios-simulator-version-min=${IOS_SIMULATOR_VERSION_MIN} -flto"
+CFLAGS="-arch $ARCH -isysroot ${SDK} -mios-simulator-version-min=${IOS_SIMULATOR_VERSION_MIN}"
 LDFLAGS="-arch $ARCH"
 TRIPLE=x86_64-apple-darwin10
 build_ios
@@ -99,7 +111,7 @@ build_ios
 
 BASEDIR="${XCODEDIR}/Platforms/iPhoneOS.platform/Developer"
 SDK="${BASEDIR}/SDKs/iPhoneOS.sdk"
-IOS_VERSION_MIN=${IOS_VERSION_MIN-"7.0.0"}
+IOS_VERSION_MIN=${IOS_VERSION_MIN-"8.0.0"}
 
 ARCH=arm64
 CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -mios-version-min=${IOS_VERSION_MIN} -fembed-bitcode -flto"
@@ -108,19 +120,21 @@ TRIPLE=arm-apple-darwin10
 build_ios
 
 
-rm libnewnode.a || true
-lipo -create -output libnewnode.a "x86_64-apple-darwin10/libnewnode.a" "arm-apple-darwin10/libnewnode.a"
-ls -la libnewnode.a
-
+VERSION=`grep "VERSION " constants.h | sed -n 's/.*"\(.*\)"/\1/p'`
 
 FRAMEWORK="NewNode.framework"
 rm -rf $FRAMEWORK || true
-mkdir -p "${FRAMEWORK}/Modules"
-echo -e "framework module NewNode {\n    header \"NewNode.h\"\n    export *\n}" > "${FRAMEWORK}/Modules/module.modulemap"
-mkdir -p "${FRAMEWORK}/Versions/A/Headers"
-ln -sfh A "${FRAMEWORK}/Versions/Current"
-ln -sfh Versions/Current/Headers "${FRAMEWORK}/Headers"
-ln -sfh "Versions/Current/NewNode" "${FRAMEWORK}/NewNode"
-cp -a ios.h "${FRAMEWORK}/Versions/A/Headers/NewNode.h"
-cp -a libnewnode.a "${FRAMEWORK}/Versions/A/NewNode"
+mkdir -p $FRAMEWORK/Modules
+cp ios/Framework/module.modulemap $FRAMEWORK/Modules/module.modulemap
+mkdir -p $FRAMEWORK/Headers
+cp ios/Framework/NewNode-iOS.h $FRAMEWORK/Headers/NewNode.h
+sed "s/\$(CURRENT_PROJECT_VERSION)/$VERSION/" ios/Framework/Info.plist > $FRAMEWORK/Info.plist
+lipo -create -output $FRAMEWORK/NewNode x86_64-apple-darwin10/libnewnode.dylib arm-apple-darwin10/libnewnode.dylib
 du -ch $FRAMEWORK
+
+rm -rf $FRAMEWORK.dSYM || true
+cp -R arm-apple-darwin10/libnewnode.dylib.dSYM $FRAMEWORK.dSYM
+lipo -create -output $FRAMEWORK.dSYM/Contents/Resources/DWARF/libnewnode.dylib \
+    x86_64-apple-darwin10/libnewnode.dylib.dSYM/Contents/Resources/DWARF/libnewnode.dylib \
+    arm-apple-darwin10/libnewnode.dylib.dSYM/Contents/Resources/DWARF/libnewnode.dylib
+du -ch $FRAMEWORK.dSYM
