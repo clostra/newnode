@@ -32,6 +32,7 @@ function build_ios {
     FLAGS="$CFLAGS -g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks \
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
+      -fvisibility-inlines-hidden \
       -I."
     if [ ! -z "$DEBUG" ]; then
         FLAGS="$FLAGS -DDEBUG=1"
@@ -76,6 +77,7 @@ function build_ios {
         -Xlinker -rpath -Xlinker @executable_path/Frameworks \
         -Xlinker -rpath -Xlinker @loader_path/Frameworks \
         -dead_strip \
+        -exported_symbols_list ios/Framework/export_list \
         -Xlinker -object_path_lto -Xlinker lto.o \
         -Xlinker -export_dynamic \
         -Xlinker -no_deduplicate \
@@ -85,6 +87,8 @@ function build_ios {
         -o $TRIPLE/libnewnode.dylib
 
     dsymutil $TRIPLE/libnewnode.dylib -o $TRIPLE/libnewnode.dylib.dSYM
+
+    strip -x $TRIPLE/libnewnode.dylib
 }
 
 cd libsodium
