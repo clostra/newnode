@@ -1,0 +1,10 @@
+{
+    global:
+        newnode_init;
+        Java_com_clostra_dcdn_Dcdn_setCacheDir;
+        Java_com_clostra_newnode_NewNode_setCacheDir;
+        Java_com_clostra_newnode_NewNode_updateBugsnagDetails;
+        _Ux86_local_addr_space;
+        _UPT_accessors;
+    local: *;         # hide everything else
+};

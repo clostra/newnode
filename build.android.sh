@@ -74,8 +74,8 @@ function build_android {
     FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
+      -fvisibility=hidden -fvisibility-inlines-hidden -flto \
       -D__FAVOR_BSD -D_BSD_SOURCE -DANDROID"
-    # -fvisibility=hidden -fvisibility-inlines-hidden -flto=thin \
     if [ ! -z "$DEBUG" ]; then
         FLAGS="$FLAGS -O0 -DDEBUG=1"
     else
@@ -96,7 +96,7 @@ function build_android {
                 bugsnag/deps/deps/parson/parson.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBUNWIND_CFLAGS -c $file
     done
-    clang $CFLAGS -shared -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND
+    clang $CFLAGS -shared -Wl,--version-script=android_export_list -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND
     # -fuse-ld=gold
     OUT=android/src/main/jniLibs/$ABI
     test -d $OUT || mkdir -p $OUT
