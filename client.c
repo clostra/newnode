@@ -1413,6 +1413,7 @@ void connected(connect_req *c, bufferevent *other)
 
 void connect_proxy_cancel(connect_req *c)
 {
+    debug("c:%p %s req:%p\n", c, __func__, c->proxy_req);
     if (c->proxy_req) {
         evhttp_cancel_request(c->proxy_req);
         c->proxy_req = NULL;
@@ -1430,20 +1431,6 @@ void connect_direct_cancel(connect_req *c)
     }
 }
 
-void connect_done_cb(evhttp_request *req, void *arg)
-{
-    connect_req *c = (connect_req *)arg;
-    if (!req) {
-        return;
-    }
-    c->proxy_req = NULL;
-    if (c->server_req || c->server_bev) {
-        assert(c->direct);
-        return;
-    }
-    connect_cleanup(c);
-}
-
 void connect_peer(connect_req *c, bool injector_preference);
 
 void connect_invalid_reply(connect_req *c)
@@ -1453,6 +1440,32 @@ void connect_invalid_reply(connect_req *c)
     if (c->attempts < 10) {
         connect_peer(c, true);
     }
+}
+
+void connect_done_cb(evhttp_request *req, void *arg)
+{
+    connect_req *c = (connect_req *)arg;
+    debug("c:%p %s req:%p evcon:%p\n", c, __func__, req, req ? req->evcon : NULL);
+    if (!req) {
+        return;
+    }
+    c->proxy_req = NULL;
+    if (!c->direct && (c->server_req || c->server_bev)) {
+        if (c->pc) {
+            peer_reuse(c->n, c->pc);
+            c->pc = NULL;
+        }
+        connect_invalid_reply(c);
+    }
+    if (connect_exhausted(c)) {
+        if (c->server_req) {
+            connect_send_error(c, 523, "Origin Is Unreachable (max-retries)");
+        }
+        if (c->server_bev) {
+            connect_socks_reply(c, SOCKS5_REPLY_HOSTUNREACH);
+        }
+    }
+    connect_cleanup(c);
 }
 
 int connect_header_cb(evhttp_request *req, void *arg)
@@ -1510,10 +1523,11 @@ int connect_header_cb(evhttp_request *req, void *arg)
             fprintf(stderr, "signature failed!\n");
             c->pc->peer->last_verified = 0;
         }
-        return -1;
+        return 0;
     }
 
     c->pc->peer->last_connect = time(NULL);
+    free(c->pc);
     c->pc = NULL;
 
     connect_direct_cancel(c);
@@ -1526,11 +1540,8 @@ int connect_header_cb(evhttp_request *req, void *arg)
 void connect_error_cb(evhttp_request_error error, void *arg)
 {
     connect_req *c = (connect_req *)arg;
-    debug("c:%p connect_error_cb req:%p %d\n", c, c->proxy_req, error);
+    debug("c:%p %s req:%p %d\n", c, __func__, c->proxy_req, error);
     c->proxy_req = NULL;
-    if (error != EVREQ_HTTP_REQUEST_CANCEL && !c->direct && (c->server_req || c->server_bev)) {
-        connect_invalid_reply(c);
-    }
     if (c->server_req) {
         switch (error) {
         case EVREQ_HTTP_TIMEOUT: connect_send_error(c, 504, "Gateway Timeout"); break;
@@ -1600,10 +1611,12 @@ void connect_peer(connect_req *c, bool injector_preference)
 {
     connect_more_injectors(c->n, injector_preference);
 
+    assert(!c->pc);
     assert(!c->r.on_connect);
     assert(!c->proxy_req);
     queue_request(c->n, &c->r, ^(peer_connection *pc) {
         debug("c:%p %s on_connect\n", c, __func__);
+        assert(!c->pc);
         assert(!c->r.on_connect);
         c->pc = pc;
         assert(!c->proxy_req);
@@ -1651,12 +1664,15 @@ void connect_request(network *n, evhttp_request *req)
 
     evhttp_connection_set_closecb(c->server_req->evcon, connect_evcon_close_cb, c);
 
-    connect_peer(c, false);
-
 #if !NO_DIRECT
     c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
     bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
     bufferevent_enable(c->direct, EV_READ);
+#endif
+
+    connect_peer(c, false);
+
+#if !NO_DIRECT
     bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port);
     evhttp_uri_free(uri);
 #endif
@@ -1870,14 +1886,15 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
 
     bufferevent_setcb(bev, NULL, NULL, socks_connect_req_event_cb, c);
 
-    connect_peer(c, false);
-
 #if !NO_DIRECT
     c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
     debug("%s bev:%p direct:%p\n", __func__, bev, c->direct);
     bufferevent_setcb(c->direct, NULL, NULL, socks_connect_event_cb, c);
     bufferevent_enable(c->direct, EV_READ);
 #endif
+
+    connect_peer(c, false);
+
     return c->direct;
 }
 
