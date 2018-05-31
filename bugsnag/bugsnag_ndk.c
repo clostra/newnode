@@ -3,6 +3,7 @@
 #include <dlfcn.h>
 #include <assert.h>
 #include <string.h>
+#include <pthread.h>
 
 #include <jni.h>
 
@@ -33,6 +34,8 @@ struct bugsnag_ndk_report *g_bugsnag_report;
 
 /* structure for storing the unwound stack trace */
 unwind_struct *g_native_code;
+
+pthread_mutex_t bsg_lock;
 
 JNIEnv *bugsnagGlobalEnv;
 
@@ -395,7 +398,9 @@ static void bugsnag_signal_handler(int code, struct siginfo *si, void *sc) {
         FILE *file = fopen(filename, "w+");
 
         if (file != NULL) {
+            pthread_mutex_lock(&bsg_lock);
             char *payload = bugsnag_serialize_event(g_bugsnag_report->event);
+            pthread_mutex_unlock(&bsg_lock);
             fputs(payload, file);
 
             fflush(file);
@@ -424,6 +429,8 @@ int setupBugsnag(JNIEnv *env) {
     char *error_store_path = bsg_load_error_store_path(env);
     bugsnag_report_add_event(report, event);
     bugsnag_event_add_exception(event, exception);
+
+    pthread_mutex_init(&bsg_lock, NULL);
 
     g_bugsnag_report = malloc(sizeof(struct bugsnag_ndk_report));
     memset(g_bugsnag_report, 0, sizeof(struct bugsnag_ndk_report));
@@ -484,7 +491,9 @@ Java_com_bugsnag_android_ndk_BugsnagObserver_populateContextDetails(JNIEnv *env,
 
 JNIEXPORT void JNICALL
 Java_com_bugsnag_android_ndk_BugsnagObserver_populateBreadcumbDetails(JNIEnv *env, jclass type) {
+    pthread_mutex_lock(&bsg_lock);
     bsg_populate_breadcrumbs(env, g_bugsnag_report->event);
+    pthread_mutex_unlock(&bsg_lock);
 }
 
 JNIEXPORT void JNICALL
@@ -518,7 +527,9 @@ void bugsnag_set_user(char *id, char *email, char *name) {
 
 void bugsnag_add_breadcrumb(bsg_breadcrumb* crumb)
 {
+    pthread_mutex_lock(&bsg_lock);
     bugsnag_event_add_breadcrumb(g_bugsnag_report->event, crumb);
+    pthread_mutex_unlock(&bsg_lock);
 }
 
 void bugsnag_leave_breadcrumb_env(JNIEnv *env, char *name, bsg_breadcrumb_t type) {
@@ -532,7 +543,9 @@ void bugsnag_leave_breadcrumb_env(JNIEnv *env, char *name, bsg_breadcrumb_t type
     crumb->type = type;
     crumb->metadata = NULL;
 
+    pthread_mutex_lock(&bsg_lock);
     bugsnag_event_add_breadcrumb(g_bugsnag_report->event, crumb);
+    pthread_mutex_unlock(&bsg_lock);
 
     bsg_leave_breadcrumb(env, name, type);
 }
