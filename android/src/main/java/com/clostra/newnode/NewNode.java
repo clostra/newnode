@@ -70,7 +70,7 @@ public class NewNode {
 
     private static void update() throws Exception {
         Application app = app();
-        URL url = new URL("https://api.github.com/repos/clostra/newnode/releases");
+        URL url = new URL("https://api.github.com/repos/clostra/newnode/releases/latest");
         URLConnection urlConnection = url.openConnection();
         InputStream in = urlConnection.getInputStream();
         BufferedReader r = new BufferedReader(new InputStreamReader(in, "UTF-8"));
@@ -80,8 +80,7 @@ public class NewNode {
             b.append(line);
         }
         in.close();
-        JSONArray a = new JSONArray(b.toString());
-        JSONObject release = a.getJSONObject(0);
+        JSONObject release = new JSONObject(b.toString());
         String version = release.getString("name").replaceAll("^v", "");
         if (VERSION.compareTo(version) >= 0) {
             return;
