@@ -1,12 +1,12 @@
 [submodule "libutp"]
 	path = libutp
-	url = ../libutp
+	url = https://github.com/clostra/libutp
 [submodule "Libevent"]
 	path = Libevent
-	url = ../Libevent
+	url = https://github.com/clostra/Libevent
 [submodule "libsodium"]
 	path = libsodium
-	url = ../libsodium
+	url = https://github.com/clostra/libsodium
 [submodule "openssl"]
 	path = openssl
 	url = https://github.com/openssl/openssl.git
