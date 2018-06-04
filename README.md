@@ -31,6 +31,15 @@ See [`android/examples/WebViewSample`](https://github.com/clostra/newnode/tree/m
 
 ## iOS
 
+### Carthage
+
+Add to your Cartfile:
+```carthage
+github "clostra/newnode"
+```
+
+### Cocoapods
+
 Add to your Podfile:
 ```cocoapods
 pod 'NewNode'
