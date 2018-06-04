@@ -1,6 +1,7 @@
 #include <string.h>
 
 #define HAVE_CONFIG_H
+#define UNW_LOCAL_ONLY
 #include <libunwind.h>
 #include <mempool.h>
 
@@ -27,43 +28,6 @@ static int starts_with(const char *pre, const char *str)
     } else {
         return strncmp(pre, str, lenpre) == 0;
     }
-}
-
-
-/**
- * structure used when using <unwind.h> to get the trace for the current context
- */
-struct BacktraceState
-{
-    void** current;
-    void** end;
-};
-
-/**
- * callback used when using <unwind.h> to get the trace for the current context
- */
-static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void* arg)
-{
-    struct BacktraceState* state = (struct BacktraceState*)arg;
-    uintptr_t pc = _Unwind_GetIP(context);
-    if (pc) {
-        if (state->current == state->end) {
-            return _URC_END_OF_STACK;
-        } else {
-            *state->current++ = (void*)pc;
-        }
-    }
-    return _URC_NO_REASON;
-}
-
-/**
- * uses built in <unwind.h> to get the trace for the current context
- */
-size_t unwind_current_context(void** buffer, size_t max) {
-    struct BacktraceState state = {buffer, buffer + max};
-    _Unwind_Backtrace(unwind_callback, &state);
-
-    return state.current - buffer;
 }
 
 /**
