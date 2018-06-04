@@ -45,6 +45,7 @@ void populate_meta_array(JNIEnv *env, jarray jmeta, JSON_Array * meta_data);
 /**
  * Removes any path from the filename to make it consistent across API versions
  */
+/*
 static char* strip_path_from_file(const char* file) {
 
     char* pos = (char *) file;
@@ -57,6 +58,7 @@ static char* strip_path_from_file(const char* file) {
 
     return pos;
 }
+*/
 
 /**
  * Creates a java Double object using the given double
@@ -193,6 +195,7 @@ void bugsnag_init(JNIEnv *env) {
  * bugsnag_notify_meta(env, "Corrupt Store", "Account registry invalidated", metadata);
  * ```
  */
+/*
 void bugsnag_notify_meta(JNIEnv *env, char* name, char* message, bsg_severity_t severity, JSON_Object * meta_data) {
     void* frames[BUGSNAG_FRAMES_MAX];
     size_t frames_size = unwind_current_context(frames, BUGSNAG_FRAMES_MAX);
@@ -295,11 +298,13 @@ void bugsnag_notify_meta(JNIEnv *env, char* name, char* message, bsg_severity_t 
     (*env)->DeleteLocalRef(env, jseverity);
     (*env)->DeleteLocalRef(env, interface_class);
 }
+*/
 
 /**
  * Manually notify to Bugsnag
  * uses the java notifier to send basic information
  */
+/*
 void bugsnag_notify_env(JNIEnv *env, char* name, char* message, bsg_severity_t severity) {
     bugsnag_notify_meta(env, name, message, severity, NULL);
 }
@@ -308,6 +313,7 @@ void bugsnag_notify(char* name, char* message, bsg_severity_t severity) {
     assert(bugsnagGlobalEnv != NULL);
     bugsnag_notify_meta(bugsnagGlobalEnv, name, message, severity, NULL);
 }
+*/
 
 /**
  * Checks to see if Bugsnag should be notified for this release stage
