@@ -62,7 +62,7 @@ function build_android {
         mkdir $TRIPLE
         cd $TRIPLE
         cmake -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
-            -DANDROID_NDK=$NDK -DANDROID_ABI=$ABI -DANDROID_PLATFORM=android-$NDK_API ..
+            -DANDROID_NDK=$NDK -DANDROID_ABI=$ABI -DANDROID_PLATFORM=android-$NDK_API ../cmake
         make
         cd ..
     fi
@@ -96,7 +96,8 @@ function build_android {
                 bugsnag/deps/deps/parson/parson.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBUNWIND_CFLAGS -c $file
     done
-    clang $CFLAGS -shared -Wl,--version-script=android_export_list -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND
+    #clang $CFLAGS -shared -Wl,--version-script=android_export_list -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND
+    clang $CFLAGS -shared -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND
     # -fuse-ld=gold
     OUT=android/src/main/jniLibs/$ABI
     test -d $OUT || mkdir -p $OUT
