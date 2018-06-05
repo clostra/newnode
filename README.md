@@ -4,7 +4,7 @@
 
 [![Stories in Ready](https://badge.waffle.io/clostra/newnode.svg?label=ready&title=Ready)](http://waffle.io/clostra/newnode)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/fbeb689ec190470a90645fb016cbcfb7)](https://www.codacy.com/app/shalunov/newnode)
-[ ![Download](https://api.bintray.com/packages/clostra/NewNode/newnode/images/download.svg) ](https://bintray.com/clostra/NewNode/newnode/_latestVersion)
+[![GitHub release](https://img.shields.io/github/release/clostra/newnode.svg)](https://github.com/clostra/newnode/releases/)
 [![Carthage compatible](https://img.shields.io/badge/Carthage-compatible-4BC51D.svg?style=flat)](https://github.com/Carthage/Carthage)
 
 ## Android
