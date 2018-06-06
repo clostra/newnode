@@ -29,6 +29,16 @@ function build_ios {
     LIBUTP=libutp/$TRIPLE/libutp.a
 
 
+    cd bugsnag-cocoa
+    if [ ! -f iOS/$TRIPLE/libBugsnagStatic.a ]; then
+        xcodebuild -workspace iOS.xcworkspace -scheme BugsnagStatic -configuration Release \
+            -arch $ARCH -sdk $SDK CONFIGURATION_BUILD_DIR=$TRIPLE TARGET_BUILD_DIR=$TRIPLE $ACTION
+    fi
+    cd ..
+    LIBBUGSNAG_CFLAGS=-Ibugsnag-cocoa/iOS/$TRIPLE/include
+    LIBBUGSNAG=bugsnag-cocoa/iOS/$TRIPLE/libBugsnagStatic.a
+
+
     FLAGS="$CFLAGS -g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks \
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
@@ -44,7 +54,7 @@ function build_ios {
     rm libsodium.a || true
     clang $CFLAGS -c dht/dht.c -o dht_dht.o
     for file in bev_splice.c base64.c client.c dht.c http.c log.c lsd.c icmp_handler.c ios/Framework/NewNode.m hash_table.c network.c obfoo.c sha1.c timer.c utp_bufferevent.c; do
-        clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
+        clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBBUGSNAG_CFLAGS -c $file
     done
 
     rm -rf objects || true
@@ -61,6 +71,10 @@ function build_ios {
     cd objects/libevent
     ar x ../../Libevent/$TRIPLE/lib/libevent_pthreads.a
     cd ../..
+    mkdir -p objects/libbugsnag
+    cd objects/libbugsnag
+    ar x ../../$LIBBUGSNAG
+    cd ../..
 
     lipo $LIBSODIUM -thin $ARCH -o libsodium.a
 
@@ -72,7 +86,7 @@ function build_ios {
     rm -rf $TRIPLE || true
     mkdir -p $TRIPLE
 
-    clang $CFLAGS -dynamiclib \
+    clang++ $CFLAGS -dynamiclib \
         -install_name @rpath/NewNode.framework/NewNode \
         -Xlinker -rpath -Xlinker @executable_path/Frameworks \
         -Xlinker -rpath -Xlinker @loader_path/Frameworks \
@@ -83,7 +97,7 @@ function build_ios {
         -Xlinker -no_deduplicate \
         -Xlinker -objc_abi_version -Xlinker 2 \
         -framework Foundation \
-        *.o objects/libutp/*.o objects/libevent/*.o objects/libsodium/*.o \
+        *.o objects/libutp/*.o objects/libevent/*.o objects/libbugsnag/*.o objects/libsodium/*.o \
         -o $TRIPLE/libnewnode.dylib
 
     dsymutil $TRIPLE/libnewnode.dylib -o $TRIPLE/libnewnode.dylib.dSYM
@@ -105,6 +119,7 @@ XCODEDIR=$(xcode-select -p)
 BASEDIR="${XCODEDIR}/Platforms/iPhoneSimulator.platform/Developer"
 SDK="${BASEDIR}/SDKs/iPhoneSimulator.sdk"
 IOS_SIMULATOR_VERSION_MIN=${IOS_SIMULATOR_VERSION_MIN-"8.0.0"}
+ACTION=build
 
 ARCH=x86_64
 CFLAGS="-arch $ARCH -isysroot ${SDK} -mios-simulator-version-min=${IOS_SIMULATOR_VERSION_MIN}"
@@ -116,6 +131,7 @@ build_ios
 BASEDIR="${XCODEDIR}/Platforms/iPhoneOS.platform/Developer"
 SDK="${BASEDIR}/SDKs/iPhoneOS.sdk"
 IOS_VERSION_MIN=${IOS_VERSION_MIN-"8.0.0"}
+ACTION=archive
 
 ARCH=arm64
 CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -mios-version-min=${IOS_VERSION_MIN} -fembed-bitcode -flto"
