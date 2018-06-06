@@ -16,3 +16,6 @@
 [submodule "libunwind-ndk"]
 	path = libunwind-ndk
 	url = https://github.com/ivanarh/libunwind-ndk.git
+[submodule "bugsnag-cocoa"]
+	path = bugsnag-cocoa
+	url = https://github.com/clostra/bugsnag-cocoa
