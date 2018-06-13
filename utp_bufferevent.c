@@ -215,6 +215,7 @@ void ubev_write_cb(bufferevent *bev, void *ctx)
     // the output buffer is flushed
     assert(!evbuffer_get_length(bufferevent_get_output(u->bev)));
     if (!u->utp) {
+        bufferevent_disable(u->bev, EV_WRITE);
         ubev_bev_close(u);
         ubev_cleanup(u);
         return;
