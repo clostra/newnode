@@ -1973,7 +1973,9 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
         if (!p) {
             return;
         }
-        port_t port = ntohs(*(port_t*)&p[4 + sizeof(uint8_t) + p[4]]);
+        port_t port;
+        memcpy(&port, &p[4 + sizeof(uint8_t) + p[4]], sizeof(port_t));
+        port = ntohs(port);
 
         char host[NI_MAXHOST];
         snprintf(host, sizeof(host), "%.*s", p[4], &p[4 + sizeof(uint8_t)]);
