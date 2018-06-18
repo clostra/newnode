@@ -23,6 +23,7 @@ if [ ! -d native ]; then
     ./autogen.sh
     mkdir -p native
     ./configure --enable-minimal --disable-shared --prefix=$(pwd)/native
+    make clean
     make -j3 check
     make -j3 install
 fi
@@ -44,7 +45,7 @@ FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-paramet
   -D__FAVOR_BSD -D_BSD_SOURCE"
 # -fvisibility=hidden -fvisibility-inlines-hidden -flto=thin \
 if [ ! -z "$DEBUG" ]; then
-    FLAGS="$FLAGS -O0 -DDEBUG=1 -fsanitize=address --coverage"
+    FLAGS="$FLAGS -O0 -DDEBUG=1 -fsanitize=address -fsanitize=undefined --coverage"
 else
     FLAGS="$FLAGS -O0"
 fi
