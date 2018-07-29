@@ -25,7 +25,7 @@ dependencies {
 
     // include AAR directly (must include dependencies)
     implementation project(':newnode')
-    implementation 'com.bugsnag:bugsnag-android:4.3.3'
+    implementation 'com.bugsnag:bugsnag-android:4.5.0'
 
     // use jcenter
     //implementation 'com.clostra.newnode:newnode:+'
