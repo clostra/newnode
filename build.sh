@@ -47,7 +47,7 @@ FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-paramet
 if [ ! -z "$DEBUG" ]; then
     FLAGS="$FLAGS -O0 -DDEBUG=1 -fsanitize=address -fsanitize=undefined --coverage"
 else
-    FLAGS="$FLAGS -O0"
+    FLAGS="$FLAGS -O0 -fsanitize=address -fsanitize=undefined"
 fi
 
 CFLAGS="$FLAGS -std=gnu11"
