@@ -40,4 +40,7 @@ void return_connection(evhttp_connection *evcon);
 
 uint64 utp_on_accept(utp_callback_arguments *a);
 
+// defined by caller
+void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen);
+
 #endif // __HTTP_H__
