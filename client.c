@@ -192,6 +192,7 @@ void on_utp_connect(network *n, peer_connection *pc)
             if (peer_connections[i] == pc) {
                 peer_connections[i] = NULL;
                 found = true;
+                break;
             }
         }
         assert(found);
