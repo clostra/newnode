@@ -16,7 +16,7 @@ rx,tx
 
 1 A->B: crypto_kx_PUBLICKEYBYTES, crypto_stream_chacha20_NONCEBYTES, PadA
 2 B->A: crypto_kx_PUBLICKEYBYTES, crypto_stream_chacha20_NONCEBYTES, PadB
-3 A->B: HASH('req1', tx), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
+3 A->B: HASH('req1', tx), ENCRYPT(VC, crypto_provide, len(PadC), PadC)
 4 B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
 5 A->B: ENCRYPT2(Payload Stream)
 */
@@ -25,7 +25,7 @@ rx,tx
 #define tkn(x, y) xtkn(x, y)
 #define COMPILER_ASSERT(X) struct tkn(__d_, __LINE__) { char b[sizeof(char[(X) ? 1 : -1])]; }
 
-#define STREAM_BLOCK_LEN 64
+#define crypto_stream_chacha20_BLOCK_LENGTH 64
 
 #define INTRO_BYTES (crypto_kx_PUBLICKEYBYTES + crypto_stream_chacha20_NONCEBYTES)
 COMPILER_ASSERT(crypto_stream_chacha20_KEYBYTES <= crypto_kx_SESSIONKEYBYTES);
