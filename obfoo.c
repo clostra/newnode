@@ -160,6 +160,7 @@ ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
                 uint8_t buf[sizeof(crypt_intro) + PAD_MAX + sizeof(uint16_t)];
                 crypt_intro ci;
             } r = {.buf = {0}};
+            r.ci.crypto_provide = 0x01;
             r.ci.pad_len = randombytes_uniform(PAD_MAX);
             randombytes_buf(r.ci.pad, r.ci.pad_len);
             size_t crypt_len = sizeof(crypt_intro) + r.ci.pad_len + sizeof(uint16_t);
@@ -204,6 +205,10 @@ ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
             debug("incorrect vc: %llu != 0\n", (unsigned long long)ci->vc);
             return -1;
         }
+        if (ci->crypto_provide > 0x01) {
+            debug("unsupported crypto_provide: %u > 0x01\n", ci->crypto_provide);
+            return -1;
+        }
         o->discarding = ci->pad_len;
         evbuffer_drain(in, sizeof(crypt_intro));
 
@@ -211,11 +216,12 @@ ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
             // len(ia)
             o->discarding += sizeof(uint16_t);
 
-            // vc,crypto_select,(uint16_t)len(pad),pad
+            // vc,crypto_provide,(uint16_t)len(pad),pad
             union {
                 uint8_t buf[sizeof(crypt_intro) + PAD_MAX];
                 crypt_intro ci;
             } r = {.buf = {0}};
+            r.ci.crypto_provide = 0x01;
             r.ci.pad_len = randombytes_uniform(PAD_MAX);
             randombytes_buf(r.ci.pad, r.ci.pad_len);
             size_t crypt_len = sizeof(r.ci) + r.ci.pad_len;
