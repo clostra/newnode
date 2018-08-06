@@ -46,7 +46,6 @@ typedef struct {
 } PACKED crypt_intro;
 
 typedef enum {
-    OF_STATE_DISABLED = -1,
     OF_STATE_INTRO = 0,
     OF_STATE_SYNC,
     OF_STATE_DISCARD,

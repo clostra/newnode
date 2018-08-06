@@ -92,29 +92,7 @@ ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
 {
     //debug("%s: o:%p state:%d incoming:%d\n", __func__, o, o->state, o->incoming);
     switch(o->state) {
-    case OF_STATE_DISABLED:
-        return evbuffer_add_buffer(out, in);
     case OF_STATE_INTRO: {
-
-        // XXX: temporary plaintext support
-#define method_matches(s, m) strncaseeq((char*)s, m, lenof(m) - 1)
-        uint8_t *start = evbuffer_pullup(in, 8);
-        if (!start) {
-            return 0;
-        }
-        if (method_matches(start, "GET ") ||
-            method_matches(start, "PUT ") ||
-            method_matches(start, "POST ") ||
-            method_matches(start, "HEAD ") ||
-            method_matches(start, "TRACE ") ||
-            method_matches(start, "PATCH ") ||
-            method_matches(start, "DELETE ") ||
-            method_matches(start, "OPTIONS ") ||
-            method_matches(start, "CONNECT ")) {
-            o->state = OF_STATE_DISABLED;
-            return obfoo_input_filter(in, out, o);
-        }
-#undef method_matches
 
         if (evbuffer_get_length(in) < INTRO_BYTES) {
             return 0;
@@ -253,8 +231,6 @@ ssize_t obfoo_output_filter(evbuffer *in, evbuffer *out, obfoo *o)
 {
     //debug("%s: o:%p state:%d incoming:%d\n", __func__, o, o->state, o->incoming);
     switch(o->state) {
-    case OF_STATE_DISABLED:
-        return evbuffer_add_buffer(out, in);
     default:
         return 0;
     case OF_STATE_DISCARD:

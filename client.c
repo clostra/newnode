@@ -52,7 +52,6 @@ typedef struct {
     uint32_t last_verified;
     uint32_t last_connect;
     uint32_t last_connect_attempt;
-    bool encrypted:1;
 } peer;
 
 typedef struct {
@@ -236,7 +235,7 @@ const char* peer_addr_str(peer *p)
 {
     static char buf[64];
     address *a = &p->addr;
-    snprintf(buf, sizeof(buf), "%s:%d e:%d", inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port), p->encrypted);
+    snprintf(buf, sizeof(buf), "%s:%d", inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port));
     return buf;
 }
 
@@ -250,7 +249,7 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
     peer_connection *pc = alloc(peer_connection);
     pc->n = n;
     pc->peer = p;
-    pc->bev = utp_socket_create_bev(n->evbase, s, p->encrypted);
+    pc->bev = utp_socket_create_bev(n->evbase, s);
     utp_connect(s, (sockaddr*)&sin, sizeof(sin));
     bufferevent_setcb(pc->bev, NULL, NULL, bev_event_cb, pc);
     bufferevent_enable(pc->bev, EV_READ);
@@ -278,13 +277,12 @@ void add_peer(peer_array **pa, peer *p)
     dht_ping_node((const sockaddr *)&sin, sizeof(sin));
 }
 
-void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_addrs, bool encrypted)
+void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_addrs)
 {
     for (uint i = 0; i < num_addrs; i++) {
         address *a = (address *)&addrs[sizeof(address) * i];
         peer *p = get_peer(*pa, a);
         if (p) {
-            p->encrypted = encrypted;
             return;
         }
         // paper over a bug in some DHT implementation that winds up with 1 for the port
@@ -293,7 +291,6 @@ void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_a
         }
         p = alloc(peer);
         p->addr = *a;
-        p->encrypted = encrypted;
         add_peer(pa, p);
 
         const char *label = "peer";
@@ -322,7 +319,7 @@ void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
 {
     dht_ping_node(addr, addrlen);
     address a = {.ip = ((sockaddr_in*)addr)->sin_addr.s_addr, .port = ((sockaddr_in*)addr)->sin_port};
-    add_addresses(n, &all_peers, (const byte*)&a, 1, false);
+    add_addresses(n, &all_peers, (const byte*)&a, 1);
 }
 
 void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
@@ -336,16 +333,12 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
     const uint8_t* peers = data;
     size_t num_peers = data_len / 6;
     debug("dht_event_callback num_peers:%zu\n", num_peers);
-    if (memeq(info_hash, injector_swarm, sizeof(injector_swarm))) {
-        add_addresses(n, &injectors, peers, num_peers, false);
-    } else if (memeq(info_hash, injector_proxy_swarm, sizeof(injector_proxy_swarm))) {
-        add_addresses(n, &injector_proxies, peers, num_peers, false);
-    } else if (memeq(info_hash, encrypted_injector_swarm, sizeof(encrypted_injector_swarm))) {
-        add_addresses(n, &injectors, peers, num_peers, true);
+    if (memeq(info_hash, encrypted_injector_swarm, sizeof(encrypted_injector_swarm))) {
+        add_addresses(n, &injectors, peers, num_peers);
     } else if (memeq(info_hash, encrypted_injector_proxy_swarm, sizeof(encrypted_injector_proxy_swarm))) {
-        add_addresses(n, &injector_proxies, peers, num_peers, true);
+        add_addresses(n, &injector_proxies, peers, num_peers);
     } else {
-        add_addresses(n, &all_peers, peers, num_peers, true);
+        add_addresses(n, &all_peers, peers, num_peers);
     }
     if (o_debug >= 2) {
         printf("Received %d values.\n", (int)(data_len / 6));
