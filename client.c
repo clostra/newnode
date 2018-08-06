@@ -941,10 +941,8 @@ void direct_submit_request(proxy_request *p)
     if (!evcon) {
         return;
     }
+    debug("p:%p con:%p direct request submitted: %s\n", p, evcon, evhttp_request_get_uri(p->server_req));
     evhttp_make_request(evcon, p->direct_req, p->server_req->type, request_uri);
-    if (p->direct_req) {
-        debug("p:%p con:%p direct request submitted: %s\n", p, p->direct_req->evcon, evhttp_request_get_uri(p->server_req));
-    }
 }
 
 address parse_address(const char *addr)
@@ -997,9 +995,9 @@ void proxy_submit_request_on_con(proxy_request *p, evhttp_connection *evcon)
 {
     char *uri = p->proxy_req->uri;
     p->proxy_req->uri = NULL;
+    debug("p:%p con:%p proxy request submitted: %s\n", p, evcon, evhttp_request_get_uri(p->proxy_req));
     evhttp_make_request(evcon, p->proxy_req, p->proxy_req->type, uri);
     free(uri);
-    debug("p:%p con:%p proxy request submitted: %s\n", p, evhttp_request_get_connection(p->proxy_req), evhttp_request_get_uri(p->proxy_req));
 }
 
 int peer_sort_cmp(const peer_sort *pa, const peer_sort *pb)
@@ -1280,8 +1278,8 @@ void trace_submit_request_on_con(trace_request *t, evhttp_connection *evcon)
     }
     snprintf(request_uri, sizeof(request_uri), "/%u-%u%u",
              instance, randombytes_random(), randombytes_random());
+    debug("t:%p %s trace request submitted: %s\n", t, peer_addr_str(t->pc->peer), request_uri);
     evhttp_make_request(evcon, req, EVHTTP_REQ_TRACE, request_uri);
-    debug("t:%p con:%p %s trace request submitted: %s\n", t, req->evcon, peer_addr_str(t->pc->peer), request_uri);
 }
 
 void submit_trace_request(network *n)
