@@ -280,7 +280,7 @@ int utp_socket_create_fd(event_base *base, utp_socket *s)
     return fds[1];
 }
 
-bufferevent* utp_socket_create_bev(event_base *base, utp_socket *s, bool encrypt)
+bufferevent* utp_socket_create_bev(event_base *base, utp_socket *s)
 {
     int fds[2];
     socketpair(PF_LOCAL, SOCK_STREAM, 0, fds);
@@ -296,12 +296,8 @@ bufferevent* utp_socket_create_bev(event_base *base, utp_socket *s, bool encrypt
     evutil_make_socket_nonblocking(fds[1]);
     u->other_bev = bufferevent_socket_new(base, fds[1], BEV_OPT_CLOSE_ON_FREE);
     bufferevent_incref(u->other_bev);
-    if (encrypt) {
-        u->obfoo->incoming = false;
-        obfoo_write_intro(u->obfoo, u->obfoo->output);
-    } else {
-        u->obfoo->state = OF_STATE_DISABLED;
-    }
+    u->obfoo->incoming = false;
+    obfoo_write_intro(u->obfoo, u->obfoo->output);
     return u->other_bev;
 }
 
