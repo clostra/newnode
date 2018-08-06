@@ -13,13 +13,13 @@ int crypto_stream_chacha20_xor_ic_bytes(uint8_t *c, const uint8_t *m, size_t mle
                                         const unsigned char *n, uint64_t ic_bytes,
                                         const unsigned char *k)
 {
-    size_t partial = ic_bytes % STREAM_BLOCK_LEN;
+    size_t partial = ic_bytes % crypto_stream_chacha20_BLOCK_LENGTH;
     if (partial) {
-        uint8_t block[STREAM_BLOCK_LEN] = {0};
+        uint8_t block[crypto_stream_chacha20_BLOCK_LENGTH] = {0};
         uint8_t *p = &block[partial];
-        size_t plen = MIN(STREAM_BLOCK_LEN - partial, mlen);
+        size_t plen = MIN(crypto_stream_chacha20_BLOCK_LENGTH - partial, mlen);
         memcpy(p, m, plen);
-        int r = crypto_stream_chacha20_xor_ic(block, block, &p[plen] - block, n, ic_bytes / STREAM_BLOCK_LEN, k);
+        int r = crypto_stream_chacha20_xor_ic(block, block, &p[plen] - block, n, ic_bytes / crypto_stream_chacha20_BLOCK_LENGTH, k);
         if (r != 0) {
             return r;
         }
@@ -29,7 +29,7 @@ int crypto_stream_chacha20_xor_ic_bytes(uint8_t *c, const uint8_t *m, size_t mle
         mlen -= plen;
         ic_bytes += plen;
     }
-    return crypto_stream_chacha20_xor_ic(c, m, mlen, n, ic_bytes / STREAM_BLOCK_LEN, k);
+    return crypto_stream_chacha20_xor_ic(c, m, mlen, n, ic_bytes / crypto_stream_chacha20_BLOCK_LENGTH, k);
 }
 
 int obfoo_encrypt(obfoo *o, uint8_t *c, const uint8_t *m, size_t mlen)
@@ -132,6 +132,8 @@ ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
                 return -1;
             }
         }
+        // session keys are generated, destroy secret key
+        memset(o->sk, 0, sizeof(o->sk));
 
         evbuffer_drain(in, crypto_kx_PUBLICKEYBYTES);
         evbuffer_remove(in, o->rx_nonce, sizeof(o->rx_nonce));
