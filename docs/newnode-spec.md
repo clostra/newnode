@@ -164,9 +164,11 @@ injector and MAY serve CONNECT method requests.
 
 ## Peer Protocol
 
-The peer protocol is subject to change.
+The peer protocol is subject to evolution as we further experiment with it in
+the next few months.
 
-The peer protocol is HTTP over LEDBAT, with an additional header.
+The peer protocol is essentially HTTP over LEDBAT, with an some additional
+headers and verbs.
 In addition, the HTTP exchange is protected by a layer of transport
 encryption, to make surveillance and blocking harder. This layer is
 inspired by BitTorrent Message Stream Encryption and has similar security
@@ -176,24 +178,109 @@ spending hundreds of million on new equipment. We use more modern
 primitives than BitTorrent Message Stream Encryption.
 
 Range requests are used to get parts of the file.  The content is
-authenticated using a public key signature produced by the injector.
-The signature is sent in X-Sign header.
+authenticated using a Merkle tree, the root of which is signed by the injector.
+The signature for the root of the tree is sent in X-MSign header.
 
-X-Sign authenticates the entire file, but does not authenticate any parts.
+X-MSign authenticates any suitably sized parts of the file being transmitted.
 
 When an injector first injects the object, it starts sending it before
 it has seen the whole thing, and so the signature cannot be sent at the
-beginning where headers normally go.  The injector SHOULD send the X-Sign
+beginning where headers normally go.  The injector SHOULD send the X-MSign
 header as a trailed with a last empty chunk then.
 
-When two peers are exchanging data, they have to open two separate
-connections to send data in each direction.
+When two peers are exchanging data, they have to open at least two separate
+connections to send data in each direction. They MAY open more LEDBAT
+connections in each direction to transmit parts of the file.
 
 Non-normative note: Technically, the only thing necessary for the injector
-to inject the file is to transmit the X-Sign. The client can at that point
+to inject the file is to transmit the X-MSign. The client can at that point
 fetch the file through an untrusted injector proxy. However, given that to
-produce the X-Sign the injector needs the whole might, it makes sense that
+produce the X-MSign the injector needs the whole might, it makes sense that
 it also sends the first copy that the client can later seed to other peers.
+
+### Merkle Tree
+
+Similar to BEP 52, a Merkle tree is constructed for the file, with a branching
+factor of 2, constructed from 16KiB blocks of the file. The last block may be
+shorter than 16KiB. The remaining leaf hashes beyond the end of the file
+required to construct upper layers of the Merkle tree are set to zero.
+
+Here, the digest function is the default hash primitive in libsodium.
+
+### X-MSign Format
+
+X-MSign replaces a previously used X-Sign header. X-Sign was an older mechanism
+we used. It authenticated the entire file, but did not authenticate any parts.
+
+X-MSign is a signed message that consists of the ASCII characters "msign" (5
+bytes), timestamp when the message was generated (4 bytes), and of the
+root-level of the Merkle tree. The content includes HTTP headers other than
+X-Sign. The headers whenever peer protocol is used MUST include Content-Location
+and Content-Length, so that the URL and size is authenticated.
+
+X-MSign is transmitted base-64 encoded.
+
+In other words,
+
+```http
+X-MSign: <base64(sign("msign" + timestamp + merkel_tree_root(headers + content)))>
+```
+
+Here, `sign()` is the default primitives in libsodium.
+
+### X-HashRequest
+
+The presence of the X-HashRequest header indicates, from one peer to another,
+that the response to a request (or range request) should contain the X-MSign and
+leaf-level Merkle tree nodes so that the content can be validated. A peer only
+needs to request this once.
+
+### X-Hashes
+
+The X-Hashes header is sent in response to a request which contains
+X-HashRequest, and X-Hashes contains the base-64 encoded leaf-level Merkle tree
+node.
+
+```http
+X-Hashes: <base64([leaf, leaf, leaf, ...])>
+```
+
+### Range requests
+
+With a Merkle tree authenticating the entire file, normal HTTP Range requests
+can be used to fetch parts of the content from different peers. It is necessary
+to have aligned 16KiB chunks in order to check the leaf level hash, and so
+requests on 16KiB boundaries of 16KiB multiple lengths SHOULD be used.
+
+### HAVE
+
+As peers receive and hash validate chunks, or delete them from disk, they update
+a bitfield of chunks they have available to send to other peers. A new HTTP
+verb, HAVE, allows a requester to notify another peer about the updated
+bitfield. This should only be sent to peers who have previously requested the
+same content. It is not necessary to send an updated bitfield to a peer who also
+claims to have the chunks involved in the update. The bitfield itself is sent as
+base64 of bitfield in the X-Bitfield header. A peer may send their X-Bitfield in
+response to a normal GET request, as well.
+
+Example:
+
+```http
+HAVE <content-uri> HTTP/1.1
+X-Bitfield: <base64(bitfield)>
+
+```
+
+### Gossip
+
+While sending responses, a peer may include endpoints for other peers who also
+requested the same content. When received, these endpoints may be used as
+additional peers. They are sent as base64 of the compacted IP addresses:
+
+```http
+X-Peers4: <base64([ipv4,port, ...])>
+X-Peers6: <base64([ipv6,port, ...])>
+```
 
 ### Transport Encryption
 
@@ -526,22 +613,6 @@ if more ciphers are supported.
 Since the lengths of `a_pad` and `b_pad` are unspecified on the wire, *B* will
 resynchronize on `HASH('req1', tx)` while *A* will resynchronize on
 `ENCRYPT(VC)`.
-
-### X-Sign Format
-
-X-Sign is a signed message that consists of the ASCII characters "sign"
-(4 bytes), timestamp when the message was generated (4 bytes), and of
-the hash of the content. The content includes HTTP headers other than
-X-Sign. One of the headers whenever peer protocol is used MUST be
-Content-Location, so that the URL is authenticated.
-
-X-Sign is transmitted base-64 encoded.
-
-In other words,
-
-X-Sign = base64(sign("sign" + timestamp + hash(headers + content))).
-
-Here, sign() and hash() are the default primitives in libsodium.
 
 ## Policy Settings
 
