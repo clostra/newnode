@@ -30,6 +30,9 @@ function build_ios {
 
 
     cd bugsnag-cocoa
+    # XXX: clean bugsnag, since it seems to symlink iOS/$TRIPLE/libBugsnagStatic.a to the IntermediateBuildFilesPath
+    xcodebuild -workspace iOS.xcworkspace -scheme BugsnagStatic -configuration Release \
+        -arch $ARCH -sdk $SDK CONFIGURATION_BUILD_DIR=$TRIPLE TARGET_BUILD_DIR=$TRIPLE clean
     if [ ! -f iOS/$TRIPLE/libBugsnagStatic.a ]; then
         xcodebuild -workspace iOS.xcworkspace -scheme BugsnagStatic -configuration Release \
             -arch $ARCH -sdk $SDK CONFIGURATION_BUILD_DIR=$TRIPLE TARGET_BUILD_DIR=$TRIPLE $ACTION
@@ -133,6 +136,12 @@ SDK="${BASEDIR}/SDKs/iPhoneOS.sdk"
 IOS_VERSION_MIN=${IOS_VERSION_MIN-"8.0.0"}
 ACTION=archive
 
+ARCH=armv7s
+CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -mios-version-min=${IOS_VERSION_MIN} -fembed-bitcode -flto"
+LDFLAGS="-arch $ARCH"
+TRIPLE=armv7s-apple-darwin10
+build_ios
+
 ARCH=arm64
 CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -mios-version-min=${IOS_VERSION_MIN} -fembed-bitcode -flto"
 LDFLAGS="-arch $ARCH"
@@ -149,12 +158,14 @@ cp ios/Framework/module.modulemap $FRAMEWORK/Modules/module.modulemap
 mkdir -p $FRAMEWORK/Headers
 cp ios/Framework/NewNode-iOS.h $FRAMEWORK/Headers/NewNode.h
 sed "s/\$(CURRENT_PROJECT_VERSION)/$VERSION/" ios/Framework/Info.plist > $FRAMEWORK/Info.plist
-lipo -create -output $FRAMEWORK/NewNode x86_64-apple-darwin10/libnewnode.dylib arm-apple-darwin10/libnewnode.dylib
+lipo -create -output $FRAMEWORK/NewNode x86_64-apple-darwin10/libnewnode.dylib arm-apple-darwin10/libnewnode.dylib armv7s-apple-darwin10/libnewnode.dylib
 du -ch $FRAMEWORK
 
 rm -rf $FRAMEWORK.dSYM || true
 cp -R arm-apple-darwin10/libnewnode.dylib.dSYM $FRAMEWORK.dSYM
+cp -R armv7s-apple-darwin10/libnewnode.dylib.dSYM $FRAMEWORK.dSYM
 lipo -create -output $FRAMEWORK.dSYM/Contents/Resources/DWARF/libnewnode.dylib \
     x86_64-apple-darwin10/libnewnode.dylib.dSYM/Contents/Resources/DWARF/libnewnode.dylib \
-    arm-apple-darwin10/libnewnode.dylib.dSYM/Contents/Resources/DWARF/libnewnode.dylib
+    arm-apple-darwin10/libnewnode.dylib.dSYM/Contents/Resources/DWARF/libnewnode.dylib \
+    armv7s-apple-darwin10/libnewnode.dylib.dSYM/Contents/Resources/DWARF/libnewnode.dylib
 du -ch $FRAMEWORK.dSYM
