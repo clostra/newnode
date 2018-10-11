@@ -53,41 +53,29 @@ function build_ios {
 
     CFLAGS="$FLAGS -std=gnu11"
 
+    rm -rf $TRIPLE || true
     rm *.o || true
-    rm libsodium.a || true
     clang $CFLAGS -c dht/dht.c -o dht_dht.o
     for file in bev_splice.c base64.c client.c dht.c http.c log.c lsd.c icmp_handler.c ios/Framework/NewNode.m hash_table.c network.c obfoo.c sha1.c timer.c utp_bufferevent.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBBUGSNAG_CFLAGS -c $file
     done
+    mkdir -p $TRIPLE/objects
+    mv *.o $TRIPLE/objects
 
-    rm -rf objects || true
+    function arx {
+        o=`pwd`
+        mkdir -p $1
+        (cd $1 && ar x $o/$2)
+    }
 
-    mkdir -p objects/libutp
-    cd objects/libutp
-    ar x ../../$LIBUTP
-    cd ../..
-    mkdir -p objects/libevent
-    cd objects/libevent
-    ar x ../../Libevent/$TRIPLE/lib/libevent.a
-    cd ../..
-    mkdir -p objects/libevent
-    cd objects/libevent
-    ar x ../../Libevent/$TRIPLE/lib/libevent_pthreads.a
-    cd ../..
-    mkdir -p objects/libbugsnag
-    cd objects/libbugsnag
-    ar x ../../$LIBBUGSNAG
-    cd ../..
+    arx $TRIPLE/objects/libutp $LIBUTP
+    arx $TRIPLE/objects/libevent Libevent/$TRIPLE/lib/libevent.a
+    arx $TRIPLE/objects/libevent Libevent/$TRIPLE/lib/libevent_pthreads.a
+    arx $TRIPLE/objects/libbugsnag $LIBBUGSNAG
 
     lipo $LIBSODIUM -thin $ARCH -o libsodium.a
 
-    mkdir -p objects/libsodium
-    cd objects/libsodium
-    ar x ../../libsodium.a
-    cd ../..
-
-    rm -rf $TRIPLE || true
-    mkdir -p $TRIPLE
+    arx $TRIPLE/objects/libsodium libsodium.a
 
     clang++ $CFLAGS -dynamiclib \
         -install_name @rpath/NewNode.framework/NewNode \
@@ -95,17 +83,13 @@ function build_ios {
         -Xlinker -rpath -Xlinker @loader_path/Frameworks \
         -dead_strip \
         -exported_symbols_list ios/Framework/export_list \
-        -Xlinker -object_path_lto -Xlinker lto.o \
+        -Xlinker -object_path_lto -Xlinker $TRIPLE/objects/lto.o \
         -Xlinker -export_dynamic \
         -Xlinker -no_deduplicate \
         -Xlinker -objc_abi_version -Xlinker 2 \
         -framework Foundation \
-        *.o objects/libutp/*.o objects/libevent/*.o objects/libbugsnag/*.o objects/libsodium/*.o \
+        $TRIPLE/objects/*.o $TRIPLE/objects/libutp/*.o $TRIPLE/objects/libevent/*.o $TRIPLE/objects/libbugsnag/*.o $TRIPLE/objects/libsodium/*.o \
         -o $TRIPLE/libnewnode.dylib
-
-    dsymutil $TRIPLE/libnewnode.dylib -o $TRIPLE/libnewnode.dylib.dSYM
-
-    strip -x $TRIPLE/libnewnode.dylib
 }
 
 cd libsodium
@@ -159,13 +143,8 @@ mkdir -p $FRAMEWORK/Headers
 cp ios/Framework/NewNode-iOS.h $FRAMEWORK/Headers/NewNode.h
 sed "s/\$(CURRENT_PROJECT_VERSION)/$VERSION/" ios/Framework/Info.plist > $FRAMEWORK/Info.plist
 lipo -create -output $FRAMEWORK/NewNode x86_64-apple-darwin10/libnewnode.dylib arm-apple-darwin10/libnewnode.dylib armv7-apple-darwin10/libnewnode.dylib
-du -ch $FRAMEWORK
-
 rm -rf $FRAMEWORK.dSYM || true
-cp -R arm-apple-darwin10/libnewnode.dylib.dSYM $FRAMEWORK.dSYM
-cp -R armv7-apple-darwin10/libnewnode.dylib.dSYM $FRAMEWORK.dSYM
-lipo -create -output $FRAMEWORK.dSYM/Contents/Resources/DWARF/libnewnode.dylib \
-    x86_64-apple-darwin10/libnewnode.dylib.dSYM/Contents/Resources/DWARF/libnewnode.dylib \
-    arm-apple-darwin10/libnewnode.dylib.dSYM/Contents/Resources/DWARF/libnewnode.dylib \
-    armv7-apple-darwin10/libnewnode.dylib.dSYM/Contents/Resources/DWARF/libnewnode.dylib
+dsymutil $FRAMEWORK/NewNode -o $FRAMEWORK.dSYM
+strip -x $FRAMEWORK/NewNode
+du -ch $FRAMEWORK
 du -ch $FRAMEWORK.dSYM
