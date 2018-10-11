@@ -30,9 +30,6 @@ function build_ios {
 
 
     cd bugsnag-cocoa
-    # XXX: clean bugsnag, since it seems to symlink iOS/$TRIPLE/libBugsnagStatic.a to the IntermediateBuildFilesPath
-    xcodebuild -workspace iOS.xcworkspace -scheme BugsnagStatic -configuration Release \
-        -arch $ARCH -sdk $SDK CONFIGURATION_BUILD_DIR=$TRIPLE TARGET_BUILD_DIR=$TRIPLE clean
     if [ ! -f iOS/$TRIPLE/libBugsnagStatic.a ]; then
         xcodebuild -workspace iOS.xcworkspace -scheme BugsnagStatic -configuration Release \
             -arch $ARCH -sdk $SDK CONFIGURATION_BUILD_DIR=$TRIPLE TARGET_BUILD_DIR=$TRIPLE $ACTION
@@ -40,6 +37,8 @@ function build_ios {
     cd ..
     LIBBUGSNAG_CFLAGS=-Ibugsnag-cocoa/iOS/$TRIPLE/include
     LIBBUGSNAG=bugsnag-cocoa/iOS/$TRIPLE/libBugsnagStatic.a
+    cp $LIBBUGSNAG $LIBBUGSNAG.tmp
+    mv $LIBBUGSNAG.tmp $LIBBUGSNAG
 
 
     FLAGS="$CFLAGS -g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
