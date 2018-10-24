@@ -102,12 +102,12 @@ void request_done_cb(evhttp_request *req, void *arg)
         content_sign(&sig, content_hash);
 
         size_t out_len;
-        char *hex_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
-        debug("returning sig for %s %s\n", uri, hex_sig);
+        char *b64_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
+        debug("returning sig for %s %s\n", uri, b64_sig);
 
         char *ifnonematch = (char*)evhttp_find_header(p->server_req->input_headers, "If-None-Match");
         if (ifnonematch) {
-            evhttp_add_header(p->server_req->output_headers, "X-Sign", hex_sig);
+            evhttp_add_header(p->server_req->output_headers, "X-Sign", b64_sig);
 
             size_t etag_len;
             char *etag = base64_urlsafe_encode((uint8_t*)&content_hash, sizeof(content_hash), &out_len);
@@ -129,11 +129,11 @@ void request_done_cb(evhttp_request *req, void *arg)
         } else {
             evkeyvalq trailers;
             TAILQ_INIT(&trailers);
-            evhttp_add_header(&trailers, "X-Sign", hex_sig);
+            evhttp_add_header(&trailers, "X-Sign", b64_sig);
             evhttp_send_reply_end_trailers(p->server_req, &trailers);
             evhttp_clear_headers(&trailers);
         }
-        free(hex_sig);
+        free(b64_sig);
         p->server_req = NULL;
     }
     if (req->response_code != 0) {
@@ -193,10 +193,10 @@ int header_cb(evhttp_request *req, void *arg)
         content_sig sig;
         content_sign(&sig, content_hash);
         size_t out_len;
-        char *hex_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
-        debug("returning sig for %s %s\n", evhttp_request_get_uri(req), hex_sig);
-        overwrite_header(p->server_req, "X-Sign", hex_sig);
-        free(hex_sig);
+        char *b64_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
+        debug("returning sig for %s %s\n", evhttp_request_get_uri(req), b64_sig);
+        overwrite_header(p->server_req, "X-Sign", b64_sig);
+        free(b64_sig);
         evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, NULL);
         p->server_req = NULL;
         return 0;
@@ -298,10 +298,10 @@ void connect_cleanup(connect_req *c, int err)
         content_sig sig;
         content_sign(&sig, content_hash);
         size_t out_len;
-        char *hex_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
-        debug("returning sig for %s %d %s %s\n", evhttp_request_get_uri(c->server_req), code, reason, hex_sig);
-        overwrite_header(c->server_req, "X-Sign", hex_sig);
-        free(hex_sig);
+        char *b64_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
+        debug("returning sig for %s %d %s %s\n", evhttp_request_get_uri(c->server_req), code, reason, b64_sig);
+        overwrite_header(c->server_req, "X-Sign", b64_sig);
+        free(b64_sig);
 
         evhttp_send_reply(c->server_req, code, reason, NULL);
     }
@@ -426,10 +426,10 @@ void http_request_cb(evhttp_request *req, void *arg)
         content_sig sig;
         content_sign(&sig, content_hash);
         size_t out_len;
-        char *hex_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
-        debug("returning sig for TRACE %s %s\n", req->uri, hex_sig);
-        evhttp_add_header(req->output_headers, "X-Sign", hex_sig);
-        free(hex_sig);
+        char *b64_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
+        debug("returning sig for TRACE %s %s\n", req->uri, b64_sig);
+        evhttp_add_header(req->output_headers, "X-Sign", b64_sig);
+        free(b64_sig);
         evhttp_send_reply(req, 200, "OK", output);
         return;
     }
