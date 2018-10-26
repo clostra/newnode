@@ -127,6 +127,7 @@ void request_done_cb(evhttp_request *req, void *arg)
         char *hashrequest = (char*)evhttp_find_header(p->server_req->input_headers, "X-HashRequest");
         char *b64_hashes = NULL;
         if (hashrequest) {
+            _Static_assert(sizeof(node) == member_sizeof(node, hash), "node hash packing");
             size_t node_len = p->m->leaves_num * member_sizeof(node, hash);
             b64_hashes = base64_urlsafe_encode((uint8_t*)p->m->nodes, node_len, &out_len);
         }
