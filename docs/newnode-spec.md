@@ -203,7 +203,8 @@ it also sends the first copy that the client can later seed to other peers.
 Similar to BEP 52, a Merkle tree is constructed for the file, with a branching
 factor of 2, constructed from 16KiB blocks of the file. The last block may be
 shorter than 16KiB. The remaining leaf hashes beyond the end of the file
-required to construct upper layers of the Merkle tree are set to zero.
+required to construct upper layers of the Merkle tree are set to the hash of
+zero bytes.
 
 Here, the digest function is the default hash primitive in libsodium.
 
@@ -212,10 +213,10 @@ Here, the digest function is the default hash primitive in libsodium.
 X-MSign replaces a previously used X-Sign header. X-Sign was an older mechanism
 we used. It authenticated the entire file, but did not authenticate any parts.
 
-X-MSign is a signed message that consists of the ASCII characters "msign" (5
+X-MSign is a signed message that consists of the ASCII characters "sign" (4
 bytes), timestamp when the message was generated (4 bytes), and of the
 root-level of the Merkle tree. The content includes HTTP headers other than
-X-Sign. The headers whenever peer protocol is used MUST include Content-Location
+X-MSign. The headers whenever peer protocol is used MUST include Content-Location
 and Content-Length, so that the URL and size is authenticated.
 
 X-MSign is transmitted base-64 encoded.
@@ -239,7 +240,7 @@ needs to request this once.
 
 The X-Hashes header is sent in response to a request which contains
 X-HashRequest, and X-Hashes contains the base-64 encoded leaf-level Merkle tree
-node.
+nodes.
 
 ```http
 X-Hashes: <base64([leaf, leaf, leaf, ...])>
