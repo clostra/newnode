@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #ifndef ANDROID
 #include <execinfo.h>
@@ -57,26 +58,35 @@ void pdie(const char *err)
     assert(0);
 }
 
-void hexdump(const void *p, size_t len)
+void hexdump(const void *addr, size_t len)
 {
-    int count = 1;
+    unsigned char buff[17];
+    unsigned char *pc = (unsigned char*)addr;
 
-    while (len--) {
-        if (count == 1) {
-            fprintf(stderr, "    %p: ", p);
-        }
-
-        fprintf(stderr, " %02x", *(unsigned char *)p++ & 0xff);
-
-        if (count++ == 16) {
-            fprintf(stderr, "\n");
-            count = 1;
-        }
+    if (!len) {
+        return;
     }
 
-    if (count != 1) {
-        fprintf(stderr, "\n");
+    size_t i = 0;
+    for (i = 0; i < len; i++) {
+        if ((i % 16) == 0) {
+            if (i != 0) {
+                fprintf(stderr, "  %s\n", buff);
+            }
+            fprintf(stderr, "  %04zx ", i);
+        }
+        fprintf(stderr, " %02x", pc[i]);
+
+        buff[i % 16] = isprint(pc[i]) ? pc[i] : '.';
+        buff[(i % 16) + 1] = '\0';
     }
+
+    while ((i % 16) != 0) {
+        fprintf(stderr, "   ");
+        i++;
+    }
+
+    fprintf(stderr, "  %s\n", buff);
 }
 
 #ifndef ANDROID
