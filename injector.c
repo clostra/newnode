@@ -22,6 +22,7 @@
 #include "network.h"
 #include "constants.h"
 #include "bev_splice.h"
+#include "merkle_tree.h"
 #include "utp_bufferevent.h"
 #include "http.h"
 
@@ -31,7 +32,11 @@ typedef struct {
     evhttp_request *server_req;
     evbuffer *pending_output;
     evhttp_connection *evcon;
+
+    // XXX: remove after no X-Sign clients exist
     crypto_generichash_state content_state;
+
+    merkle_tree *m;
 } proxy_request;
 
 unsigned char pk[crypto_sign_PUBLICKEYBYTES] = injector_pk;
@@ -81,6 +86,7 @@ void request_cleanup(proxy_request *p)
     if (p->pending_output) {
         evbuffer_free(p->pending_output);
     }
+    merkle_tree_free(p->m);
     free(p);
 }
 
@@ -96,21 +102,47 @@ void request_done_cb(evhttp_request *req, void *arg)
 
         const char *uri = evhttp_request_get_uri(p->server_req);
 
+        // XXX: remove after no X-Sign clients exist
         uint8_t content_hash[crypto_generichash_BYTES];
-        crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
-        content_sig sig;
-        content_sign(&sig, content_hash);
+        char *b64_sign = NULL;
+        {
+            crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
+            content_sig sig;
+            content_sign(&sig, content_hash);
 
+            size_t out_len;
+            b64_sign = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
+            debug("returning X-Sign for %s %s\n", uri, b64_sign);
+        }
+
+        uint8_t root_hash[crypto_generichash_BYTES];
+        merkle_tree_get_root(p->m, root_hash);
+        content_sig sig;
+        content_sign(&sig, root_hash);
         size_t out_len;
-        char *b64_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
-        debug("returning sig for %s %s\n", uri, b64_sig);
+        char *b64_msign = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
+        debug("returning X-MSign for %s %s\n", evhttp_request_get_uri(req), b64_msign);
+        overwrite_header(p->server_req, "X-MSign", b64_msign);
+
+        char *hashrequest = (char*)evhttp_find_header(p->server_req->input_headers, "X-HashRequest");
+        char *b64_hashes = NULL;
+        if (hashrequest) {
+            size_t node_len = p->m->leaves_num * member_sizeof(node, hash);
+            b64_hashes = base64_urlsafe_encode((uint8_t*)p->m->nodes, node_len, &out_len);
+        }
 
         char *ifnonematch = (char*)evhttp_find_header(p->server_req->input_headers, "If-None-Match");
         if (ifnonematch) {
-            evhttp_add_header(p->server_req->output_headers, "X-Sign", b64_sig);
+            evhttp_add_header(p->server_req->output_headers, "X-Sign", b64_sign);
+            evhttp_add_header(p->server_req->output_headers, "X-MSign", b64_msign);
+            if (b64_hashes) {
+                evhttp_add_header(p->server_req->output_headers, "X-Hashes", b64_hashes);
+            }
 
-            size_t etag_len;
-            char *etag = base64_urlsafe_encode((uint8_t*)&content_hash, sizeof(content_hash), &out_len);
+            size_t content_etag_len;
+            char *content_etag = base64_urlsafe_encode((uint8_t*)&content_hash, sizeof(content_hash), &content_etag_len);
+            size_t root_etag_len;
+            char *root_etag = base64_urlsafe_encode((uint8_t*)&root_hash, sizeof(root_hash), &root_etag_len);
             size_t if_len = strlen(ifnonematch);
             if (if_len > 0) {
                 if (ifnonematch[if_len - 1] == '"') {
@@ -118,22 +150,29 @@ void request_done_cb(evhttp_request *req, void *arg)
                 }
                 ifnonematch++;
             }
-            if (streq(ifnonematch, etag)) {
+            if (streq(ifnonematch, content_etag) || streq(ifnonematch, root_etag)) {
                 evhttp_send_reply(p->server_req, 304, "Not Modified", NULL);
             } else {
-                debug("If-None-Match: %s != %s\n", ifnonematch, etag);
+                debug("If-None-Match: %s != %s || %s\n", ifnonematch, content_etag, root_etag);
                 debug("input_buffer:%zu\n", p->pending_output ? evbuffer_get_length(p->pending_output) : 0);
                 evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, p->pending_output);
             }
-            free(etag);
+            free(content_etag);
+            free(root_etag);
         } else {
             evkeyvalq trailers;
             TAILQ_INIT(&trailers);
-            evhttp_add_header(&trailers, "X-Sign", b64_sig);
+            evhttp_add_header(&trailers, "X-Sign", b64_sign);
+            evhttp_add_header(&trailers, "X-MSign", b64_msign);
+            if (b64_hashes) {
+                evhttp_add_header(&trailers, "X-Hashes", b64_hashes);
+            }
             evhttp_send_reply_end_trailers(p->server_req, &trailers);
             evhttp_clear_headers(&trailers);
         }
-        free(b64_sig);
+        free(b64_sign);
+        free(b64_msign);
+        free(b64_hashes);
         p->server_req = NULL;
     }
     if (req->response_code != 0) {
@@ -154,6 +193,7 @@ void chunked_cb(evhttp_request *req, void *arg)
     evbuffer_ptr_set(input, &ptr, 0, EVBUFFER_PTR_SET);
     while (evbuffer_peek(input, -1, &ptr, &v, 1) > 0) {
         crypto_generichash_update(&p->content_state, v.iov_base, v.iov_len);
+        merkle_tree_add_hashed_data(p->m, v.iov_base, v.iov_len);
         if (evbuffer_ptr_set(input, &ptr, v.iov_len, EVBUFFER_PTR_ADD) < 0) {
             break;
         }
@@ -182,21 +222,37 @@ int header_cb(evhttp_request *req, void *arg)
     }
     overwrite_header(p->server_req, "Content-Location", evhttp_request_get_uri(p->server_req));
 
+    // XXX: remove after no X-Sign clients exist
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
-    // TODO: switch to hash_request
     hash_headers(p->server_req->output_headers, &p->content_state);
+
+    merkle_tree_hash_request(p->m, req, p->server_req->output_headers);
 
     // unfortunately, responses with no body also can't use chunking, so we can't send trailers
     if (klass == 1 || klass >= 4 || req->response_code == 204) {
-        uint8_t content_hash[crypto_generichash_BYTES];
-        crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
+        // XXX: remove after no X-Sign clients exist
+        {
+            uint8_t content_hash[crypto_generichash_BYTES];
+            crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
+            content_sig sig;
+            content_sign(&sig, content_hash);
+            size_t out_len;
+            char *b64_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
+            debug("returning X-Sign for %s %s\n", evhttp_request_get_uri(req), b64_sig);
+
+            overwrite_header(p->server_req, "X-Sign", b64_sig);
+        }
+
+        uint8_t root_hash[crypto_generichash_BYTES];
+        merkle_tree_get_root(p->m, root_hash);
         content_sig sig;
-        content_sign(&sig, content_hash);
+        content_sign(&sig, root_hash);
         size_t out_len;
-        char *b64_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
-        debug("returning sig for %s %s\n", evhttp_request_get_uri(req), b64_sig);
-        overwrite_header(p->server_req, "X-Sign", b64_sig);
-        free(b64_sig);
+        char *b64_msign = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
+        debug("returning X-MSign for %s %s\n", evhttp_request_get_uri(req), b64_msign);
+        overwrite_header(p->server_req, "X-MSign", b64_msign);
+        free(b64_msign);
+
         evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, NULL);
         p->server_req = NULL;
         return 0;
@@ -204,7 +260,7 @@ int header_cb(evhttp_request *req, void *arg)
 
     const char *ifnonematch = evhttp_find_header(p->server_req->input_headers, "If-None-Match");
     if (!ifnonematch) {
-        overwrite_header(p->server_req, "Trailer", "X-Sign");
+        overwrite_header(p->server_req, "Trailer", "X-Sign, X-MSign");
         evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
     }
     evhttp_request_set_chunked_cb(req, chunked_cb);
@@ -237,6 +293,7 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     p->n = n;
     p->server_req = server_req;
     p->evcon = evcon;
+    p->m = alloc(merkle_tree);
     evhttp_request *client_req = evhttp_request_new(request_done_cb, p);
     const char *request_header_whitelist[] = {"Referer", "Host"};
     for (size_t i = 0; i < lenof(request_header_whitelist); i++) {
@@ -289,6 +346,7 @@ void connect_cleanup(connect_req *c, int err)
         // set the code early so we can hash it
         c->server_req->response_code = code;
 
+        // XXX: remove after no X-Sign clients exist
         crypto_generichash_state content_state;
         crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
         hash_request(c->server_req, c->server_req->output_headers, &content_state);
@@ -300,7 +358,11 @@ void connect_cleanup(connect_req *c, int err)
         size_t out_len;
         char *b64_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
         debug("returning sig for %s %d %s %s\n", evhttp_request_get_uri(c->server_req), code, reason, b64_sig);
+
+        // XXX: remove after no X-Sign clients exist
         overwrite_header(c->server_req, "X-Sign", b64_sig);
+
+        overwrite_header(c->server_req, "X-MSign", b64_sig);
         free(b64_sig);
 
         evhttp_send_reply(c->server_req, code, reason, NULL);
@@ -415,21 +477,45 @@ void http_request_cb(evhttp_request *req, void *arg)
         snprintf(size, sizeof(size), "%zu", evbuffer_get_length(output));
         evhttp_add_header(req->output_headers, "Content-Length", size);
         evhttp_add_header(req->output_headers, "Content-Type", "message/http");
-        crypto_generichash_state content_state;
-        crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
-        // TODO: switch to hash_request
-        hash_headers(req->output_headers, &content_state);
-        unsigned char *out_body = evbuffer_pullup(output, evbuffer_get_length(output));
-        crypto_generichash_update(&content_state, out_body, evbuffer_get_length(output));
-        uint8_t content_hash[crypto_generichash_BYTES];
-        crypto_generichash_final(&content_state, content_hash, sizeof(content_hash));
+
+        // set the code early so we can hash it
+        req->response_code = 200;
+
+        const unsigned char *out_body = evbuffer_pullup(output, evbuffer_get_length(output));
+
+        merkle_tree *m = alloc(merkle_tree);
+        merkle_tree_hash_request(m, req, req->output_headers);
+        merkle_tree_add_hashed_data(m, out_body, evbuffer_get_length(output));
+
+        // XXX: remove after no X-Sign clients exist
+        {
+            crypto_generichash_state content_state;
+            crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
+            hash_headers(req->output_headers, &content_state);
+            crypto_generichash_update(&content_state, out_body, evbuffer_get_length(output));
+            uint8_t content_hash[crypto_generichash_BYTES];
+            crypto_generichash_final(&content_state, content_hash, sizeof(content_hash));
+            content_sig sig;
+            content_sign(&sig, content_hash);
+            size_t out_len;
+            char *b64_sign = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
+            debug("returning X-Sign for TRACE %s %s\n", req->uri, b64_sign);
+
+            evhttp_add_header(req->output_headers, "X-Sign", b64_sign);
+            free(b64_sign);
+        }
+
+        uint8_t root_hash[crypto_generichash_BYTES];
+        merkle_tree_get_root(m, root_hash);
         content_sig sig;
-        content_sign(&sig, content_hash);
+        content_sign(&sig, root_hash);
+        merkle_tree_free(m);
         size_t out_len;
-        char *b64_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
-        debug("returning sig for TRACE %s %s\n", req->uri, b64_sig);
-        evhttp_add_header(req->output_headers, "X-Sign", b64_sig);
-        free(b64_sig);
+        char *b64_msign = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
+        debug("returning X-MSign for TRACE %s %s\n", req->uri, b64_msign);
+        evhttp_add_header(req->output_headers, "X-MSign", b64_msign);
+        free(b64_msign);
+
         evhttp_send_reply(req, 200, "OK", output);
         return;
     }

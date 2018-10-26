@@ -146,6 +146,26 @@ void hash_request(evhttp_request *req, evkeyvalq *hdrs, crypto_generichash_state
     hash_headers(hdrs, content_state);
 }
 
+void merkle_tree_hash_request(merkle_tree *m, evhttp_request *req, evkeyvalq *hdrs)
+{
+    char code_buf[16];
+    snprintf(code_buf, sizeof(code_buf), "%d\r\n", req->response_code);
+    printf("merkle_tree_hash_request: %lu '%s'\n", strlen(code_buf), code_buf);
+    assert(req->response_code);
+    merkle_tree_add_hashed_data(m, (const uint8_t *)code_buf, strlen(code_buf));
+    const char *headers[] = hashed_headers;
+    for (size_t i = 0; i < lenof(headers); i++) {
+        const char *key = headers[i];
+        const char *value = evhttp_find_header(hdrs, key);
+        if (!value) {
+            continue;
+        }
+        char buf[1024];
+        snprintf(buf, sizeof(buf), "%s: %s\r\n", key, value);
+        merkle_tree_add_hashed_data(m, (const uint8_t *)buf, strlen(buf));
+    }
+}
+
 evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
 {
     const char *scheme = evhttp_uri_get_scheme(uri);

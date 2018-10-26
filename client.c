@@ -89,9 +89,13 @@ typedef struct {
     evhttp_connection *direct_req_evcon;
 
     evkeyvalq direct_headers;
-    crypto_generichash_state content_state;
 
+    // XXX: remove after no X-Sign clients exist
+    crypto_generichash_state content_state;
     uint8_t content_hash[crypto_generichash_BYTES];
+
+    merkle_tree *m;
+    uint8_t root_hash[crypto_generichash_BYTES];
 
     pending_request r;
     peer_connection *pc;
@@ -440,6 +444,7 @@ void proxy_request_cleanup(proxy_request *p)
         p->direct_req_evcon = NULL;
     }
     evhttp_clear_headers(&p->direct_headers);
+    merkle_tree_free(p->m);
     proxy_cache_delete(p);
     free(p);
 }
@@ -555,8 +560,11 @@ int direct_header_cb(evhttp_request *req, void *arg)
         evhttp_add_header(&p->direct_headers, header->key, header->value);
     }
 
+    // XXX: remove after no X-Sign clients exist
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
     hash_headers(req->input_headers, &p->content_state);
+
+    merkle_tree_hash_request(p->m, req, req->input_headers);
 
     evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
 
@@ -578,6 +586,7 @@ void direct_chunked_cb(evhttp_request *req, void *arg)
     evbuffer_ptr_set(input, &ptr, 0, EVBUFFER_PTR_SET);
     while (evbuffer_peek(input, -1, &ptr, &v, 1) > 0) {
         crypto_generichash_update(&p->content_state, v.iov_base, v.iov_len);
+        merkle_tree_add_hashed_data(p->m, v.iov_base, v.iov_len);
         ssize_t w = write(p->cache_file, v.iov_base, v.iov_len);
         if (w != (ssize_t)v.iov_len) {
             fprintf(stderr, "p:%p cache write failed %d (%s)\n", p, errno, strerror(errno));
@@ -612,9 +621,12 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
     if (req->response_code != 0) {
         crypto_generichash_final(&p->content_state, p->content_hash, sizeof(p->content_hash));
 
+        merkle_tree_get_root(p->m, p->root_hash);
+
         return_connection(p->direct_req_evcon);
         p->direct_req_evcon = NULL;
 
+        // XXX: TODO: switch to p->root_hash once peers support it
         // submit a proxy-only request with If-None-Match: "base64(content_hash)" and let it cache
         assert(!p->proxy_req);
         proxy_make_request(p);
@@ -755,8 +767,11 @@ int proxy_header_cb(evhttp_request *req, void *arg)
         debug("start cache:%s\n", p->cache_name);
     }
 
+    // XXX: remove after no X-Sign clients exist
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
     hash_headers(req->input_headers, &p->content_state);
+
+    merkle_tree_hash_request(p->m, req, req->input_headers);
 
     evhttp_request_set_chunked_cb(req, proxy_chunked_cb);
     return 0;
@@ -772,6 +787,7 @@ void proxy_chunked_cb(evhttp_request *req, void *arg)
     evbuffer_ptr_set(input, &ptr, 0, EVBUFFER_PTR_SET);
     while (evbuffer_peek(input, -1, &ptr, &v, 1) > 0) {
         crypto_generichash_update(&p->content_state, v.iov_base, v.iov_len);
+        merkle_tree_add_hashed_data(p->m, v.iov_base, v.iov_len);
         ssize_t w = write(p->cache_file, v.iov_base, v.iov_len);
         if (w != (ssize_t)v.iov_len) {
             fprintf(stderr, "p:%p cache write failed %d (%s)\n", p, errno, strerror(errno));
@@ -825,8 +841,11 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
         return;
     }
 
+    // XXX: remove after no X-Sign clients exist
     const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
-    if (!sign) {
+
+    const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
+    if (!sign && !msign) {
         fprintf(stderr, "no signature!\n");
         debug("p:%p (%.2fms) no signature\n", p, pdelta(p));
         proxy_send_error(p, 502, "Missing Gateway Signature");
@@ -836,10 +855,13 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
     }
     if (req->chunk_cb) {
         crypto_generichash_final(&p->content_state, p->content_hash, sizeof(p->content_hash));
+        merkle_tree_get_root(p->m, p->root_hash);
     }
 
-    debug("p:%p (%.2fms) verifying sig for %s %s\n", p, pdelta(p), evhttp_request_get_uri(req), sign);
-    if (!verify_signature(p->content_hash, sign)) {
+    debug("p:%p (%.2fms) verifying sig for %s %s %s\n", p, pdelta(p), evhttp_request_get_uri(req), sign, msign);
+    if ((msign && !verify_signature(p->root_hash, msign)) ||
+        (sign && !verify_signature(p->content_hash, sign))) {
+            printf("%d\n", __LINE__);
         fprintf(stderr, "signature failed!\n");
         p->pc->peer->last_verified = 0;
         proxy_send_error(p, 502, "Bad Gateway Signature");
@@ -866,6 +888,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
         code = 200;
         code_line = "OK";
         overwrite_kv_header(&p->direct_headers, "X-Sign", sign);
+        overwrite_kv_header(&p->direct_headers, "X-MSign", msign);
         headers = &p->direct_headers;
     }
     int headers_file = creat(headers_name, 0600);
@@ -1147,6 +1170,7 @@ void submit_request(network *n, evhttp_request *server_req)
     TAILQ_INIT(&p->direct_headers);
     p->cache_file = -1;
     p->server_req = server_req;
+    p->m = alloc(merkle_tree);
     evhttp_connection_set_closecb(p->server_req->evcon, server_evcon_close_cb, p);
 
     p->dont_free = true;
@@ -1203,18 +1227,31 @@ void trace_request_done_cb(evhttp_request *req, void *arg)
     evbuffer *input = req->input_buffer;
     if (req->response_code != 0) {
         const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
-        if (!sign) {
+        const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
+        if (!sign && !msign) {
             fprintf(stderr, "no signature on TRACE!\n");
         } else {
+
+            const unsigned char *body = evbuffer_pullup(input, evbuffer_get_length(input));
+
+            // XXX: remove after no X-Sign clients exist
             crypto_generichash_state content_state;
             crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
             hash_headers(req->input_headers, &content_state);
-            unsigned char *body = evbuffer_pullup(input, evbuffer_get_length(input));
             crypto_generichash_update(&content_state, body, evbuffer_get_length(input));
             uint8_t content_hash[crypto_generichash_BYTES];
             crypto_generichash_final(&content_state, content_hash, sizeof(content_hash));
-            debug("verifying sig for TRACE %s %s\n", evhttp_request_get_uri(req), sign);
-            if (verify_signature(content_hash, sign)) {
+
+            merkle_tree *m = alloc(merkle_tree);
+            merkle_tree_hash_request(m, req, req->input_headers);
+            merkle_tree_add_hashed_data(m, body, evbuffer_get_length(input));
+            uint8_t root_hash[crypto_generichash_BYTES];
+            merkle_tree_get_root(m, root_hash);
+            merkle_tree_free(m);
+
+            debug("verifying sig for TRACE %s %s %s\n", evhttp_request_get_uri(req), sign, msign);
+            if ((msign && verify_signature(root_hash, msign)) ||
+                (sign && verify_signature(content_hash, sign))) {
                 debug("signature good! %s\n", peer_addr_str(t->pc->peer));
                 t->pc->peer->last_connect = time(NULL);
                 t->pc->peer->last_verified = time(NULL);
@@ -1468,17 +1505,25 @@ int connect_header_cb(evhttp_request *req, void *arg)
         debug("%s req->response_code:%d\n", __func__, req->response_code);
 
         const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
-        if (sign) {
-            debug("c:%p verifying sig for %s %s\n", c, evhttp_request_get_uri(req), sign);
+        const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
+        if (sign || msign) {
+            debug("c:%p verifying sig for %s %s %s\n", c, evhttp_request_get_uri(req), sign, msign);
 
+            // XXX: remove after no X-Sign clients exist
             crypto_generichash_state content_state;
             crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
             hash_request(req, req->input_headers, &content_state);
-
             uint8_t content_hash[crypto_generichash_BYTES];
             crypto_generichash_final(&content_state, content_hash, sizeof(content_hash));
 
-            if (verify_signature(content_hash, sign)) {
+            merkle_tree *m = alloc(merkle_tree);
+            merkle_tree_hash_request(m, req, req->input_headers);
+            uint8_t root_hash[crypto_generichash_BYTES];
+            merkle_tree_get_root(m, root_hash);
+            merkle_tree_free(m);
+
+            if ((msign && verify_signature(root_hash, msign)) ||
+                (sign && verify_signature(content_hash, sign)) ) {
                 debug("c:%p signature good!\n", c);
 
                 c->pc->peer->last_verified = time(NULL);
@@ -1495,6 +1540,7 @@ int connect_header_cb(evhttp_request *req, void *arg)
                         if (!evcon_is_local_browser(c->server_req->evcon)) {
                             copy_header(req, c->server_req, "Content-Location");
                             copy_header(req, c->server_req, "X-Sign");
+                            copy_header(req, c->server_req, "X-MSign");
                         }
                         evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
                         evhttp_send_reply(c->server_req, req->response_code, req->response_code_line, NULL);
@@ -1733,9 +1779,12 @@ void http_request_cb(evhttp_request *req, void *arg)
         const char *ifnonematch = evhttp_find_header(req->input_headers, "If-None-Match");
         if (ifnonematch) {
             const char *sign = evhttp_find_header(temp->output_headers, "X-Sign");
+            const char *msign = evhttp_find_header(temp->output_headers, "X-MSign");
             size_t out_len = 0;
             uint8_t *content_hash = base64_decode(ifnonematch, strlen(ifnonematch), &out_len);
-            if (out_len == crypto_generichash_BYTES && verify_signature(content_hash, sign)) {
+            if (out_len == crypto_generichash_BYTES &&
+                ((msign && verify_signature(content_hash, sign)) ||
+                 (sign && verify_signature(content_hash, sign)))) {
                 temp->response_code = 304;
                 free(temp->response_code_line);
                 temp->response_code_line = strdup("Not Modified");
