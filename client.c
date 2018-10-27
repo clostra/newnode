@@ -105,6 +105,7 @@ typedef struct {
     int cache_file;
 
     bool dont_free:1;
+    bool merkle_tree_finished:1;
 } proxy_request;
 
 typedef struct {
@@ -622,6 +623,7 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
         crypto_generichash_final(&p->content_state, p->content_hash, sizeof(p->content_hash));
 
         merkle_tree_get_root(p->m, p->root_hash);
+        p->merkle_tree_finished = true;
 
         return_connection(p->direct_req_evcon);
         p->direct_req_evcon = NULL;
@@ -771,6 +773,26 @@ int proxy_header_cb(evhttp_request *req, void *arg)
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
     hash_headers(req->input_headers, &p->content_state);
 
+    const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
+    const char *xhashes = evhttp_find_header(req->input_headers, "X-Hashes");
+    if (msign && xhashes) {
+        size_t out_len = 0;
+        uint8_t *hashes = base64_decode(xhashes, strlen(xhashes), &out_len);
+
+        merkle_tree *m = alloc(merkle_tree);
+        if (merkle_tree_set_leaves(m, hashes, out_len)) {
+            merkle_tree_get_root(m, p->root_hash);
+            if (verify_signature(p->root_hash, msign)) {
+                p->m = m;
+                m = NULL;
+                p->merkle_tree_finished = true;
+            } else {
+                // XXX: disconnect?
+            }
+        }
+        merkle_tree_free(m);
+    }
+
     merkle_tree_hash_request(p->m, req, req->input_headers);
 
     evhttp_request_set_chunked_cb(req, proxy_chunked_cb);
@@ -856,6 +878,7 @@ void proxy_request_done_cb(evhttp_request *req, void *arg)
     if (req->chunk_cb) {
         crypto_generichash_final(&p->content_state, p->content_hash, sizeof(p->content_hash));
         merkle_tree_get_root(p->m, p->root_hash);
+        p->merkle_tree_finished = true;
     }
 
     debug("p:%p (%.2fms) verifying sig for %s %s %s\n", p, pdelta(p), evhttp_request_get_uri(req), sign, msign);
@@ -1130,6 +1153,12 @@ void proxy_submit_request(proxy_request *p)
     }
 
     network *n = p->n;
+
+    if (!p->merkle_tree_finished) {
+        // TODO: kick off a separate request for hashes which blocks until hashes are available.
+        // then we can use them immediately, before the download is finished.
+        evhttp_add_header(p->proxy_req->output_headers, "X-HashRequest", "1");
+    }
 
     /*
     if (!dht_num_searches()) {
