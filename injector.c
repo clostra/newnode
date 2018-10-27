@@ -124,20 +124,18 @@ void request_done_cb(evhttp_request *req, void *arg)
         debug("returning X-MSign for %s %s\n", evhttp_request_get_uri(req), b64_msign);
         overwrite_header(p->server_req, "X-MSign", b64_msign);
 
-        char *hashrequest = (char*)evhttp_find_header(p->server_req->input_headers, "X-HashRequest");
-        char *b64_hashes = NULL;
-        if (hashrequest) {
-            _Static_assert(sizeof(node) == member_sizeof(node, hash), "node hash packing");
-            size_t node_len = p->m->leaves_num * member_sizeof(node, hash);
-            b64_hashes = base64_urlsafe_encode((uint8_t*)p->m->nodes, node_len, &out_len);
-        }
-
         char *ifnonematch = (char*)evhttp_find_header(p->server_req->input_headers, "If-None-Match");
         if (ifnonematch) {
             evhttp_add_header(p->server_req->output_headers, "X-Sign", b64_sign);
             evhttp_add_header(p->server_req->output_headers, "X-MSign", b64_msign);
-            if (b64_hashes) {
+            char *hashrequest = (char*)evhttp_find_header(p->server_req->input_headers, "X-HashRequest");
+            char *b64_hashes = NULL;
+            if (hashrequest) {
+                _Static_assert(sizeof(node) == member_sizeof(node, hash), "node hash packing");
+                size_t node_len = p->m->leaves_num * member_sizeof(node, hash);
+                b64_hashes = base64_urlsafe_encode((uint8_t*)p->m->nodes, node_len, &out_len);
                 evhttp_add_header(p->server_req->output_headers, "X-Hashes", b64_hashes);
+                free(b64_hashes);
             }
 
             size_t content_etag_len;
@@ -165,15 +163,11 @@ void request_done_cb(evhttp_request *req, void *arg)
             TAILQ_INIT(&trailers);
             evhttp_add_header(&trailers, "X-Sign", b64_sign);
             evhttp_add_header(&trailers, "X-MSign", b64_msign);
-            if (b64_hashes) {
-                evhttp_add_header(&trailers, "X-Hashes", b64_hashes);
-            }
             evhttp_send_reply_end_trailers(p->server_req, &trailers);
             evhttp_clear_headers(&trailers);
         }
         free(b64_sign);
         free(b64_msign);
-        free(b64_hashes);
         p->server_req = NULL;
     }
     if (req->response_code != 0) {
