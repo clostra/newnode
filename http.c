@@ -150,7 +150,6 @@ void merkle_tree_hash_request(merkle_tree *m, evhttp_request *req, evkeyvalq *hd
 {
     char code_buf[16];
     snprintf(code_buf, sizeof(code_buf), "%d\r\n", req->response_code);
-    printf("merkle_tree_hash_request: %lu '%s'\n", strlen(code_buf), code_buf);
     assert(req->response_code);
     merkle_tree_add_hashed_data(m, (const uint8_t *)code_buf, strlen(code_buf));
     const char *headers[] = hashed_headers;
