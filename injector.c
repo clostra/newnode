@@ -162,7 +162,8 @@ void request_done_cb(evhttp_request *req, void *arg)
         if (matches) {
             evhttp_send_reply(p->server_req, 304, "Not Modified", NULL);
         } else {
-            debug("pending_output:%zu\n", p->pending_output ? evbuffer_get_length(p->pending_output) : 0);
+            debug("pending_output:%zu uri:%s\n", p->pending_output ? evbuffer_get_length(p->pending_output) : 0,
+                evhttp_request_get_uri(p->server_req));
             evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, p->pending_output);
         }
         p->server_req = NULL;
@@ -208,6 +209,9 @@ int header_cb(evhttp_request *req, void *arg)
         copy_header(req, p->server_req, response_header_whitelist[i]);
     }
     overwrite_header(p->server_req, "Content-Location", evhttp_request_get_uri(p->server_req));
+
+    char *content_length = (char*)evhttp_find_header(req->input_headers, "Content-Length");
+    debug("Content-Length:%s uri:%s\n", content_length, evhttp_request_get_uri(p->server_req));
 
     // XXX: remove after no X-Sign clients exist
     crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
