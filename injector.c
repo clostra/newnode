@@ -122,22 +122,25 @@ void request_done_cb(evhttp_request *req, void *arg)
         size_t out_len;
         char *b64_msign = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
         debug("returning X-MSign for %s %s\n", evhttp_request_get_uri(req), b64_msign);
-        overwrite_header(p->server_req, "X-MSign", b64_msign);
 
+        evhttp_add_header(p->server_req->output_headers, "X-Sign", b64_sign);
+        free(b64_sign);
+        evhttp_add_header(p->server_req->output_headers, "X-MSign", b64_msign);
+        free(b64_msign);
+
+        char *hashrequest = (char*)evhttp_find_header(p->server_req->input_headers, "X-HashRequest");
+        char *b64_hashes = NULL;
+        if (hashrequest) {
+            _Static_assert(sizeof(node) == member_sizeof(node, hash), "node hash packing");
+            size_t node_len = p->m->leaves_num * member_sizeof(node, hash);
+            b64_hashes = base64_urlsafe_encode((uint8_t*)p->m->nodes, node_len, &out_len);
+            evhttp_add_header(p->server_req->output_headers, "X-Hashes", b64_hashes);
+            free(b64_hashes);
+        }
+
+        bool matches = false;
         char *ifnonematch = (char*)evhttp_find_header(p->server_req->input_headers, "If-None-Match");
         if (ifnonematch) {
-            evhttp_add_header(p->server_req->output_headers, "X-Sign", b64_sign);
-            evhttp_add_header(p->server_req->output_headers, "X-MSign", b64_msign);
-            char *hashrequest = (char*)evhttp_find_header(p->server_req->input_headers, "X-HashRequest");
-            char *b64_hashes = NULL;
-            if (hashrequest) {
-                _Static_assert(sizeof(node) == member_sizeof(node, hash), "node hash packing");
-                size_t node_len = p->m->leaves_num * member_sizeof(node, hash);
-                b64_hashes = base64_urlsafe_encode((uint8_t*)p->m->nodes, node_len, &out_len);
-                evhttp_add_header(p->server_req->output_headers, "X-Hashes", b64_hashes);
-                free(b64_hashes);
-            }
-
             size_t content_etag_len;
             char *content_etag = base64_urlsafe_encode((uint8_t*)&content_hash, sizeof(content_hash), &content_etag_len);
             size_t root_etag_len;
@@ -149,25 +152,19 @@ void request_done_cb(evhttp_request *req, void *arg)
                 }
                 ifnonematch++;
             }
-            if (streq(ifnonematch, content_etag) || streq(ifnonematch, root_etag)) {
-                evhttp_send_reply(p->server_req, 304, "Not Modified", NULL);
-            } else {
+            matches = streq(ifnonematch, content_etag) || streq(ifnonematch, root_etag);
+            if (!matches) {
                 debug("If-None-Match: %s != %s || %s\n", ifnonematch, content_etag, root_etag);
-                debug("input_buffer:%zu\n", p->pending_output ? evbuffer_get_length(p->pending_output) : 0);
-                evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, p->pending_output);
             }
             free(content_etag);
             free(root_etag);
-        } else {
-            evkeyvalq trailers;
-            TAILQ_INIT(&trailers);
-            evhttp_add_header(&trailers, "X-Sign", b64_sign);
-            evhttp_add_header(&trailers, "X-MSign", b64_msign);
-            evhttp_send_reply_end_trailers(p->server_req, &trailers);
-            evhttp_clear_headers(&trailers);
         }
-        free(b64_sign);
-        free(b64_msign);
+        if (matches) {
+            evhttp_send_reply(p->server_req, 304, "Not Modified", NULL);
+        } else {
+            debug("pending_output:%zu\n", p->pending_output ? evbuffer_get_length(p->pending_output) : 0);
+            evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, p->pending_output);
+        }
         p->server_req = NULL;
     }
     if (req->response_code != 0) {
@@ -193,15 +190,10 @@ void chunked_cb(evhttp_request *req, void *arg)
             break;
         }
     }
-    const char *ifnonematch = evhttp_find_header(p->server_req->input_headers, "If-None-Match");
-    if (!ifnonematch) {
-        evhttp_send_reply_chunk(p->server_req, input);
-    } else {
-        if (!p->pending_output) {
-            p->pending_output = evbuffer_new();
-        }
-        evbuffer_add_buffer(p->pending_output, input);
+    if (!p->pending_output) {
+        p->pending_output = evbuffer_new();
     }
+    evbuffer_add_buffer(p->pending_output, input);
 }
 
 int header_cb(evhttp_request *req, void *arg)
@@ -223,43 +215,7 @@ int header_cb(evhttp_request *req, void *arg)
 
     merkle_tree_hash_request(p->m, req, p->server_req->output_headers);
 
-    // unfortunately, responses with no body also can't use chunking, so we can't send trailers
-    if (klass == 1 || klass >= 4 || req->response_code == 204) {
-        // XXX: remove after no X-Sign clients exist
-        {
-            uint8_t content_hash[crypto_generichash_BYTES];
-            crypto_generichash_final(&p->content_state, content_hash, sizeof(content_hash));
-            content_sig sig;
-            content_sign(&sig, content_hash);
-            size_t out_len;
-            char *b64_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
-            debug("returning X-Sign for %s %s\n", evhttp_request_get_uri(req), b64_sig);
-
-            overwrite_header(p->server_req, "X-Sign", b64_sig);
-        }
-
-        uint8_t root_hash[crypto_generichash_BYTES];
-        merkle_tree_get_root(p->m, root_hash);
-        content_sig sig;
-        content_sign(&sig, root_hash);
-        size_t out_len;
-        char *b64_msign = base64_urlsafe_encode((uint8_t*)&sig, sizeof(content_sig), &out_len);
-        debug("returning X-MSign for %s %s\n", evhttp_request_get_uri(req), b64_msign);
-        overwrite_header(p->server_req, "X-MSign", b64_msign);
-        free(b64_msign);
-
-        evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, NULL);
-        p->server_req = NULL;
-        return 0;
-    }
-
-    const char *ifnonematch = evhttp_find_header(p->server_req->input_headers, "If-None-Match");
-    if (!ifnonematch) {
-        overwrite_header(p->server_req, "Trailer", "X-Sign, X-MSign");
-        evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
-    }
     evhttp_request_set_chunked_cb(req, chunked_cb);
-
     return 0;
 }
 
