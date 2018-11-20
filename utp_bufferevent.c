@@ -45,6 +45,10 @@ void ubev_utp_close(utp_bufferevent *u)
         bufferevent_decref(u->other_bev);
         u->other_bev = NULL;
     }
+    if (u->utp_input) {
+        evbuffer_free(u->utp_input);
+        u->utp_input = NULL;
+    }
 }
 
 void ubev_bev_close(utp_bufferevent *u)
@@ -52,6 +56,8 @@ void ubev_bev_close(utp_bufferevent *u)
     //debug("ubev_bev_close %p\n", u);
     obfoo_free(u->obfoo);
     u->obfoo = NULL;
+    evbuffer_free(u->utp_output);
+    u->utp_output = NULL;
     bufferevent_free_checked(u->bev);
     u->bev = NULL;
 }
