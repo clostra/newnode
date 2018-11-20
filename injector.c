@@ -471,6 +471,7 @@ void http_request_cb(evhttp_request *req, void *arg)
         free(b64_msign);
 
         evhttp_send_reply(req, 200, "OK", output);
+        evbuffer_free(output);
         return;
     }
 
