@@ -22,7 +22,7 @@ bool merkle_tree_set_leaves(merkle_tree *m, const uint8_t *data, size_t length)
     if (length % member_sizeof(node, hash) != 0) {
         return false;
     }
-    _Static_assert(sizeof(node) == member_sizeof(node, hash), "node hash packing");
+    static_assert(sizeof(node) == member_sizeof(node, hash), "node hash packing");
     m->leaves_num = length / member_sizeof(node, hash);
     m->nodes_alloc = m->leaves_num*2 - 1;
     m->nodes = calloc(m->nodes_alloc, sizeof(node));
