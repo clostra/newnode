@@ -87,8 +87,8 @@ void merkle_tree_finish_leaves(merkle_tree *m)
     if (m->leaf_progress > 0) {
         merkle_tree_leaf_finish(m);
     }
-    int round_up = power_two_ceil(m->leaves_num) - m->leaves_num;
-    for (int i = 0; i < round_up; i++) {
+    size_t round_up = power_two_ceil(m->leaves_num) - m->leaves_num;
+    for (size_t i = 0; i < round_up; i++) {
         crypto_generichash_init(&m->leaf_state, NULL, 0, member_sizeof(node, hash));
         merkle_tree_leaf_finish(m);
     }

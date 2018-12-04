@@ -96,7 +96,7 @@ dht* dht_setup(network *n, int fd)
         long fsize = ftell(f);
         fseek(f, 0, SEEK_SET);
         sockaddr_in sin[2048];
-        uint num = MIN(lenof(sin), fsize / sizeof(sockaddr_in));
+        size_t num = MIN(lenof(sin), fsize / sizeof(sockaddr_in));
         num = fread(sin, sizeof(sockaddr_in), num, f);
         fclose(f);
         for (uint i = 0; i < num; i++) {
@@ -113,7 +113,7 @@ dht* dht_setup(network *n, int fd)
         long fsize = ftell(f);
         fseek(f, 0, SEEK_SET);
         sockaddr_in6 sin6[2048];
-        uint num6 = MIN(lenof(sin6), fsize / sizeof(sockaddr_in6));
+        size_t num6 = MIN(lenof(sin6), fsize / sizeof(sockaddr_in6));
         num6 = fread(sin6, sizeof(sockaddr_in6), num6, f);
         fclose(f);
         for (uint i = 0; i < num6; i++) {
@@ -239,7 +239,7 @@ void dht_destroy(dht *d)
 int dht_sendto(int sockfd, const void *buf, int len, int flags,
                const sockaddr *to, int tolen)
 {
-    return sendto(sockfd, buf, len, flags, to, tolen);
+    return (int)sendto(sockfd, buf, len, flags, to, tolen);
 }
 
 int dht_blacklisted(const sockaddr *sa, int salen)
@@ -276,5 +276,5 @@ void dht_hash(void *hash_return, int hash_size,
 int dht_random_bytes(void *buf, size_t size)
 {
     randombytes_buf(buf, size);
-    return size;
+    return (int)size;
 }

@@ -60,7 +60,7 @@ void pdie(const char *err)
 
 void hexdump(const void *addr, size_t len)
 {
-    unsigned char buff[17];
+    unsigned char buff[33];
     unsigned char *pc = (unsigned char*)addr;
 
     if (!len) {
@@ -69,7 +69,7 @@ void hexdump(const void *addr, size_t len)
 
     size_t i = 0;
     for (i = 0; i < len; i++) {
-        if ((i % 16) == 0) {
+        if ((i % 32) == 0) {
             if (i != 0) {
                 fprintf(stderr, "  %s\n", buff);
             }
@@ -77,11 +77,11 @@ void hexdump(const void *addr, size_t len)
         }
         fprintf(stderr, " %02x", pc[i]);
 
-        buff[i % 16] = isprint(pc[i]) ? pc[i] : '.';
-        buff[(i % 16) + 1] = '\0';
+        buff[i % 32] = isprint(pc[i]) ? pc[i] : '.';
+        buff[(i % 32) + 1] = '\0';
     }
 
-    while ((i % 16) != 0) {
+    while ((i % 32) != 0) {
         fprintf(stderr, "   ");
         i++;
     }
@@ -93,9 +93,9 @@ void hexdump(const void *addr, size_t len)
 void print_trace()
 {
     void *array[100];
-    size_t size = backtrace(array, sizeof(array) / sizeof(array[0]));
+    int size = backtrace(array, sizeof(array) / sizeof(array[0]));
     char **strings = backtrace_symbols(array, size);
-    for (size_t i = 0; i < size; i++) {
+    for (int i = 0; i < size; i++) {
         printf("%s\n", strings[i]);
     }
     free(strings);

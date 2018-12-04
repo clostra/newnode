@@ -51,7 +51,7 @@ void obfoo_write_intro(obfoo *o, evbuffer *out)
     evbuffer *buf = evbuffer_new();
     evbuffer_add(buf, o->pk, sizeof(o->pk));
     evbuffer_add(buf, o->tx_nonce, sizeof(o->tx_nonce));
-    uint16_t pad_len = randombytes_uniform(INTRO_PAD_MAX);
+    uint16_t pad_len = (uint16_t)randombytes_uniform(INTRO_PAD_MAX);
     uint8_t pad[pad_len];
     randombytes_buf(pad, sizeof(pad));
     evbuffer_add(buf, pad, sizeof(pad));
@@ -139,7 +139,7 @@ ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
                 crypt_intro ci;
             } r = {.buf = {0}};
             r.ci.crypto_provide = 0x01;
-            r.ci.pad_len = randombytes_uniform(PAD_MAX);
+            r.ci.pad_len = (uint16_t)randombytes_uniform(PAD_MAX);
             randombytes_buf(r.ci.pad, r.ci.pad_len);
             size_t crypt_len = sizeof(crypt_intro) + r.ci.pad_len + sizeof(uint16_t);
             obfoo_encrypt(o, r.buf, r.buf, crypt_len);
@@ -200,7 +200,7 @@ ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
                 crypt_intro ci;
             } r = {.buf = {0}};
             r.ci.crypto_provide = 0x01;
-            r.ci.pad_len = randombytes_uniform(PAD_MAX);
+            r.ci.pad_len = (uint16_t)randombytes_uniform(PAD_MAX);
             randombytes_buf(r.ci.pad, r.ci.pad_len);
             size_t crypt_len = sizeof(r.ci) + r.ci.pad_len;
             obfoo_encrypt(o, r.buf, r.buf, crypt_len);
