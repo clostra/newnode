@@ -30,7 +30,7 @@ void join_url_swarm(network *n, const char *url)
     __block struct {
         uint8_t url_hash[20];
     } hash_state;
-    SHA1(hash_state.url_hash, (const unsigned char *)url, strlen(url));
+    SHA1(hash_state.url_hash, (const unsigned char *)url, (uint)strlen(url));
 
     // TODO: stop after 24hr
     timer_callback cb = ^{
@@ -43,7 +43,7 @@ void join_url_swarm(network *n, const char *url)
 void fetch_url_swarm(network *n, const char *url)
 {
     uint8_t url_hash[20];
-    SHA1(url_hash, (const unsigned char *)url, strlen(url));
+    SHA1(url_hash, (const unsigned char *)url, (uint)strlen(url));
     dht_get_peers(n->dht, url_hash);
 }
 
@@ -123,35 +123,11 @@ void copy_all_headers(evhttp_request *from, evhttp_request *to)
     }
 }
 
-void hash_headers(evkeyvalq *in, crypto_generichash_state *content_state)
+evbuffer* build_request_buffer(evhttp_request *req, evkeyvalq *hdrs)
 {
-    const char *headers[] = hashed_headers;
-    for (size_t i = 0; i < lenof(headers); i++) {
-        const char *key = headers[i];
-        const char *value = evhttp_find_header(in, key);
-        if (!value) {
-            continue;
-        }
-        char buf[1024];
-        snprintf(buf, sizeof(buf), "%s: %s\r\n", key, value);
-        crypto_generichash_update(content_state, (const uint8_t *)buf, strlen(buf));
-    }
-}
-
-void hash_request(evhttp_request *req, evkeyvalq *hdrs, crypto_generichash_state *content_state)
-{
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%d\r\n", req->response_code);
-    crypto_generichash_update(content_state, (const uint8_t *)buf, strlen(buf));
-    hash_headers(hdrs, content_state);
-}
-
-void merkle_tree_hash_request(merkle_tree *m, evhttp_request *req, evkeyvalq *hdrs)
-{
-    char code_buf[16];
-    snprintf(code_buf, sizeof(code_buf), "%d\r\n", req->response_code);
+    evbuffer *buf = evbuffer_new();
+    evbuffer_add_printf(buf, "%d\r\n", req->response_code);
     assert(req->response_code);
-    merkle_tree_add_hashed_data(m, (const uint8_t *)code_buf, strlen(code_buf));
     const char *headers[] = hashed_headers;
     for (size_t i = 0; i < lenof(headers); i++) {
         const char *key = headers[i];
@@ -159,10 +135,16 @@ void merkle_tree_hash_request(merkle_tree *m, evhttp_request *req, evkeyvalq *hd
         if (!value) {
             continue;
         }
-        char buf[1024];
-        snprintf(buf, sizeof(buf), "%s: %s\r\n", key, value);
-        merkle_tree_add_hashed_data(m, (const uint8_t *)buf, strlen(buf));
+        evbuffer_add_printf(buf, "%s: %s\r\n", key, value);
     }
+    return buf;
+}
+
+void merkle_tree_hash_request(merkle_tree *m, evhttp_request *req, evkeyvalq *hdrs)
+{
+    evbuffer *buf = build_request_buffer(req, hdrs);
+    merkle_tree_add_evbuffer(m, buf);
+    evbuffer_free(buf);
 }
 
 evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
@@ -192,7 +174,7 @@ evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
     }
     debug("connecting to %s:%d\n", host, port);
     // XXX: doesn't handle SSL
-    evhttp_connection *evcon = evhttp_connection_base_new(n->evbase, n->evdns, host, port);
+    evhttp_connection *evcon = evhttp_connection_base_new(n->evbase, n->evdns, host, (port_t)port);
     // XXX: disable IPv6, since evdns waits for *both* and the v6 request often times out
     evhttp_connection_set_family(evcon, AF_INET);
     return evcon;
