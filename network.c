@@ -43,8 +43,8 @@ uint64 utp_on_firewall(utp_callback_arguments *a)
 uint64 utp_callback_sendto(utp_callback_arguments *a)
 {
     network *n = (network*)utp_context_get_userdata(a->context);
-    sockaddr_in *sin = (sockaddr_in *)a->address;
 
+    //sockaddr_in *sin = (sockaddr_in *)a->address;
     //debug("sendto: %zd byte packet to %s:%d%s\n", a->len, inet_ntoa(sin->sin_addr), ntohs(sin->sin_port),
     //      (a->flags & UTP_UDP_DONTFRAG) ? "  (DF bit requested, but not yet implemented)" : "");
 
@@ -121,14 +121,54 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
     }
 }
 
-void evbuffer_clear(evbuffer *buf)
+void evbuffer_hash_update(evbuffer *buf, crypto_generichash_state *content_state)
 {
-    evbuffer_unfreeze(buf, 1);
-    evbuffer_drain(buf, evbuffer_get_length(buf));
-    evbuffer_freeze(buf, 1);
-    assert(!evbuffer_get_length(buf));
+    evbuffer_ptr ptr;
+    evbuffer_ptr_set(buf, &ptr, 0, EVBUFFER_PTR_SET);
+    evbuffer_iovec v;
+    while (evbuffer_peek(buf, -1, &ptr, &v, 1) > 0) {
+        crypto_generichash_update(content_state, v.iov_base, v.iov_len);
+        if (evbuffer_ptr_set(buf, &ptr, v.iov_len, EVBUFFER_PTR_ADD) < 0) {
+            break;
+        }
+    }
 }
 
+bool evbuffer_write_to_file(evbuffer *buf, int fd)
+{
+    uint vecs_len = 0;
+    iovec vecs[16384];
+    ssize_t byte_total = 0;
+    evbuffer_ptr ptr;
+    evbuffer_ptr_set(buf, &ptr, 0, EVBUFFER_PTR_SET);
+    evbuffer_iovec v;
+    while (evbuffer_peek(buf, -1, &ptr, &v, 1) > 0) {
+        vecs[vecs_len].iov_base = v.iov_base;
+        vecs[vecs_len].iov_len = v.iov_len;
+        vecs_len++;
+        assert(vecs_len < lenof(vecs));
+        byte_total += v.iov_len;
+        if (evbuffer_ptr_set(buf, &ptr, v.iov_len, EVBUFFER_PTR_ADD) < 0) {
+            break;
+        }
+    }
+    ssize_t w = writev(fd, vecs, vecs_len);
+    if (w != byte_total) {
+        fprintf(stderr, "fd:%d write failed %d (%s)\n", fd, errno, strerror(errno));
+        return false;
+    }
+    return true;
+}
+
+void evbuffer_clear(evbuffer *buf)
+{
+    // XXX: should unfreeze/freeze start depnding on input or output
+    int start = 1;
+    evbuffer_unfreeze(buf, start);
+    evbuffer_drain(buf, evbuffer_get_length(buf));
+    evbuffer_freeze(buf, start);
+    assert(!evbuffer_get_length(buf));
+}
 
 void bufferevent_free_checked(bufferevent *bev)
 {
@@ -219,6 +259,16 @@ void set_max_nofile()
     debug("getrlimit: r:%d cur:%zu max:%zu\n", r, (size_t)nofile.rlim_cur, (size_t)nofile.rlim_max);
 }
 
+void network_free(network *n)
+{
+    utp_destroy(n->utp);
+    dht_destroy(n->dht);
+    close(n->fd);
+    evdns_base_free(n->evdns, 0);
+    event_base_free(n->evbase);
+    free(n);
+}
+
 network* network_setup(char *address, port_t port)
 {
     signal(SIGPIPE, SIG_IGN);
@@ -255,6 +305,7 @@ network* network_setup(char *address, port_t port)
 
     for (;;) {
         if (bind(n->fd, res->ai_addr, res->ai_addrlen) != 0) {
+            debug("bind fail %d %s\n", errno, strerror(errno));
             if (port == 0) {
                 pdie("bind");
             }
@@ -306,6 +357,7 @@ network* network_setup(char *address, port_t port)
     n->evbase = event_base_new();
     if (!n->evbase) {
         fprintf(stderr, "event_base_new failed\n");
+        network_free(n);
         return NULL;
     }
 
@@ -314,6 +366,7 @@ network* network_setup(char *address, port_t port)
     n->evdns = evdns_base_new(n->evbase, 0);
     if (!n->evdns) {
         fprintf(stderr, "evdns_base_new failed\n");
+        network_free(n);
         return NULL;
     }
 #ifdef _WIN32
@@ -338,6 +391,7 @@ network* network_setup(char *address, port_t port)
     n->http = evhttp_new(n->evbase);
     if (!n->http) {
         fprintf(stderr, "evhttp_new failed\n");
+        network_free(n);
         return NULL;
     }
     // don't add any content type automatically
@@ -348,6 +402,7 @@ network* network_setup(char *address, port_t port)
 
     if (evthread_make_base_notifiable(n->evbase)) {
         fprintf(stderr, "evthread_make_base_notifiable failed\n");
+        network_free(n);
         return NULL;
     }
 
@@ -375,6 +430,7 @@ network* network_setup(char *address, port_t port)
     event_assign(&n->udp_event, n->evbase, n->fd, EV_READ|EV_PERSIST, udp_read, n);
     if (event_add(&n->udp_event, NULL) < 0) {
         fprintf(stderr, "event_add udp_read failed\n");
+        network_free(n);
         return NULL;
     }
 
@@ -414,12 +470,7 @@ int network_loop(network *n)
 
     debug("Destroying network context\n");
     event_free(sigterm);
-    utp_destroy(n->utp);
-    dht_destroy(n->dht);
-    close(n->fd);
-    evdns_base_free(n->evdns, 0);
-    event_base_free(n->evbase);
-    free(n);
+    network_free(n);
 
     return 0;
 }
