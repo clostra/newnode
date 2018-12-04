@@ -73,7 +73,7 @@ typedef struct {
     bool incoming:1;
 } obfoo;
 
-obfoo* obfoo_new();
+obfoo* obfoo_new(void);
 void obfoo_write_intro(obfoo *o, evbuffer *out);
 ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o);
 ssize_t obfoo_output_filter(evbuffer *in, evbuffer *out, obfoo *o);
