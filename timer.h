@@ -10,7 +10,7 @@ typedef struct timer timer;
 #include "network.h"
 
 
-typedef void (^timer_callback)();
+typedef void (^timer_callback)(void);
 
 struct timer {
     event event;

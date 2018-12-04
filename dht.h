@@ -16,8 +16,7 @@ bool dht_process_udp(dht *d, const uint8_t *buffer, size_t len, const sockaddr *
 bool dht_process_icmp(dht *d, const uint8_t *buffer, size_t len, const sockaddr *to, socklen_t tolen, time_t *tosleep);
 void dht_announce(dht *d, const uint8_t *info_hash);
 void dht_get_peers(dht *d, const uint8_t *info_hash);
-int dht_is_searching();
-size_t dht_num_searches();
+size_t dht_num_searches(void);
 void dht_destroy(dht *d);
 
 // defined by caller
