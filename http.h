@@ -36,6 +36,7 @@ void copy_all_headers(evhttp_request *from, evhttp_request *to);
 void hash_headers(evkeyvalq *in, crypto_generichash_state *content_state);
 void hash_request(evhttp_request *req, evkeyvalq *hdrs, crypto_generichash_state *content_state);
 void merkle_tree_hash_request(merkle_tree *m, evhttp_request *req, evkeyvalq *hdrs);
+evbuffer* build_request_buffer(evhttp_request *req, evkeyvalq *hdrs);
 
 evhttp_connection *make_connection(network *n, const evhttp_uri *uri);
 void return_connection(evhttp_connection *evcon);
