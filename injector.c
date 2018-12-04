@@ -181,8 +181,8 @@ void chunked_cb(evhttp_request *req, void *arg)
     //debug("p:%p chunked_cb length:%zu\n", p, evbuffer_get_length(input));
 
     evbuffer_ptr ptr;
-    evbuffer_iovec v;
     evbuffer_ptr_set(input, &ptr, 0, EVBUFFER_PTR_SET);
+    evbuffer_iovec v;
     while (evbuffer_peek(input, -1, &ptr, &v, 1) > 0) {
         crypto_generichash_update(&p->content_state, v.iov_base, v.iov_len);
         merkle_tree_add_hashed_data(p->m, v.iov_base, v.iov_len);
@@ -463,8 +463,16 @@ void http_request_cb(evhttp_request *req, void *arg)
         merkle_tree_get_root(m, root_hash);
         content_sig sig;
         content_sign(&sig, root_hash);
-        merkle_tree_free(m);
+
         size_t out_len;
+        static_assert(sizeof(node) == member_sizeof(node, hash), "node hash packing");
+        size_t node_len = m->leaves_num * member_sizeof(node, hash);
+        char *b64_hashes = base64_urlsafe_encode((uint8_t*)m->nodes, node_len, &out_len);
+        evhttp_add_header(req->output_headers, "X-Hashes", b64_hashes);
+        free(b64_hashes);
+
+        merkle_tree_free(m);
+
         char *b64_msign = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
         debug("returning X-MSign for TRACE %s %s\n", req->uri, b64_msign);
         evhttp_add_header(req->output_headers, "X-MSign", b64_msign);
