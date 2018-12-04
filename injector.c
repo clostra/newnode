@@ -180,20 +180,27 @@ void chunked_cb(evhttp_request *req, void *arg)
     evbuffer *input = req->input_buffer;
     //debug("p:%p chunked_cb length:%zu\n", p, evbuffer_get_length(input));
 
-    evbuffer_ptr ptr;
-    evbuffer_ptr_set(input, &ptr, 0, EVBUFFER_PTR_SET);
-    evbuffer_iovec v;
-    while (evbuffer_peek(input, -1, &ptr, &v, 1) > 0) {
-        crypto_generichash_update(&p->content_state, v.iov_base, v.iov_len);
-        merkle_tree_add_hashed_data(p->m, v.iov_base, v.iov_len);
-        if (evbuffer_ptr_set(input, &ptr, v.iov_len, EVBUFFER_PTR_ADD) < 0) {
-            break;
-        }
-    }
+    evbuffer_hash_update(input, &p->content_state);
+    merkle_tree_add_evbuffer(p->m, input);
     if (!p->pending_output) {
         p->pending_output = evbuffer_new();
     }
     evbuffer_add_buffer(p->pending_output, input);
+}
+
+void hash_headers(evkeyvalq *in, crypto_generichash_state *content_state)
+{
+    const char *headers[] = hashed_headers;
+    for (size_t i = 0; i < lenof(headers); i++) {
+        const char *key = headers[i];
+        const char *value = evhttp_find_header(in, key);
+        if (!value) {
+            continue;
+        }
+        char buf[1024];
+        snprintf(buf, sizeof(buf), "%s: %s\r\n", key, value);
+        crypto_generichash_update(content_state, (const uint8_t *)buf, strlen(buf));
+    }
 }
 
 int header_cb(evhttp_request *req, void *arg)
@@ -303,7 +310,9 @@ void connect_cleanup(connect_req *c, int err)
         // XXX: remove after no X-Sign clients exist
         crypto_generichash_state content_state;
         crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
-        hash_request(c->server_req, c->server_req->output_headers, &content_state);
+        evbuffer *request_buf = build_request_buffer(c->server_req, c->server_req->output_headers);
+        evbuffer_hash_update(request_buf, &content_state);
+        evbuffer_free(request_buf);
 
         uint8_t content_hash[crypto_generichash_BYTES];
         crypto_generichash_final(&content_state, content_hash, sizeof(content_hash));
