@@ -3,6 +3,8 @@
 #include <string.h>
 #include <sodium.h>
 
+#include <event2/buffer.h>
+
 #include "log.h"
 #include "network.h"
 #include "merkle_tree.h"
@@ -59,6 +61,19 @@ void merkle_tree_add_hashed_data(merkle_tree *m, const uint8_t *data, size_t len
         assert(m->leaf_progress <= LEAF_CHUNK_SIZE);
         if (m->leaf_progress == LEAF_CHUNK_SIZE) {
             merkle_tree_leaf_finish(m);
+        }
+    }
+}
+
+void merkle_tree_add_evbuffer(merkle_tree *m, evbuffer *buf)
+{
+    evbuffer_ptr ptr;
+    evbuffer_ptr_set(buf, &ptr, 0, EVBUFFER_PTR_SET);
+    evbuffer_iovec v;
+    while (evbuffer_peek(buf, -1, &ptr, &v, 1) > 0) {
+        merkle_tree_add_hashed_data(m, v.iov_base, v.iov_len);
+        if (evbuffer_ptr_set(buf, &ptr, v.iov_len, EVBUFFER_PTR_ADD) < 0) {
+            break;
         }
     }
 }
