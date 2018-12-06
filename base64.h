@@ -10,8 +10,8 @@
 #define __BASE64_H__
 
 
-#define ROUND_UP(x, n) ((x + (n - 1)) / n)
-#define BASE64_LENGTH(x) ROUND_UP(x * 4, 3)
+#define DIV_ROUND_UP(x, n) ((x + (n - 1)) / n)
+#define BASE64_LENGTH(x) DIV_ROUND_UP(x * 4, 3)
 
 char* base64_encode(const unsigned char *src, size_t len, size_t *out_len);
 char* base64_urlsafe_encode(const unsigned char *src, size_t len, size_t *out_len);
