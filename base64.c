@@ -11,8 +11,6 @@
 
 #include "base64.h"
 
-#define ROUND_UP(x, n) ((x + (n - 1)) / n)
-
 static const unsigned char base64_table[65] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -106,7 +104,7 @@ unsigned char* base64_decode(const char *src, size_t len, size_t *out_len)
         dtable['='] = 0;
     }
 
-    size_t count = ROUND_UP(len, 4);
+    size_t count = DIV_ROUND_UP(len, 4);
     size_t plen = count * 4;
     size_t olen = count * 3;
     unsigned char *out = malloc(olen);
