@@ -6,6 +6,7 @@
 #include <event2/dns.h>
 #include <event2/http.h>
 #include <event2/http_struct.h>
+#include <sodium.h>
 
 #include "utp.h"
 
@@ -36,6 +37,7 @@ typedef struct evbuffer evbuffer;
 typedef struct evbuffer_ptr evbuffer_ptr;
 typedef struct evbuffer_iovec evbuffer_iovec;
 typedef struct evbuffer_cb_info evbuffer_cb_info;
+typedef struct evbuffer_file_segment evbuffer_file_segment;
 typedef struct evconnlistener evconnlistener;
 typedef struct evutil_addrinfo evutil_addrinfo;
 typedef struct bufferevent bufferevent;
@@ -68,6 +70,8 @@ struct network {
 };
 
 void evbuffer_clear(evbuffer *buf);
+void evbuffer_hash_update(evbuffer *buf, crypto_generichash_state *content_state);
+bool evbuffer_write_to_file(evbuffer *buf, int fd);
 void bufferevent_free_checked(bufferevent *bev);
 int bufferevent_get_error(bufferevent *bev);
 port_t sockaddr_get_port(const sockaddr* sa);
