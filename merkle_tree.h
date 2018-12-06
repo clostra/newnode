@@ -18,6 +18,7 @@ typedef struct {
 void merkle_tree_free(merkle_tree *m);
 bool merkle_tree_set_leaves(merkle_tree *m, const uint8_t *data, size_t length);
 void merkle_tree_add_hashed_data(merkle_tree *m, const uint8_t *data, size_t length);
+void merkle_tree_add_evbuffer(merkle_tree *m, evbuffer *buf);
 void merkle_tree_get_root(merkle_tree *m, uint8_t *root_hash);
 
 #endif // __MERKLE_TREE_H__
