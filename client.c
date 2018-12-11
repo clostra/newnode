@@ -49,10 +49,11 @@ typedef struct {
 
 typedef struct {
     address addr;
-    uint32_t last_verified;
-    uint32_t last_connect;
-    uint32_t last_connect_attempt;
-} peer;
+    time_t last_verified;
+    time_t last_connect;
+    time_t last_connect_attempt;
+    char via;
+} PACKED peer;
 
 typedef struct {
     network *n;
@@ -63,8 +64,8 @@ typedef struct {
 
 typedef struct {
     bool failed:1;
-    uint32_t time_since_verified;
-    uint32_t last_connect_attempt;
+    time_t time_since_verified;
+    time_t last_connect_attempt;
     bool never_connected:1;
     uint8_t salt;
     peer *peer;
@@ -75,11 +76,26 @@ typedef struct {
 
 typedef void (^peer_connected)(peer_connection *p);
 typedef struct pending_request {
+    char *via;
     peer_connected on_connect;
     TAILQ_ENTRY(pending_request) next;
 } pending_request;
 
+struct proxy_request;
+typedef struct proxy_request proxy_request;
+
 typedef struct {
+    pending_request r;
+    peer_connection *pc;
+    evhttp_request *req;
+    proxy_request *p;
+    evbuffer *chunk_buffer;
+    uint64_t range_start;
+    uint64_t range_end;
+    uint64_t chunk_index;
+} peer_request;
+
+struct proxy_request {
     network *n;
 
     evhttp_request *server_req;
@@ -89,24 +105,28 @@ typedef struct {
     evhttp_connection *direct_req_evcon;
 
     evkeyvalq direct_headers;
-
-    // XXX: remove after no X-Sign clients exist
-    crypto_generichash_state content_state;
-    uint8_t content_hash[crypto_generichash_BYTES];
+    evkeyvalq output_headers;
 
     merkle_tree *m;
     uint8_t root_hash[crypto_generichash_BYTES];
 
-    pending_request r;
-    peer_connection *pc;
-    evhttp_request *proxy_req;
+    peer_request requests[10];
+
+    uint64_t range_start;
+    uint64_t range_end;
 
     char cache_name[sizeof(CACHE_NAME)];
     int cache_file;
 
-    bool dont_free:1;
+    evbuffer *header_buf;
+    uint64_t content_length;
+    uint64_t total_length;
+    uint64_t byte_playhead;
+    bool *have_bitfield;
+
     bool merkle_tree_finished:1;
-} proxy_request;
+    bool dont_free:1;
+};
 
 typedef struct {
     uint length;
@@ -167,9 +187,21 @@ void connect_more_injectors(network *n, bool injector_preference);
 void pending_request_complete(pending_request *r, peer_connection *pc)
 {
     peer_connected on_connect = r->on_connect;
+    free(r->via);
+    r->via = NULL;
     r->on_connect = NULL;
     on_connect(pc);
     Block_release(on_connect);
+}
+
+bool via_contains(const char *via, char v)
+{
+    if (!via || !v) {
+        return false;
+    }
+    char vtag[] = "_.newnode";
+    vtag[0] = v;
+    return !!strstr(via, vtag);
 }
 
 void on_utp_connect(network *n, peer_connection *pc)
@@ -185,9 +217,13 @@ void on_utp_connect(network *n, peer_connection *pc)
     pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, pc->bev, host, atoi(serv));
     debug("on_utp_connect %s:%s bev:%p con:%p\n", host, serv, pc->bev, pc->evcon);
     pc->bev = NULL;
+
     // handle waiting requests first
-    pending_request *r = TAILQ_FIRST(&pending_requests);
-    if (r) {
+    pending_request *r;
+    TAILQ_FOREACH(r, &pending_requests, next) {
+        if (via_contains(r->via, pc->peer->via)) {
+            continue;
+        }
         TAILQ_REMOVE(&pending_requests, r, next);
         pending_requests_len--;
         debug("on_utp_connect request:%p (outstanding:%zu)\n", r, pending_requests_len);
@@ -200,11 +236,12 @@ void on_utp_connect(network *n, peer_connection *pc)
             }
         }
         assert(found);
-        debug("using new pc:%p con:%p for request:%p\n", pc, pc->evcon, r);
+        debug("using new pc:%p con:%p via:%c (%s) for request:%p\n", pc, pc->evcon, pc->peer->via, r->via, r);
         pending_request_complete(r, pc);
         if (!TAILQ_EMPTY(&pending_requests)) {
             connect_more_injectors(n, false);
         }
+        break;
     }
 }
 
@@ -282,7 +319,7 @@ void add_peer(peer_array **pa, peer *p)
     dht_ping_node((const sockaddr *)&sin, sizeof(sin));
 }
 
-void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, uint num_addrs)
+void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, size_t num_addrs)
 {
     for (uint i = 0; i < num_addrs; i++) {
         address *a = (address *)&addrs[sizeof(address) * i];
@@ -383,6 +420,8 @@ void abort_connect(pending_request *r)
         return;
     }
     debug("aborting request:%p\n", r);
+    free(r->via);
+    r->via = NULL;
     Block_release(r->on_connect);
     r->on_connect = NULL;
     TAILQ_REMOVE(&pending_requests, r, next);
@@ -428,36 +467,72 @@ void proxy_send_error(proxy_request *p, int error, const char *reason)
     }
 }
 
+bool proxy_request_any_peers(const proxy_request *p)
+{
+    for (size_t i = 0; i < lenof(p->requests); i++) {
+        if (p->requests[i].req || p->requests[i].r.on_connect) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void proxy_request_cleanup(proxy_request *p)
 {
-    if (p->dont_free || p->proxy_req || p->direct_req || p->r.on_connect) {
+    debug("%s:%d p:%p\n", __func__, __LINE__, p);
+    if (p->dont_free || proxy_request_any_peers(p) || p->direct_req) {
         return;
     }
     if (p->server_req) {
         proxy_send_error(p, 502, "Bad Gateway (default)");
     }
-    if (p->pc) {
-        peer_disconnect(p->pc);
-        p->pc = NULL;
+    for (size_t i = 0; i < lenof(p->requests); i++) {
+        if (p->requests[i].pc) {
+            peer_disconnect(p->requests[i].pc);
+            p->requests[i].pc = NULL;
+        }
     }
     if (p->direct_req_evcon) {
         evhttp_connection_free(p->direct_req_evcon);
         p->direct_req_evcon = NULL;
     }
     evhttp_clear_headers(&p->direct_headers);
+    evhttp_clear_headers(&p->output_headers);
+    if (p->header_buf) {
+        evbuffer_free(p->header_buf);
+    }
     merkle_tree_free(p->m);
     proxy_cache_delete(p);
     free(p);
 }
 
+void peer_request_cleanup(peer_request *r)
+{
+    if (r->req) {
+        return;
+    }
+    if (r->pc) {
+        peer_disconnect(r->pc);
+        r->pc = NULL;
+    }
+    if (r->chunk_buffer) {
+        evbuffer_free(r->chunk_buffer);
+        r->chunk_buffer = NULL;
+    }
+    proxy_request_cleanup(r->p);
+}
+
 void peer_reuse(network *n, peer_connection *pc)
 {
     // handle waiting requests first
-    pending_request *r = TAILQ_FIRST(&pending_requests);
-    if (r) {
+    pending_request *r;
+    TAILQ_FOREACH(r, &pending_requests, next) {
+        if (via_contains(r->via, pc->peer->via)) {
+            continue;
+        }
         TAILQ_REMOVE(&pending_requests, r, next);
         pending_requests_len--;
-        debug("reusing pc:%p con:%p for request:%p (outstanding:%zu)\n", pc, pc->evcon, r, pending_requests_len);
+        debug("reusing pc:%p con:%p via:%c (%s) for request:%p (outstanding:%zu)\n", pc, pc->evcon, pc->peer->via, r->via, r, pending_requests_len);
         pending_request_complete(r, pc);
         return;
     }
@@ -496,61 +571,64 @@ void proxy_cancel_direct(proxy_request *p)
     }
 }
 
-void proxy_cancel_proxy(proxy_request *p)
+void peer_request_cancel(peer_request *r)
 {
-    if (p->proxy_req) {
-        proxy_cache_delete(p);
-        evhttp_cancel_request(p->proxy_req);
-        p->proxy_req = NULL;
+    if (r->req) {
+        debug("%s:%d p:%p r:%p\n", __func__, __LINE__, r->p, r);
+        evhttp_cancel_request(r->req);
+        r->req = NULL;
     }
-    if (!p->pc) {
-        abort_connect(&p->r);
+    if (!r->pc) {
+        abort_connect(&r->r);
     } else {
-        peer_disconnect(p->pc);
-        p->pc = NULL;
+        peer_disconnect(r->pc);
+        r->pc = NULL;
+    }
+}
+
+void proxy_cancel_peer_requests(proxy_request *p)
+{
+    for (size_t i = 0; i < lenof(p->requests); i++) {
+        peer_request_cancel(&p->requests[i]);
     }
 }
 
 bool write_header_to_file(int headers_file, int code, const char *code_line, evkeyvalq *input_headers)
 {
+    evbuffer *buf = evbuffer_new();
+    evbuffer_add_printf(buf, "HTTP/1.1 %d %s\r\n", code, code_line);
     const char *headers[] = hashed_headers;
-    char buf[1024];
-    int s = snprintf(buf, sizeof(buf), "HTTP/1.1 %d %s\r\n", code, code_line);
-    if (s >= (ssize_t)sizeof(buf)) {
-        return false;
-    }
-    ssize_t w = write(headers_file, buf, s);
-    if (s != w) {
-        return false;
-    }
-    for (int i = 0; i < (int)lenof(headers) + 1; i++) {
-        const char *key = i == lenof(headers) ? "X-Sign" : headers[i];
+    for (int i = 0; i < (int)lenof(headers); i++) {
+        const char *key = headers[i];
         const char *value = evhttp_find_header(input_headers, key);
         if (!value) {
             continue;
         }
-        s = snprintf(buf, sizeof(buf), "%s: %s\r\n", key, value);
-        if (s >= (ssize_t)sizeof(buf)) {
-            return false;
-        }
-        w = write(headers_file, buf, s);
-        if (s != w) {
-            return false;
-        }
+        evbuffer_add_printf(buf, "%s: %s\r\n", key, value);
     }
-    write(headers_file, "\r\n", 2);
-    return true;
+    const char *sign_headers[] = {"X-MSign", "X-Hashes"};
+    for (int i = 0; i < (int)lenof(sign_headers); i++) {
+        const char *key = sign_headers[i];
+        const char *value = evhttp_find_header(input_headers, key);
+        evbuffer_add_printf(buf, "%s: %s\r\n", key, value);
+    }
+    evbuffer_add_printf(buf, "\r\n");
+    bool success = evbuffer_write_to_file(buf, headers_file);
+    evbuffer_free(buf);
+    return success;
 }
 
 void direct_chunked_cb(evhttp_request *req, void *arg);
-void proxy_make_request(proxy_request *p);
+peer_request* proxy_make_request(proxy_request *p);
 void proxy_submit_request(proxy_request *p);
 
 int direct_header_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p (%.2fms) direct_header_cb %d %s %s\n", p, pdelta(p), req->response_code, req->response_code_line, evhttp_request_get_uri(p->server_req));
-    proxy_cancel_proxy(p);
+    // TODO: to mix data from origin with peers, we still need to check hashes.
+    // if direct data doesn't (or didn't) match, abort all peers
+    proxy_cancel_peer_requests(p);
     p->direct_req_evcon = req->evcon;
     copy_all_headers(req, p->server_req);
 
@@ -560,10 +638,6 @@ int direct_header_cb(evhttp_request *req, void *arg)
     TAILQ_FOREACH(header, req->input_headers, next) {
         evhttp_add_header(&p->direct_headers, header->key, header->value);
     }
-
-    // XXX: remove after no X-Sign clients exist
-    crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
-    hash_headers(req->input_headers, &p->content_state);
 
     merkle_tree_hash_request(p->m, req, req->input_headers);
 
@@ -582,21 +656,9 @@ void direct_chunked_cb(evhttp_request *req, void *arg)
     proxy_request *p = (proxy_request*)arg;
     evbuffer *input = req->input_buffer;
     //debug("p:%p direct_chunked_cb length:%zu\n", p, evbuffer_get_length(input));
-    evbuffer_ptr ptr;
-    evbuffer_iovec v;
-    evbuffer_ptr_set(input, &ptr, 0, EVBUFFER_PTR_SET);
-    while (evbuffer_peek(input, -1, &ptr, &v, 1) > 0) {
-        crypto_generichash_update(&p->content_state, v.iov_base, v.iov_len);
-        merkle_tree_add_hashed_data(p->m, v.iov_base, v.iov_len);
-        ssize_t w = write(p->cache_file, v.iov_base, v.iov_len);
-        if (w != (ssize_t)v.iov_len) {
-            fprintf(stderr, "p:%p cache write failed %d (%s)\n", p, errno, strerror(errno));
-            proxy_cancel_proxy(p);
-            break;
-        }
-        if (evbuffer_ptr_set(input, &ptr, v.iov_len, EVBUFFER_PTR_ADD) < 0) {
-            break;
-        }
+    if (!evbuffer_write_to_file(input, p->cache_file)) {
+        proxy_cancel_direct(p);
+        return;
     }
     if (p->server_req) {
         evhttp_send_reply_chunk(p->server_req, input);
@@ -620,25 +682,23 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
     }
     debug("p:%p (%.2fms) direct server_request_done_cb %s\n", p, pdelta(p), evhttp_request_get_uri(p->server_req));
     if (req->response_code != 0) {
-        crypto_generichash_final(&p->content_state, p->content_hash, sizeof(p->content_hash));
-
         merkle_tree_get_root(p->m, p->root_hash);
-        p->merkle_tree_finished = true;
+        // XXX: the tree isn't finihsed until we have a signature as well?
+        //p->merkle_tree_finished = true;
 
         return_connection(p->direct_req_evcon);
         p->direct_req_evcon = NULL;
 
-        // XXX: TODO: switch to p->root_hash once peers support it
-        // submit a proxy-only request with If-None-Match: "base64(content_hash)" and let it cache
-        assert(!p->proxy_req);
-        proxy_make_request(p);
+        // submit a proxy-only request with If-None-Match: "base64(root_hash)" and let it cache
+        assert(!proxy_request_any_peers(p));
         size_t b64_hash_len;
-        char *b64_hash = base64_urlsafe_encode((uint8_t*)&p->content_hash, sizeof(p->content_hash), &b64_hash_len);
+        char *b64_hash = base64_urlsafe_encode((uint8_t*)&p->root_hash, sizeof(p->root_hash), &b64_hash_len);
         char etag[2048];
         snprintf(etag, sizeof(etag), "\"%s\"", b64_hash);
         free(b64_hash);
         debug("submitting a cache request %s\n", etag);
-        evhttp_add_header(p->proxy_req->output_headers, "If-None-Match", etag);
+        evhttp_add_header(&p->output_headers, "If-None-Match", etag);
+
         proxy_submit_request(p);
 
         if (p->server_req->evcon) {
@@ -648,7 +708,7 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
         p->server_req = NULL;
     }
     p->direct_req = NULL;
-    if (!p->proxy_req) {
+    if (!proxy_request_any_peers(p)) {
         proxy_request_cleanup(p);
     }
 }
@@ -727,16 +787,28 @@ void copy_response_headers(evhttp_request *from, evhttp_request *to)
     copy_header(from, to, "Content-Length");
     if (!evcon_is_local_browser(to->evcon)) {
         copy_header(from, to, "Content-Location");
-        copy_header(from, to, "X-Sign");
+        copy_header(from, to, "X-MSign");
+        copy_header(from, to, "X-Hashes");
     }
 }
 
-void proxy_chunked_cb(evhttp_request *req, void *arg);
+void peer_request_chunked_cb(evhttp_request *req, void *arg);
 
-int proxy_header_cb(evhttp_request *req, void *arg)
+void peer_verified(network *n, peer *peer)
 {
-    proxy_request *p = (proxy_request*)arg;
-    debug("p:%p (%.2fms) proxy_header_cb %d %s\n", p, pdelta(p), req->response_code, req->response_code_line);
+    peer->last_verified = time(NULL);
+    save_peers(n);
+    if (peer_is_injector(peer)) {
+        injector_reachable = time(NULL);
+        update_injector_proxy_swarm(n);
+    }
+}
+
+int peer_request_header_cb(evhttp_request *req, void *arg)
+{
+    peer_request *r = (peer_request*)arg;
+    proxy_request *p = r->p;
+    debug("p:%p r:%p (%.2fms) peer_request_header_cb %d %s\n", p, r, pdelta(p), req->response_code, req->response_code_line);
 
     int klass = req->response_code / 100;
     switch (klass) {
@@ -752,7 +824,66 @@ int proxy_header_cb(evhttp_request *req, void *arg)
     }
 
     // not the first moment of connection, but does indicate protocol support
-    p->pc->peer->last_connect = time(NULL);
+    r->pc->peer->last_connect = time(NULL);
+
+    debug("tree finished: %d\n", p->merkle_tree_finished);
+
+    const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
+    if (!msign) {
+        fprintf(stderr, "no signature!\n");
+        debug("p:%p (%.2fms) no signature\n", p, pdelta(p));
+        proxy_send_error(p, 502, "Missing Gateway Signature");
+        return -1;
+    }
+
+    if (!p->merkle_tree_finished) {
+        const char *xhashes = evhttp_find_header(req->input_headers, "X-Hashes");
+        if (!xhashes) {
+            fprintf(stderr, "no hashes!\n");
+            debug("p:%p (%.2fms) no hashes\n", p, pdelta(p));
+            proxy_send_error(p, 502, "Missing Gateway Hashes");
+            return -1;
+        }
+        size_t out_len = 0;
+        uint8_t *hashes = base64_decode(xhashes, strlen(xhashes), &out_len);
+
+        merkle_tree *m = alloc(merkle_tree);
+        if (!merkle_tree_set_leaves(m, hashes, out_len)) {
+            debug("merkle_tree_set_leaves failed: %zu\n", out_len);
+            r->pc->peer->last_verified = 0;
+            proxy_send_error(p, 502, "Bad Gateway Hashes");
+            free(hashes);
+            merkle_tree_free(m);
+            return -1;
+        }
+        free(hashes);
+        uint8_t root_hash[crypto_generichash_BYTES];
+        merkle_tree_get_root(m, root_hash);
+        if (!verify_signature(root_hash, msign)) {
+            fprintf(stderr, "signature failed!\n");
+            r->pc->peer->last_verified = 0;
+            proxy_send_error(p, 502, "Bad Gateway Signature");
+            merkle_tree_free(m);
+            return -1;
+        }
+        fprintf(stderr, "signature good!\n");
+        p->m = m;
+        memcpy(p->root_hash, root_hash, sizeof(root_hash));
+        p->merkle_tree_finished = true;
+        peer_verified(p->n, r->pc->peer);
+    } else {
+        if (!verify_signature(p->root_hash, msign)) {
+            fprintf(stderr, "signature failed!\n");
+            r->pc->peer->last_verified = 0;
+            proxy_send_error(p, 502, "Bad Gateway Signature");
+            return -1;
+        }
+        fprintf(stderr, "signature good!\n");
+        p->merkle_tree_finished = true;
+        peer_verified(p->n, r->pc->peer);
+    }
+
+    debug("tree finished: %d\n", p->merkle_tree_finished);
 
     if (p->cache_file != -1) {
         if (req->response_code == 304) {
@@ -769,68 +900,62 @@ int proxy_header_cb(evhttp_request *req, void *arg)
         debug("start cache:%s\n", p->cache_name);
     }
 
-    // XXX: remove after no X-Sign clients exist
-    crypto_generichash_init(&p->content_state, NULL, 0, crypto_generichash_BYTES);
-    hash_headers(req->input_headers, &p->content_state);
-
-    const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
-    const char *xhashes = evhttp_find_header(req->input_headers, "X-Hashes");
-    if (msign && xhashes) {
-        size_t out_len = 0;
-        uint8_t *hashes = base64_decode(xhashes, strlen(xhashes), &out_len);
-
-        merkle_tree *m = alloc(merkle_tree);
-        if (merkle_tree_set_leaves(m, hashes, out_len)) {
-            merkle_tree_get_root(m, p->root_hash);
-            if (verify_signature(p->root_hash, msign)) {
-                p->m = m;
-                m = NULL;
-                p->merkle_tree_finished = true;
-            } else {
-                // XXX: disconnect?
-            }
+    uint64_t total_length = 0;
+    const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
+    const char *content_length = evhttp_find_header(req->input_headers, "Content-Length");
+    if (content_range) {
+        sscanf(content_range, "bytes %llu-%llu/%llu", &r->range_start, &r->range_end, &total_length);
+        r->chunk_index = r->range_start / LEAF_CHUNK_SIZE;
+    } else if (content_length) {
+        char *endp;
+        ev_int64_t clen = evutil_strtoll(content_length, &endp, 10);
+        if (*content_length == '\0' || *endp != '\0' || clen < 0) {
+            debug("%s: illegal content length: %s", __func__, content_length);
+            proxy_send_error(p, 502, "Incorrect Gateway Content-Length");
+            return -1;
         }
-        merkle_tree_free(m);
+        total_length = (uint64_t)clen;
+        r->range_end = clen - 1;
     }
 
-    merkle_tree_hash_request(p->m, req, req->input_headers);
+    if (!p->header_buf) {
+        p->header_buf = build_request_buffer(req, req->input_headers);
+    }
 
-    evhttp_request_set_chunked_cb(req, proxy_chunked_cb);
+    if (p->content_length && p->content_length != total_length) {
+        proxy_send_error(p, 502, "Incorrect Gateway Content-Length");
+        return -1;
+    }
+
+    p->content_length = total_length;
+    if (!p->range_end) {
+        p->range_end = p->content_length;
+    }
+
+    total_length += evbuffer_get_length(p->header_buf);
+
+    if (p->total_length && p->total_length != total_length) {
+        proxy_send_error(p, 502, "Incorrect Gateway Range");
+        return -1;
+    }
+
+    p->total_length = total_length;
+
+    if (!p->have_bitfield) {
+        uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
+        p->have_bitfield = calloc(1, num_chunks);
+    }
+
+    evhttp_request_set_chunked_cb(req, peer_request_chunked_cb);
     return 0;
 }
 
-void proxy_chunked_cb(evhttp_request *req, void *arg)
+size_t chunk_length(proxy_request *p, size_t chunk_index)
 {
-    proxy_request *p = (proxy_request*)arg;
-    evbuffer *input = req->input_buffer;
-    //debug("p:%p proxy_chunked_cb length:%zu\n", p, evbuffer_get_length(input));
-    evbuffer_ptr ptr;
-    evbuffer_iovec v;
-    evbuffer_ptr_set(input, &ptr, 0, EVBUFFER_PTR_SET);
-    while (evbuffer_peek(input, -1, &ptr, &v, 1) > 0) {
-        crypto_generichash_update(&p->content_state, v.iov_base, v.iov_len);
-        merkle_tree_add_hashed_data(p->m, v.iov_base, v.iov_len);
-        ssize_t w = write(p->cache_file, v.iov_base, v.iov_len);
-        if (w != (ssize_t)v.iov_len) {
-            fprintf(stderr, "p:%p cache write failed %d (%s)\n", p, errno, strerror(errno));
-            proxy_cancel_proxy(p);
-            break;
-        }
-        if (evbuffer_ptr_set(input, &ptr, v.iov_len, EVBUFFER_PTR_ADD) < 0) {
-            break;
-        }
+    if ((chunk_index + 1) * LEAF_CHUNK_SIZE <= p->total_length) {
+        return LEAF_CHUNK_SIZE;
     }
-}
-
-void proxy_error_cb(evhttp_request_error error, void *arg)
-{
-    proxy_request *p = (proxy_request*)arg;
-    debug("p:%p proxy_error_cb %d\n", p, error);
-    if (error != EVREQ_HTTP_REQUEST_CANCEL && peer_is_injector(p->pc->peer)) {
-        injector_reachable = 0;
-    }
-    p->proxy_req = NULL;
-    proxy_request_cleanup(p);
+    return p->total_length % LEAF_CHUNK_SIZE;
 }
 
 char* cache_name_from_uri(const char *uri)
@@ -842,6 +967,7 @@ char* cache_name_from_uri(const char *uri)
         crypto_generichash(uri_hash, sizeof(uri_hash), (uint8_t*)uri, strlen(uri), NULL, 0);
         size_t b64_hash_len;
         char *b64_hash = base64_urlsafe_encode(uri_hash, sizeof(uri_hash), &b64_hash_len);
+        assert(b64_hash_len > name_max);
         encoded_uri[name_max - b64_hash_len - 2] = '.';
         strcpy(&encoded_uri[name_max - b64_hash_len - 1], b64_hash);
         free(b64_hash);
@@ -849,120 +975,227 @@ char* cache_name_from_uri(const char *uri)
     return encoded_uri;
 }
 
-void proxy_request_done_cb(evhttp_request *req, void *arg)
+bool proxy_is_complete(const proxy_request *p)
 {
-    proxy_request *p = (proxy_request*)arg;
-    debug("p:%p proxy_request_done_cb req:%p\n", p, req);
+    if (!p->merkle_tree_finished || !p->have_bitfield) {
+        return false;
+    }
+    uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
+    for (size_t i = 0; i < num_chunks; i++) {
+        if (!p->have_bitfield[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void peer_request_chunked_cb(evhttp_request *req, void *arg)
+{
+    peer_request *r = (peer_request*)arg;
+    proxy_request *p = r->p;
+    evbuffer *input = req->input_buffer;
+    debug("r:%p peer_request_chunked_cb length:%zu\n", r, evbuffer_get_length(input));
+
+    if (!r->chunk_buffer) {
+        r->chunk_buffer = evbuffer_new();
+    }
+
+    for (;;) {
+        size_t this_chunk_len = chunk_length(p, r->chunk_index);
+        debug("chunk_index:%llu this_chunk_len:%zu\n", r->chunk_index, this_chunk_len);
+
+        size_t header_prefix = 0;
+        if (!r->chunk_index) {
+            header_prefix = evbuffer_get_length(p->header_buf);
+        }
+
+        evbuffer_remove_buffer(input, r->chunk_buffer, this_chunk_len - header_prefix - evbuffer_get_length(r->chunk_buffer));
+
+        if (header_prefix + evbuffer_get_length(r->chunk_buffer) < this_chunk_len) {
+            return;
+        }
+
+        crypto_generichash_state content_state;
+        crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
+
+        if (!r->chunk_index) {
+            evbuffer_hash_update(p->header_buf, &content_state);
+        }
+        evbuffer_hash_update(r->chunk_buffer, &content_state);
+
+        uint8_t chunk_hash[crypto_generichash_BYTES];
+        crypto_generichash_final(&content_state, chunk_hash, sizeof(chunk_hash));
+
+        if (!memeq(chunk_hash, p->m->nodes[r->chunk_index].hash, sizeof(chunk_hash))) {
+            fprintf(stderr, "r:%p chunk:%llu hash failed\n", r, r->chunk_index);
+            peer_request_cancel(r);
+            return;
+        }
+        fprintf(stderr, "r:%p chunk:%llu hash success\n", r, r->chunk_index);
+        p->have_bitfield[r->chunk_index] = true;
+
+        peer_verified(p->n, r->pc->peer);
+
+        size_t this_chunk_offset = r->chunk_index * LEAF_CHUNK_SIZE;
+        lseek(p->cache_file, this_chunk_offset, SEEK_SET);
+        if (!evbuffer_write_to_file(r->chunk_buffer, p->cache_file)) {
+            peer_request_cancel(r);
+            return;
+        }
+
+        debug("p->byte_playhead:%llu (r->chunk_index * LEAF_CHUNK_SIZE):%llu\n", p->byte_playhead, r->chunk_index * LEAF_CHUNK_SIZE);
+        if (p->byte_playhead == r->chunk_index * LEAF_CHUNK_SIZE) {
+            if (!p->byte_playhead) {
+                proxy_cancel_direct(p);
+                copy_response_headers(req, p->server_req);
+                evhttp_remove_header(p->server_req->output_headers, "Content-Length");
+                char content_range[1024];
+                snprintf(content_range, sizeof(content_range), "bytes %llu-%llu/%llu",
+                         p->range_start, p->range_end, p->content_length);
+                evhttp_add_header(p->server_req->output_headers, "Content-Range", content_range);
+                p->byte_playhead = evbuffer_get_length(p->header_buf);
+                evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
+            }
+            evhttp_send_reply_chunk(p->server_req, r->chunk_buffer);
+            p->byte_playhead += this_chunk_len - header_prefix;
+        }
+
+        evbuffer_drain(r->chunk_buffer, evbuffer_get_length(r->chunk_buffer));
+
+        debug("(r->chunk_index * LEAF_CHUNK_SIZE)):%llu r->range_end:%llu\n", r->chunk_index * LEAF_CHUNK_SIZE, r->range_end);
+        if (r->chunk_index * LEAF_CHUNK_SIZE <= r->range_end) {
+            r->chunk_index++;
+        }
+
+        size_t c = p->byte_playhead;
+        while (c < p->total_length && p->have_bitfield[c / LEAF_CHUNK_SIZE]) {
+            c++;
+        }
+
+        off_t offset = p->byte_playhead;
+        size_t length = c - offset;
+        if (length) {
+            evbuffer_file_segment *seg = evbuffer_file_segment_new(p->cache_file, offset, length, 0);
+            if (!seg) {
+                fprintf(stderr, "r:%p evbuffer_file_segment_new %d (%s)\n", r, errno, strerror(errno));
+                peer_request_cancel(r);
+                return;
+            }
+            evbuffer *buf = evbuffer_new();
+            if (!evbuffer_add_file_segment(buf, seg, 0, length)) {
+                evbuffer_file_segment_free(seg);
+            }
+            evhttp_send_reply_chunk(p->server_req, buf);
+            evbuffer_free(buf);
+            p->byte_playhead += length;
+        }
+
+        debug("p->byte_playhead:%llu p->total_length:%llu\n", p->byte_playhead, p->total_length);
+        if (p->byte_playhead == p->total_length) {
+            if (p->server_req->evcon) {
+                evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+            }
+            evhttp_send_reply_end(p->server_req);
+            p->server_req = NULL;
+
+            //join_url_swarm(p->n, uri);
+            evhttp_uri *evuri = evhttp_uri_parse_with_flags(req->uri, EVHTTP_URI_NONCONFORMANT);
+            const char *host = evhttp_uri_get_host(evuri);
+            if (host) {
+                join_url_swarm(p->n, host);
+            }
+            evhttp_uri_free(evuri);
+
+            // only cache if have_bitfield is all 1's. otherwise we need to track partials (or hashcehck on upload, which prevents sendfile)
+            assert(p->merkle_tree_finished);
+            assert(p->have_bitfield);
+            if (proxy_is_complete(p)) {
+                char headers_name[PATH_MAX];
+                snprintf(headers_name, sizeof(headers_name), "%s.headers", p->cache_name);
+                evkeyvalq *headers = req->input_headers;
+                int code = req->response_code;
+                const char *code_line = req->response_code_line;
+                if (!req->chunk_cb) {
+                    assert(req->response_code == 304);
+                    code = 200;
+                    code_line = "OK";
+                    const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
+                    overwrite_kv_header(&p->direct_headers, "X-MSign", msign);
+                    headers = &p->direct_headers;
+                }
+                int headers_file = creat(headers_name, 0600);
+                if (!write_header_to_file(headers_file, code, code_line, headers)) {
+                    unlink(headers_name);
+                }
+                fsync(headers_file);
+                close(headers_file);
+
+                const char *uri = evhttp_request_get_uri(req);
+                char *encoded_uri = cache_name_from_uri(uri);
+                char cache_path[PATH_MAX];
+                char cache_headers_path[PATH_MAX];
+                snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, encoded_uri);
+                snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
+                free(encoded_uri);
+                debug("p:%p (%.2fms) store cache:%s headers:%s\n", p, pdelta(p), cache_path, cache_headers_path);
+
+                fsync(p->cache_file);
+                rename(p->cache_name, cache_path);
+                rename(headers_name, cache_headers_path);
+            }
+
+            if (r->chunk_index * LEAF_CHUNK_SIZE > r->range_end) {
+                // this request is done, and we can let the connection complete naturally
+                return;
+            }
+            proxy_cancel_peer_requests(p);
+            return;
+        }
+    }
+}
+
+void peer_request_error_cb(evhttp_request_error error, void *arg)
+{
+    peer_request *r = (peer_request*)arg;
+    debug("r:%p peer_request_error_cb %d\n", r, error);
+    r->req = NULL;
+    if (error == EVREQ_HTTP_REQUEST_CANCEL) {
+        return;
+    }
+    if (peer_is_injector(r->pc->peer)) {
+        injector_reachable = 0;
+    }
+    peer_request_cleanup(r);
+}
+
+void peer_request_done_cb(evhttp_request *req, void *arg)
+{
+    peer_request *r = (peer_request*)arg;
+    debug("r:%p peer_request_done_cb req:%p\n", r, req);
     if (!req) {
         return;
     }
+    proxy_request *p = r->p;
     if (!req->response_code) {
         debug("p:%p (%.2fms) no response code!\n", p, pdelta(p));
-        p->proxy_req = NULL;
-        proxy_request_cleanup(p);
+        r->req = NULL;
+        peer_request_cleanup(r);
         return;
     }
 
-    // XXX: remove after no X-Sign clients exist
-    const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
-
-    const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
-    if (!sign && !msign) {
-        fprintf(stderr, "no signature!\n");
-        debug("p:%p (%.2fms) no signature\n", p, pdelta(p));
-        proxy_send_error(p, 502, "Missing Gateway Signature");
-        p->proxy_req = NULL;
-        proxy_request_cleanup(p);
-        return;
-    }
-    if (req->chunk_cb) {
-        crypto_generichash_final(&p->content_state, p->content_hash, sizeof(p->content_hash));
-        merkle_tree_get_root(p->m, p->root_hash);
-        p->merkle_tree_finished = true;
+    // if there is not content there weren't any chunks. manually trigger the chunk_cb
+    if (!p->content_length) {
+        peer_request_chunked_cb(req, r);
     }
 
-    debug("p:%p (%.2fms) verifying sig for %s %s %s\n", p, pdelta(p), evhttp_request_get_uri(req), sign, msign);
-    if ((msign && !verify_signature(p->root_hash, msign)) ||
-        (sign && !verify_signature(p->content_hash, sign))) {
-            printf("%d\n", __LINE__);
-        fprintf(stderr, "signature failed!\n");
-        p->pc->peer->last_verified = 0;
-        proxy_send_error(p, 502, "Bad Gateway Signature");
-        p->proxy_req = NULL;
-        proxy_request_cleanup(p);
-        return;
+    peer_reuse(p->n, r->pc);
+    r->pc = NULL;
+    r->req = NULL;
+    if (proxy_is_complete(r->p)) {
+        proxy_cancel_peer_requests(p);
+    } else {
+        peer_request_cleanup(r);
     }
-    fprintf(stderr, "p:%p (%.2fms) signature good!\n", p, pdelta(p));
-
-    p->pc->peer->last_verified = time(NULL);
-    save_peers(p->n);
-    if (peer_is_injector(p->pc->peer)) {
-        injector_reachable = time(NULL);
-        update_injector_proxy_swarm(p->n);
-    }
-
-    char headers_name[PATH_MAX];
-    snprintf(headers_name, sizeof(headers_name), "%s.headers", p->cache_name);
-    evkeyvalq *headers = req->input_headers;
-    int code = req->response_code;
-    const char *code_line = req->response_code_line;
-    if (!req->chunk_cb) {
-        assert(req->response_code == 304);
-        code = 200;
-        code_line = "OK";
-        overwrite_kv_header(&p->direct_headers, "X-Sign", sign);
-        overwrite_kv_header(&p->direct_headers, "X-MSign", msign);
-        headers = &p->direct_headers;
-    }
-    int headers_file = creat(headers_name, 0600);
-    if (!write_header_to_file(headers_file, code, code_line, headers)) {
-        unlink(headers_name);
-    }
-    fsync(headers_file);
-    close(headers_file);
-
-    const char *uri = evhttp_request_get_uri(req);
-    char *encoded_uri = cache_name_from_uri(uri);
-    char cache_path[PATH_MAX];
-    char cache_headers_path[PATH_MAX];
-    snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, encoded_uri);
-    snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
-    free(encoded_uri);
-    debug("p:%p (%.2fms) store cache:%s headers:%s\n", p, pdelta(p), cache_path, cache_headers_path);
-
-    fsync(p->cache_file);
-    rename(p->cache_name, cache_path);
-    rename(headers_name, cache_headers_path);
-
-    if (p->server_req) {
-        off_t length = lseek(p->cache_file, 0, SEEK_END);
-        evbuffer *content = evbuffer_new();
-        evbuffer_add_file(content, p->cache_file, 0, length);
-        p->cache_file = -1;
-        debug("p:%p (%.2fms) server_request_done_cb %d %s length:%u\n", p, pdelta(p),
-            req->response_code, req->response_code_line, (uint32_t)length);
-        proxy_cancel_direct(p);
-        copy_response_headers(req, p->server_req);
-        if (p->server_req->evcon) {
-            evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
-        }
-        evhttp_send_reply(p->server_req, req->response_code, req->response_code_line, content);
-        p->server_req = NULL;
-        evbuffer_free(content);
-    }
-
-    //join_url_swarm(p->n, uri);
-    evhttp_uri *evuri = evhttp_uri_parse_with_flags(req->uri, EVHTTP_URI_NONCONFORMANT);
-    const char *host = evhttp_uri_get_host(evuri);
-    if (host) {
-        join_url_swarm(p->n, host);
-    }
-    evhttp_uri_free(evuri);
-
-    peer_reuse(p->n, p->pc);
-    p->pc = NULL;
-    p->proxy_req = NULL;
-    proxy_request_cleanup(p);
 }
 
 void direct_submit_request(proxy_request *p)
@@ -1013,36 +1246,65 @@ void append_via(evhttp_request *from, evhttp_request *to)
     overwrite_header(to, "Via", viab);
 }
 
-void proxy_make_request(proxy_request *p)
+peer_request* proxy_make_request(proxy_request *p)
 {
-    assert(!p->proxy_req);
-    p->proxy_req = evhttp_request_new(proxy_request_done_cb, p);
-    const char *request_header_whitelist[] = {"Referer", "Host", "Via"};
-    for (uint i = 0; i < lenof(request_header_whitelist); i++) {
-        copy_header(p->server_req, p->proxy_req, request_header_whitelist[i]);
+    peer_request *r = NULL;
+
+    uint64_t range_start = p->range_start;
+    for (size_t i = 0; i < lenof(p->requests); i++) {
+        if (!p->requests[i].req) {
+            if (!r) {
+                r = &p->requests[i];
+            }
+        } else if (p->content_length) {
+            range_start = MAX(range_start, (p->range_end - p->requests[i].range_start) / 2);
+        }
     }
-    overwrite_header(p->proxy_req, "TE", "trailers");
+    if (!r) {
+        return NULL;
+    }
+    r->p = p;
+    r->req = evhttp_request_new(peer_request_done_cb, r);
+    const char *request_header_whitelist[] = {"Referer", "Host", "Via", "Range"};
+    for (uint i = 0; i < lenof(request_header_whitelist); i++) {
+        copy_header(p->server_req, r->req, request_header_whitelist[i]);
+    }
 
-    append_via(p->server_req, p->proxy_req);
+    append_via(p->server_req, r->req);
 
-    // TODO: range requests / partial content handling
-    evhttp_remove_header(p->proxy_req->output_headers, "Range");
-    evhttp_remove_header(p->proxy_req->output_headers, "If-Range");
+    evkeyval *header;
+    TAILQ_FOREACH(header, &p->output_headers, next) {
+        evhttp_add_header(r->req->output_headers, header->key, header->value);
+    }
 
-    evhttp_request_set_header_cb(p->proxy_req, proxy_header_cb);
-    evhttp_request_set_error_cb(p->proxy_req, proxy_error_cb);
+    char range[1024];
+    snprintf(range, sizeof(range), "bytes=%llu-", range_start);
+    evhttp_add_header(r->req->output_headers, "Range", range);
+    debug("%s: %s\n", "Range", range);
+    // XXX: TODO: if we have a complete merkle tree already, add If-Match so we get "416 Range Not Satisfiable" if the other peer has a different copy.
+
+    if (!p->merkle_tree_finished) {
+        // TODO: kick off a separate HEAD request for hashes which blocks until hashes are available.
+        // then we can use them immediately, before the download is finished.
+        evhttp_add_header(r->req->output_headers, "X-HashRequest", "1");
+    }
+
+    evhttp_request_set_header_cb(r->req, peer_request_header_cb);
+    evhttp_request_set_error_cb(r->req, peer_request_error_cb);
 
     // a hack to keep the request method/url, even if the server_req dies
-    p->proxy_req->type = p->server_req->type;
-    p->proxy_req->uri = strdup(evhttp_request_get_uri(p->server_req));
+    r->req->type = p->server_req->type;
+    r->req->uri = strdup(evhttp_request_get_uri(p->server_req));
+
+    return r;
 }
 
-void proxy_submit_request_on_con(proxy_request *p, evhttp_connection *evcon)
+void peer_submit_request_on_con(peer_request *r, evhttp_connection *evcon)
 {
-    char *uri = p->proxy_req->uri;
-    p->proxy_req->uri = NULL;
-    debug("p:%p con:%p proxy request submitted: %s\n", p, evcon, evhttp_request_get_uri(p->proxy_req));
-    evhttp_make_request(evcon, p->proxy_req, p->proxy_req->type, uri);
+    char *uri = r->req->uri;
+    r->req->uri = NULL;
+    debug("r:%p con:%p proxy request submitted: %s\n", r, evcon, evhttp_request_get_uri(r->req));
+    evhttp_make_request(evcon, r->req, r->req->type, uri);
     free(uri);
 }
 
@@ -1064,8 +1326,8 @@ peer* select_peer(peer_array *pa)
         c.salt = random() & 0xFF;
         c.peer = p;
         address *a = &p->addr;
-        sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
         /*
+        sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
         debug("peer %s failed:%d verified_ago:%d last_connect:%d never_connected:%d salt:%d p:%p\n",
             peer_addr_str(p),
             c.failed, c.time_since_verified, c.last_connect_attempt, c.never_connected, c.salt, c.peer);
@@ -1087,7 +1349,7 @@ peer_connection* start_peer_connection(network *n, peer_array *peers)
     return evhttp_utp_connect(n, p);
 }
 
-void queue_request(network *n, pending_request *r, peer_connected on_connect)
+void queue_request(network *n, pending_request *r, const char *via, peer_connected on_connect)
 {
     debug("%s r:%p pending:%zu first:%p\n", __func__, r, pending_requests_len, TAILQ_FIRST(&pending_requests));
     bool any_connected = false;
@@ -1112,13 +1374,17 @@ void queue_request(network *n, pending_request *r, peer_connected on_connect)
 
     for (uint i = 0; i < lenof(peer_connections); i++) {
         peer_connection *pc = peer_connections[i];
-        if (pc && pc->evcon) {
+        if (pc && pc->evcon && !via_contains(via, pc->peer->via)) {
             peer_connections[i] = NULL;
-            debug("using pc:%p evcon:%p for request:%p\n", pc, pc->evcon, r);
+            debug("using pc:%p evcon:%p via:%c (%s) for request:%p\n", pc, pc->evcon, pc->peer->via, via, r);
             on_connect(pc);
             return;
         }
     }
+
+    // XXX: TODO: if none of the peer_connections were applicable (due to via loops), disconnect some
+
+    r->via = via?strdup(via):NULL;
     assert(!r->on_connect);
     r->on_connect = Block_copy(on_connect);
     TAILQ_INSERT_TAIL(&pending_requests, r, next);
@@ -1148,18 +1414,6 @@ void connect_more_injectors(network *n, bool injector_preference)
 
 void proxy_submit_request(proxy_request *p)
 {
-    if (!p->proxy_req) {
-        proxy_make_request(p);
-    }
-
-    network *n = p->n;
-
-    if (!p->merkle_tree_finished) {
-        // TODO: kick off a separate request for hashes which blocks until hashes are available.
-        // then we can use them immediately, before the download is finished.
-        evhttp_add_header(p->proxy_req->output_headers, "X-HashRequest", "1");
-    }
-
     /*
     if (!dht_num_searches()) {
         fetch_url_swarm(p->n, evhttp_request_get_uri(p->server_req));
@@ -1172,9 +1426,17 @@ void proxy_submit_request(proxy_request *p)
         fetch_url_swarm(p->n, host);
     }
 
-    queue_request(p->n, &p->r, ^(peer_connection *pc) {
-        p->pc = pc;
-        proxy_submit_request_on_con(p, p->pc->evcon);
+    // TODO: kick off a separate HEAD request for hashes which blocks until hashes are available.
+    // then we can use them immediately, before the download is finished.
+    peer_request *r = proxy_make_request(p);
+    if (!r) {
+        return;
+    }
+
+    const char *via = evhttp_find_header(p->server_req->input_headers, "Via");
+    queue_request(p->n, &r->r, via, ^(peer_connection *pc) {
+        r->pc = pc;
+        peer_submit_request_on_con(r, r->pc->evcon);
     });
 }
 
@@ -1186,18 +1448,33 @@ void server_evcon_close_cb(evhttp_connection *evcon, void *ctx)
     p->server_req = NULL;
     p->dont_free = true;
     proxy_cancel_direct(p);
-    proxy_cancel_proxy(p);
+    proxy_cancel_peer_requests(p);
     p->dont_free = false;
     proxy_request_cleanup(p);
 }
 
 void submit_request(network *n, evhttp_request *server_req)
 {
+    uint64_t range_start = 0;
+    uint64_t range_end = 0;
+    const char *range = evhttp_find_header(server_req->input_headers, "Range");
+    if (range) {
+        sscanf(range, "bytes=%llu-%llu", &range_start, &range_end);
+        if (range_start > range_end) {
+            char content_range[1024];
+            evhttp_send_error(server_req, 416, "Range Not Satisfiable");
+            return;
+        }
+    }
+
     proxy_request *p = alloc(proxy_request);
     p->n = n;
     p->start_time = us_clock();
     TAILQ_INIT(&p->direct_headers);
+    TAILQ_INIT(&p->output_headers);
     p->cache_file = -1;
+    p->range_start = range_start;
+    p->range_end = range_end;
     p->server_req = server_req;
     p->m = alloc(merkle_tree);
     evhttp_connection_set_closecb(p->server_req->evcon, server_evcon_close_cb, p);
@@ -1209,7 +1486,6 @@ void submit_request(network *n, evhttp_request *server_req)
     sockaddr_storage ss;
     socklen_t len = sizeof(ss);
     getpeername(fd, (sockaddr *)&ss, &len);
-    // TODO: we could request directly if we then fetched the signature
     if (!NO_DIRECT && addr_is_localhost((sockaddr *)&ss, len)) {
         direct_submit_request(p);
     }
@@ -1255,21 +1531,11 @@ void trace_request_done_cb(evhttp_request *req, void *arg)
     }
     evbuffer *input = req->input_buffer;
     if (req->response_code != 0) {
-        const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
         const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
-        if (!sign && !msign) {
+        if (!msign) {
             fprintf(stderr, "no signature on TRACE!\n");
         } else {
-
             const unsigned char *body = evbuffer_pullup(input, evbuffer_get_length(input));
-
-            // XXX: remove after no X-Sign clients exist
-            crypto_generichash_state content_state;
-            crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
-            hash_headers(req->input_headers, &content_state);
-            crypto_generichash_update(&content_state, body, evbuffer_get_length(input));
-            uint8_t content_hash[crypto_generichash_BYTES];
-            crypto_generichash_final(&content_state, content_hash, sizeof(content_hash));
 
             merkle_tree *m = alloc(merkle_tree);
             merkle_tree_hash_request(m, req, req->input_headers);
@@ -1278,17 +1544,11 @@ void trace_request_done_cb(evhttp_request *req, void *arg)
             merkle_tree_get_root(m, root_hash);
             merkle_tree_free(m);
 
-            debug("verifying sig for TRACE %s %s %s\n", evhttp_request_get_uri(req), sign, msign);
-            if ((msign && verify_signature(root_hash, msign)) ||
-                (sign && verify_signature(content_hash, sign))) {
+            debug("verifying sig for TRACE %s %s\n", evhttp_request_get_uri(req), msign);
+            if (verify_signature(root_hash, msign)) {
                 debug("signature good! %s\n", peer_addr_str(t->pc->peer));
                 t->pc->peer->last_connect = time(NULL);
-                t->pc->peer->last_verified = time(NULL);
-                save_peers(t->n);
-                if (peer_is_injector(t->pc->peer)) {
-                    injector_reachable = time(NULL);
-                    update_injector_proxy_swarm(t->n);
-                }
+                peer_verified(t->n, t->pc->peer);
                 peer_reuse(t->n, t->pc);
                 t->pc = NULL;
             } else {
@@ -1353,7 +1613,7 @@ void submit_trace_request(network *n)
     trace_request *t = alloc(trace_request);
     t->n = n;
     connect_more_injectors(n, true);
-    queue_request(n, &t->r, ^(peer_connection *pc) {
+    queue_request(n, &t->r, NULL, ^(peer_connection *pc) {
         t->pc = pc;
         trace_submit_request_on_con(t, t->pc->evcon);
     });
@@ -1533,17 +1793,9 @@ int connect_header_cb(evhttp_request *req, void *arg)
     if (req->response_code != 200) {
         debug("%s req->response_code:%d\n", __func__, req->response_code);
 
-        const char *sign = evhttp_find_header(req->input_headers, "X-Sign");
         const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
-        if (sign || msign) {
-            debug("c:%p verifying sig for %s %s %s\n", c, evhttp_request_get_uri(req), sign, msign);
-
-            // XXX: remove after no X-Sign clients exist
-            crypto_generichash_state content_state;
-            crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
-            hash_request(req, req->input_headers, &content_state);
-            uint8_t content_hash[crypto_generichash_BYTES];
-            crypto_generichash_final(&content_state, content_hash, sizeof(content_hash));
+        if (msign) {
+            debug("c:%p verifying sig for %s %s %s\n", c, evhttp_request_get_uri(req), msign);
 
             merkle_tree *m = alloc(merkle_tree);
             merkle_tree_hash_request(m, req, req->input_headers);
@@ -1551,16 +1803,10 @@ int connect_header_cb(evhttp_request *req, void *arg)
             merkle_tree_get_root(m, root_hash);
             merkle_tree_free(m);
 
-            if ((msign && verify_signature(root_hash, msign)) ||
-                (sign && verify_signature(content_hash, sign)) ) {
+            if (verify_signature(root_hash, msign)) {
                 debug("c:%p signature good!\n", c);
 
-                c->pc->peer->last_verified = time(NULL);
-                save_peers(c->n);
-                if (peer_is_injector(c->pc->peer)) {
-                    injector_reachable = time(NULL);
-                    update_injector_proxy_swarm(c->n);
-                }
+                peer_verified(c->n, c->pc->peer);
 
                 c->proxy_req = NULL;
 
@@ -1568,7 +1814,6 @@ int connect_header_cb(evhttp_request *req, void *arg)
                     if (connect_exhausted(c)) {
                         if (!evcon_is_local_browser(c->server_req->evcon)) {
                             copy_header(req, c->server_req, "Content-Location");
-                            copy_header(req, c->server_req, "X-Sign");
                             copy_header(req, c->server_req, "X-MSign");
                         }
                         evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
@@ -1681,7 +1926,8 @@ void connect_peer(connect_req *c, bool injector_preference)
     assert(!c->pc);
     assert(!c->r.on_connect);
     assert(!c->proxy_req);
-    queue_request(c->n, &c->r, ^(peer_connection *pc) {
+    const char *via = evhttp_find_header(c->server_req->input_headers, "Via");
+    queue_request(c->n, &c->r, via, ^(peer_connection *pc) {
         debug("c:%p %s on_connect\n", c, __func__);
         assert(!c->pc);
         assert(!c->r.on_connect);
@@ -1759,10 +2005,24 @@ void http_request_cb(evhttp_request *req, void *arg)
 
     connect_more_injectors(n, false);
 
+    address a = {.ip = inet_addr(e_host), .port = htons(e_port)};
+    peer *peer = get_peer(all_peers, &a);
+
     const char *via = evhttp_find_header(req->input_headers, "Via");
-    if (via && strstr(via, via_tag)) {
-        evhttp_send_error(req, 508, "Via Loop");
-        return;
+    if (via) {
+        if (peer) {
+            char *p = strrchr(via, '.');
+            if (p > via && streq(p, ".newnode")) {
+                p--;
+                peer->via = *p;
+            }
+        }
+        if (strstr(via, via_tag)) {
+            debug("Via Loop: %s (contains %s)\n", via, via_tag);
+            // XXX: block that peer temporarily?
+            evhttp_send_error(req, 508, "Via Loop");
+            return;
+        }
     }
 
     if (req->type == EVHTTP_REQ_CONNECT) {
@@ -1780,8 +2040,6 @@ void http_request_cb(evhttp_request *req, void *arg)
         evhttp_send_error(req, 501, "Not Implemented");
         return;
     }
-
-    scheme = evhttp_uri_get_scheme(req->uri_elems);
 
     char *encoded_uri = cache_name_from_uri(evhttp_request_get_uri(req));
     char cache_path[PATH_MAX];
@@ -1802,18 +2060,37 @@ void http_request_cb(evhttp_request *req, void *arg)
         copy_response_headers(temp, req);
         evbuffer_free(header_buf);
 
-        evbuffer *content = NULL;
         length = lseek(cache_file, 0, SEEK_END);
+
+        uint64_t range_start = 0;
+        uint64_t range_end = length - 1;
+        const char *range = evhttp_find_header(req->input_headers, "Range");
+        if (range) {
+            sscanf(range, "bytes=%llu-%llu", &range_start, &range_end);
+            if (range_start > range_end || (off_t)range_end >= length) {
+                char content_range[1024];
+                snprintf(content_range, sizeof(content_range), "bytes */%lld", length);
+                evhttp_add_header(req->output_headers, "Content-Range", content_range);
+                evhttp_send_error(req, 416, "Range Not Satisfiable");
+                evhttp_request_free(temp);
+                close(cache_file);
+                close(headers_file);
+                return;
+            }
+
+            char content_range[1024];
+            snprintf(content_range, sizeof(content_range), "bytes %llu-%llu/%llu",
+                range_start, range_end, (range_end - range_start) + 1);
+            evhttp_add_header(req->output_headers, "Content-Range", content_range);
+        }
 
         const char *ifnonematch = evhttp_find_header(req->input_headers, "If-None-Match");
         if (ifnonematch) {
-            const char *sign = evhttp_find_header(temp->output_headers, "X-Sign");
             const char *msign = evhttp_find_header(temp->output_headers, "X-MSign");
             size_t out_len = 0;
             uint8_t *content_hash = base64_decode(ifnonematch, strlen(ifnonematch), &out_len);
             if (out_len == crypto_generichash_BYTES &&
-                ((msign && verify_signature(content_hash, sign)) ||
-                 (sign && verify_signature(content_hash, sign)))) {
+                verify_signature(content_hash, msign)) {
                 temp->response_code = 304;
                 free(temp->response_code_line);
                 temp->response_code_line = strdup("Not Modified");
@@ -1823,11 +2100,13 @@ void http_request_cb(evhttp_request *req, void *arg)
             free(content_hash);
         }
 
+        evbuffer *content = NULL;
         if (cache_file != -1) {
             content = evbuffer_new();
-            evbuffer_add_file(content, cache_file, 0, length);
+            evbuffer_add_file(content, cache_file, range_start, (range_end - range_start) + 1);
         }
-        debug("responding with %d %s length:%u\n", temp->response_code, temp->response_code_line, (uint32_t)length);
+        debug("responding with %d %s start:%zu end:%llu length:%llu\n", temp->response_code, temp->response_code_line,
+            range_start, range_end, (range_end - range_start) + 1);
         evhttp_send_reply(req, temp->response_code, temp->response_code_line, content);
         evhttp_request_free(temp);
         if (content) {
@@ -2130,7 +2409,7 @@ network* client_init(port_t port)
     evhttp_bind_socket_with_handle(n->http, "127.0.0.1", port);
 
     sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = inet_addr("127.0.0.1"), .sin_port = htons(port + 1)};
-    evconnlistener *l = evconnlistener_new_bind(n->evbase, socks_accept_cb, n,
+    evconnlistener_new_bind(n->evbase, socks_accept_cb, n,
         LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_CLOSE_ON_FREE, 128,
         (sockaddr *)&sin, sizeof(sin));
 
