@@ -21,22 +21,19 @@ rx,tx
 5 A->B: ENCRYPT2(Payload Stream)
 */
 
-#define xtkn(x, y) x ## y
-#define tkn(x, y) xtkn(x, y)
-#define COMPILER_ASSERT(X) struct tkn(__d_, __LINE__) { char b[sizeof(char[(X) ? 1 : -1])]; }
 
 #define crypto_stream_chacha20_BLOCK_LENGTH 64
 
 #define INTRO_BYTES (crypto_kx_PUBLICKEYBYTES + crypto_stream_chacha20_NONCEBYTES)
-COMPILER_ASSERT(crypto_stream_chacha20_KEYBYTES <= crypto_kx_SESSIONKEYBYTES);
+static_assert(crypto_stream_chacha20_KEYBYTES <= crypto_kx_SESSIONKEYBYTES, "chacha20 is used as session key");
 
 #define PAD_MAX 256
 #define INTRO_PAD_MAX ((96 + PAD_MAX) - INTRO_BYTES)
 
-// 2*sizeof(sha1)
+// 2*sizeof(blake2b)
 #define SYNC_HASH_LEN 40
-COMPILER_ASSERT(SYNC_HASH_LEN >= crypto_generichash_blake2b_BYTES_MIN);
-COMPILER_ASSERT(SYNC_HASH_LEN <= crypto_generichash_blake2b_BYTES_MAX);
+static_assert(SYNC_HASH_LEN >= crypto_generichash_blake2b_BYTES_MIN, "sync hash must fit in blake2b size");
+static_assert(SYNC_HASH_LEN <= crypto_generichash_blake2b_BYTES_MAX, "sync hash must fit in blake2b size");
 
 typedef struct {
     uint64_t vc;
