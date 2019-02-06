@@ -1,0 +1,44 @@
+
+We want people who will succeed at this project and stay as part of our development community after the GSoS — the people who are both motivated and capable.	
+
+You’ll prove your ability by doing the work.  The more work you put into an application, the better your chances of success. Be prepared to spend from two days up to a week on your application.  Show your prior code. Study the literature. Read the code https://github.com/clostra/newnode . Prepare a plan. Ask us questions: Stanislav Shalunov shalunov@shlang.com, Greg Hazel ghazel@gmail.com, ask for invite to Slack.  Write code. Can you write a prototype that implements some part of the functionality we are asking for? If not, you probably won't be able to do the project. If you can, and do so, you stand out from the crowd immediately. If you can, and don't, you've just harmed your chances.  Present a detailed plan with a good schedule.
+
+Having performed similar work in the past is a good predictor of your ability to perform such work in the future. Even better is work on the suggested project: if you can show that you're already doing the work that needs to be done, and you have done it successfully, you may already have convinced us you can do it. 
+
+DHT attack filtering
+  Description: Distributed Hash Tables face threats from various attack types, such as Sybil, Eclipse, Routing and Storage, and more. Ways to combat these attacks is an area of active research and development in the field. We will investigate and implement some methods for detecting these attacks and shutting them down.
+  Skills: C, hashing, knowledge of tokens and two-factor authentication, principles of least privilege, etc.
+  Difficulty:  Medium
+  Mentor: Greg Hazel,Stanislav Shalunov
+
+Peer selection
+  Description: Given a vast network of nodes, there are a variety of ways to select peers to keep in the routing table, as well as a large number of routes to evaluate and update. Methods employed must optimize proximity of neighbor nodes, and resilience to network failure.
+  Skills: C, P2P networking, proximity optimization, network resilience
+  Difficulty: Medium
+  Mentor:: Greg Hazel,Stanislav Shalunov
+
+Simultaneous request creation
+  Description: Nodes receive requests for large files, and can request parts of those files from multiple peers. Deciding when to split up the request, the number of parts, and number of redundant requests will help optimize delivery.
+  Skills: C, P2P/D2D networking, mesh networking, CDNs, caching Web proxies, request redirectors
+  Difficulty: Medium to hard
+  Mentor:: Greg Hazel,Stanislav Shalunov
+
+Predictive caching
+  Description: Prefetching routes and node neighbors are a powerful tool for increasing performance. Various techniques will be explored and implemented to warm up caches in advance of user need.
+  Skills: C, prefetching in a mesh network, far- and near-side throttling, stream prefetchers, global history buffers, indirect prefetching 
+  Difficulty: Medium to hard
+  Mentor:: Greg Hazel,Stanislav Shalunov
+
+WebRTC for transports.
+  Description: Using transport protocol encryption identical to BitTorrent is one way to appear as a needle in a haystack. Another way is to use WebRTC as a transport, to fit into a different haystack.
+  Skills: C, JavaScript, TP encryption, WebRTC
+  Difficulty: Medium
+  Mentor:: Greg Hazel,Stanislav Shalunov
+
+Making NewNode able to use any pluggable transport
+  Description: Pluggable transports are a generic mechanism that transform network traffic using sub-processes. Here we will develop the API to support various open source PTs. 
+  Skills: C, Pluggable Transports, PT APIs
+  Difficulty: Medium
+  Mentor: Greg Hazel,Stanislav Shalunov
+
+
