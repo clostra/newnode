@@ -821,6 +821,13 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
         return -1;
     }
 
+    const char *content_location = evhttp_find_header(req->input_headers, "Content-Location");
+    if (!streq(content_location, evhttp_request_get_uri(p->server_req))) {
+        debug("p:%p (%.2fms) Content-Location mismatch: [%s] != [%s]\n", content_location, evhttp_request_get_uri(p->server_req));
+        proxy_send_error(p, 502, "Content-Location mismatch");
+        return -1;
+    }
+
     // not the first moment of connection, but does indicate protocol support
     r->pc->peer->last_connect = time(NULL);
 
