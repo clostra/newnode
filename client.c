@@ -2377,7 +2377,7 @@ void socks_accept_cb(evconnlistener *listener, evutil_socket_t nfd, sockaddr *pe
     bufferevent_enable(bev, EV_READ|EV_WRITE);
 }
 
-network* client_init(port_t port)
+network* client_init(port_t *http_port, port_t *socks_port)
 {
     //o_debug = 1;
 
@@ -2411,14 +2411,35 @@ network* client_init(port_t port)
 
     evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_HEAD | EVHTTP_REQ_CONNECT | EVHTTP_REQ_TRACE);
     evhttp_set_gencb(n->http, http_request_cb, n);
-    evhttp_bind_socket_with_handle(n->http, "127.0.0.1", port);
+    evhttp_bound_socket *bound = evhttp_bind_socket_with_handle(n->http, "127.0.0.1", *http_port);
+    if (!bound) {
+        fprintf(stderr, "could not bind http port %d\n", *http_port);
+        *http_port = 0;
+        *socks_port = 0;
+        return NULL;
+    }
+    evutil_socket_t fd = evhttp_bound_socket_get_fd(bound);
+    sslen = sizeof(ss);
+    getsockname(fd, (sockaddr *)&ss, &sslen);
+    *http_port = sockaddr_get_port((sockaddr *)&ss);
 
-    sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = inet_addr("127.0.0.1"), .sin_port = htons(port + 1)};
-    evconnlistener_new_bind(n->evbase, socks_accept_cb, n,
+    sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = inet_addr("127.0.0.1"), .sin_port = htons(*socks_port)};
+    evconnlistener *listener = evconnlistener_new_bind(n->evbase, socks_accept_cb, n,
         LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_CLOSE_ON_FREE, 128,
         (sockaddr *)&sin, sizeof(sin));
+    if (!listener) {
+        fprintf(stderr, "could not bind socks port %d\n", *socks_port);
+        evhttp_del_accept_socket(n->http, bound);
+        *http_port = 0;
+        *socks_port = 0;
+        return NULL;
+    }
+    fd = evconnlistener_get_fd(listener);
+    sslen = sizeof(ss);
+    getsockname(fd, (sockaddr *)&ss, &sslen);
+    *socks_port = sockaddr_get_port((sockaddr *)&ss);
 
-    printf("listening on TCP:%s:%d,%d\n", "127.0.0.1", port, port+1);
+    printf("listening on TCP:%s:%d,%d\n", "127.0.0.1", *http_port, *socks_port);
 
     load_peers(n);
 
@@ -2444,19 +2465,19 @@ void* client_thread(void *userdata)
     return NULL;
 }
 
-void client_thread_start(port_t port)
+void client_thread_start(port_t *http_port, port_t *socks_port)
 {
-    network *n = client_init(port);
+    network *n = client_init(http_port, socks_port);
     pthread_t t;
     pthread_create(&t, NULL, client_thread, n);
 }
 
-void newnode_init()
+void newnode_init(port_t *http_port, port_t *socks_port)
 {
     static bool started = false;
     if (started) {
         return;
     }
     started = true;
-    client_thread_start(8006);
+    client_thread_start(http_port, socks_port);
 }

@@ -5,6 +5,9 @@
 #include "NewNode-iOS.h"
 #import <BugsnagStatic/Bugsnag.h>
 
+uint16_t http_port;
+uint16_t socks_port;
+
 @implementation NewNode
 
 + (void)initialize
@@ -19,18 +22,24 @@
     config.session = [NSURLSession sessionWithConfiguration:urlConfig];
     */
     [Bugsnag startBugsnagWithConfiguration:config];
-    newnode_init();
+    newnode_init(&http_port, &socks_port);
 }
 
 + (NSDictionary*)connectionProxyDictionary
 {
+    if (!http_port || !socks_port) {
+        return @{};
+    }
     return @{
         @"HTTPEnable": @1,
         @"HTTPProxy": @"127.0.0.1",
-        @"HTTPPort": @8006,
+        @"HTTPPort": @(http_port),
         @"HTTPSEnable": @1,
         @"HTTPSProxy": @"127.0.0.1",
-        @"HTTPSPort": @8006
+        @"HTTPSPort": @(http_port),
+        @"SOCKSEnable": @1,
+        @"SOCKSProxy": @"127.0.0.1",
+        @"SOCKSPort": @(socks_port)
     };
 }
 

@@ -4,7 +4,7 @@
 #include "log.h"
 
 
-network* client_init(port_t port);
+network* client_init(port_t *http_port, port_t *socks_port);
 int client_run(network *n);
 
 int main(int argc, char *argv[])
@@ -28,6 +28,11 @@ int main(int argc, char *argv[])
         }
     }
 
-    network *n = client_init(atoi(port_s));
+    port_t http_port = atoi(port_s);
+    port_t socks_port = http_port + 1;
+    network *n = client_init(&http_port, &socks_port);
+    if (!n) {
+        return 1;
+    }
     return client_run(n);
 }
