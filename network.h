@@ -33,6 +33,7 @@ typedef struct event_base event_base;
 typedef struct evdns_base evdns_base;
 typedef struct event event;
 typedef struct evhttp evhttp;
+typedef struct evhttp_bound_socket evhttp_bound_socket;
 typedef struct evbuffer evbuffer;
 typedef struct evbuffer_ptr evbuffer_ptr;
 typedef struct evbuffer_iovec evbuffer_iovec;
