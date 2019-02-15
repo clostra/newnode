@@ -16,7 +16,7 @@ function build_android {
     cd Libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
-        ./configure --disable-shared --disable-openssl $LIBEVENT_CONFIG --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
+        ./configure --disable-shared --disable-openssl --with-pic $LIBEVENT_CONFIG --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
         make clean
         make -j3
         make install
@@ -106,7 +106,7 @@ function build_android {
     ls -ld $OUT/*
 }
 
-NDK_API=14
+NDK_API=16
 ARCH=arm
 ABI=armeabi-v7a
 CPU_ARCH=armv7-a
