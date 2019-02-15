@@ -103,7 +103,7 @@ dht* dht_setup(network *n, int fd)
             dht_ping_node((const sockaddr *)&sin[i], sizeof(sockaddr_in));
         }
         if (num) {
-            debug("dht loaded num:%d\n", num);
+            debug("dht loaded num:%zu\n", num);
         }
     }
 
@@ -120,7 +120,7 @@ dht* dht_setup(network *n, int fd)
             dht_ping_node((const sockaddr *)&sin6[i], sizeof(sockaddr_in6));
         }
         if (num6) {
-            debug("dht loaded num6:%d\n", num6);
+            debug("dht loaded num6:%zu\n", num6);
         }
     }
 
