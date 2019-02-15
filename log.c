@@ -14,20 +14,6 @@
 
 int o_debug = 0;
 
-#ifndef ANDROID
-void debug(const char *fmt, ...)
-{
-    va_list ap;
-    if (o_debug) {
-        fflush(stdout);
-        //fprintf(stderr, "debug: ");
-        va_start(ap, fmt);
-        vfprintf(stderr, fmt, ap);
-        va_end(ap);
-        fflush(stderr);
-    }
-}
-#endif
 
 #ifdef ANDROID
 void bugsnag_log(const char *fmt, ...)

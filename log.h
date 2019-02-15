@@ -21,7 +21,7 @@ void bugsnag_log(const char *fmt, ...);
 }
 
 #else
-void debug(const char *fmt, ...);
+#define debug(...) if (o_debug) { fflush(stdout); fprintf(stderr, __VA_ARGS__); fflush(stderr); }
 #endif
 
 #define ddebug(...) if (o_debug >= 2) { debug(__VA_ARGS__); }
