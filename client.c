@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -823,7 +824,7 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
 
     const char *content_location = evhttp_find_header(req->input_headers, "Content-Location");
     if (!streq(content_location, evhttp_request_get_uri(p->server_req))) {
-        debug("p:%p (%.2fms) Content-Location mismatch: [%s] != [%s]\n", content_location, evhttp_request_get_uri(p->server_req));
+        debug("p:%p r:%p (%.2fms) Content-Location mismatch: [%s] != [%s]\n", p, r, pdelta(p), content_location, evhttp_request_get_uri(p->server_req));
         proxy_send_error(p, 502, "Content-Location mismatch");
         return -1;
     }
@@ -909,7 +910,7 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
     const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
     const char *content_length = evhttp_find_header(req->input_headers, "Content-Length");
     if (content_range) {
-        sscanf(content_range, "bytes %llu-%llu/%llu", &r->range_start, &r->range_end, &total_length);
+        sscanf(content_range, "bytes %"PRIu64"-%"PRIu64"/%"PRIu64, &r->range_start, &r->range_end, &total_length);
         r->chunk_index = r->range_start / LEAF_CHUNK_SIZE;
     } else if (content_length) {
         char *endp;
@@ -955,7 +956,7 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
     return 0;
 }
 
-size_t chunk_length(proxy_request *p, size_t chunk_index)
+uint64_t chunk_length(proxy_request *p, uint64_t chunk_index)
 {
     if ((chunk_index + 1) * LEAF_CHUNK_SIZE <= p->total_length) {
         return LEAF_CHUNK_SIZE;
@@ -1006,10 +1007,10 @@ void peer_request_chunked_cb(evhttp_request *req, void *arg)
     }
 
     for (;;) {
-        size_t this_chunk_len = chunk_length(p, r->chunk_index);
-        debug("chunk_index:%llu this_chunk_len:%zu\n", r->chunk_index, this_chunk_len);
+        uint64_t this_chunk_len = chunk_length(p, r->chunk_index);
+        debug("chunk_index:%"PRIu64" this_chunk_len:%"PRIu64"\n", r->chunk_index, this_chunk_len);
 
-        size_t header_prefix = 0;
+        uint64_t header_prefix = 0;
         if (!r->chunk_index) {
             header_prefix = evbuffer_get_length(p->header_buf);
         }
@@ -1032,30 +1033,30 @@ void peer_request_chunked_cb(evhttp_request *req, void *arg)
         crypto_generichash_final(&content_state, chunk_hash, sizeof(chunk_hash));
 
         if (!memeq(chunk_hash, p->m->nodes[r->chunk_index].hash, sizeof(chunk_hash))) {
-            fprintf(stderr, "r:%p chunk:%llu hash failed\n", r, r->chunk_index);
+            fprintf(stderr, "r:%p chunk:%"PRIu64" hash failed\n", r, r->chunk_index);
             peer_request_cancel(r);
             return;
         }
-        fprintf(stderr, "r:%p chunk:%llu hash success\n", r, r->chunk_index);
+        fprintf(stderr, "r:%p chunk:%"PRIu64" hash success\n", r, r->chunk_index);
         p->have_bitfield[r->chunk_index] = true;
 
         peer_verified(p->n, r->pc->peer);
 
-        size_t this_chunk_offset = r->chunk_index * LEAF_CHUNK_SIZE;
+        uint64_t this_chunk_offset = r->chunk_index * LEAF_CHUNK_SIZE;
         lseek(p->cache_file, this_chunk_offset, SEEK_SET);
         if (!evbuffer_write_to_file(r->chunk_buffer, p->cache_file)) {
             peer_request_cancel(r);
             return;
         }
 
-        debug("p->byte_playhead:%llu (r->chunk_index * LEAF_CHUNK_SIZE):%llu\n", p->byte_playhead, r->chunk_index * LEAF_CHUNK_SIZE);
+        debug("p->byte_playhead:%"PRIu64" (r->chunk_index * LEAF_CHUNK_SIZE):%"PRIu64"\n", p->byte_playhead, r->chunk_index * LEAF_CHUNK_SIZE);
         if (p->byte_playhead == r->chunk_index * LEAF_CHUNK_SIZE) {
             if (!p->byte_playhead) {
                 proxy_cancel_direct(p);
                 copy_response_headers(req, p->server_req);
                 evhttp_remove_header(p->server_req->output_headers, "Content-Length");
                 char content_range[1024];
-                snprintf(content_range, sizeof(content_range), "bytes %llu-%llu/%llu",
+                snprintf(content_range, sizeof(content_range), "bytes %"PRIu64"-%"PRIu64"/%"PRIu64,
                          p->range_start, p->range_end, p->content_length);
                 evhttp_add_header(p->server_req->output_headers, "Content-Range", content_range);
                 p->byte_playhead = evbuffer_get_length(p->header_buf);
@@ -1067,18 +1068,18 @@ void peer_request_chunked_cb(evhttp_request *req, void *arg)
 
         evbuffer_drain(r->chunk_buffer, evbuffer_get_length(r->chunk_buffer));
 
-        debug("(r->chunk_index * LEAF_CHUNK_SIZE)):%llu r->range_end:%llu\n", r->chunk_index * LEAF_CHUNK_SIZE, r->range_end);
+        debug("(r->chunk_index * LEAF_CHUNK_SIZE)):%"PRIu64" r->range_end:%"PRIu64"\n", r->chunk_index * LEAF_CHUNK_SIZE, r->range_end);
         if (r->chunk_index * LEAF_CHUNK_SIZE <= r->range_end) {
             r->chunk_index++;
         }
 
-        size_t c = p->byte_playhead;
+        uint64_t c = p->byte_playhead;
         while (c < p->total_length && p->have_bitfield[c / LEAF_CHUNK_SIZE]) {
             c++;
         }
 
         off_t offset = p->byte_playhead;
-        size_t length = c - offset;
+        uint64_t length = c - offset;
         if (length) {
             evbuffer_file_segment *seg = evbuffer_file_segment_new(p->cache_file, offset, length, 0);
             if (!seg) {
@@ -1095,7 +1096,7 @@ void peer_request_chunked_cb(evhttp_request *req, void *arg)
             p->byte_playhead += length;
         }
 
-        debug("p->byte_playhead:%llu p->total_length:%llu\n", p->byte_playhead, p->total_length);
+        debug("p->byte_playhead:%"PRIu64" p->total_length:%"PRIu64"\n", p->byte_playhead, p->total_length);
         if (p->byte_playhead == p->total_length) {
             if (p->server_req->evcon) {
                 evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
@@ -1283,7 +1284,7 @@ peer_request* proxy_make_request(proxy_request *p)
     }
 
     char range[1024];
-    snprintf(range, sizeof(range), "bytes=%llu-", range_start);
+    snprintf(range, sizeof(range), "bytes=%"PRIu64"-", range_start);
     evhttp_add_header(r->req->output_headers, "Range", range);
     debug("%s: %s\n", "Range", range);
     // XXX: TODO: if we have a complete merkle tree already, add If-Match so we get "416 Range Not Satisfiable" if the other peer has a different copy.
@@ -1464,7 +1465,7 @@ void submit_request(network *n, evhttp_request *server_req)
     uint64_t range_end = 0;
     const char *range = evhttp_find_header(server_req->input_headers, "Range");
     if (range) {
-        sscanf(range, "bytes=%llu-%llu", &range_start, &range_end);
+        sscanf(range, "bytes=%"PRIu64"-%"PRIu64, &range_start, &range_end);
         if (range_start > range_end) {
             char content_range[1024];
             evhttp_send_error(server_req, 416, "Range Not Satisfiable");
@@ -1800,7 +1801,7 @@ int connect_header_cb(evhttp_request *req, void *arg)
 
         const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
         if (msign) {
-            debug("c:%p verifying sig for %s %s %s\n", c, evhttp_request_get_uri(req), msign);
+            debug("c:%p verifying sig for %s %s\n", c, evhttp_request_get_uri(req), msign);
 
             merkle_tree *m = alloc(merkle_tree);
             merkle_tree_hash_request(m, req, req->input_headers);
@@ -2058,7 +2059,7 @@ void http_request_cb(evhttp_request *req, void *arg)
     if (!NO_CACHE && cache_file != -1 && headers_file != -1) {
         evhttp_request *temp = evhttp_request_new(NULL, NULL);
         evbuffer *header_buf = evbuffer_new();
-        off_t length = lseek(headers_file, 0, SEEK_END);
+        ev_off_t length = lseek(headers_file, 0, SEEK_END);
         evbuffer_add_file(header_buf, headers_file, 0, length);
         evhttp_parse_firstline_(temp, header_buf);
         evhttp_parse_headers_(temp, header_buf);
@@ -2071,10 +2072,10 @@ void http_request_cb(evhttp_request *req, void *arg)
         uint64_t range_end = length - 1;
         const char *range = evhttp_find_header(req->input_headers, "Range");
         if (range) {
-            sscanf(range, "bytes=%llu-%llu", &range_start, &range_end);
+            sscanf(range, "bytes=%"PRIu64"-%"PRIu64, &range_start, &range_end);
             if (range_start > range_end || (off_t)range_end >= length) {
                 char content_range[1024];
-                snprintf(content_range, sizeof(content_range), "bytes */%lld", length);
+                snprintf(content_range, sizeof(content_range), "bytes */%"PRIu64, (uint64_t)length);
                 evhttp_add_header(req->output_headers, "Content-Range", content_range);
                 evhttp_send_error(req, 416, "Range Not Satisfiable");
                 evhttp_request_free(temp);
@@ -2084,7 +2085,7 @@ void http_request_cb(evhttp_request *req, void *arg)
             }
 
             char content_range[1024];
-            snprintf(content_range, sizeof(content_range), "bytes %llu-%llu/%llu",
+            snprintf(content_range, sizeof(content_range), "bytes %"PRIu64"-%"PRIu64"/%"PRIu64,
                 range_start, range_end, (range_end - range_start) + 1);
             evhttp_add_header(req->output_headers, "Content-Range", content_range);
         }
@@ -2110,7 +2111,7 @@ void http_request_cb(evhttp_request *req, void *arg)
             content = evbuffer_new();
             evbuffer_add_file(content, cache_file, range_start, (range_end - range_start) + 1);
         }
-        debug("responding with %d %s start:%zu end:%llu length:%llu\n", temp->response_code, temp->response_code_line,
+        debug("responding with %d %s start:%"PRIu64" end:%"PRIu64" length:%"PRIu64"\n", temp->response_code, temp->response_code_line,
             range_start, range_end, (range_end - range_start) + 1);
         evhttp_send_reply(req, temp->response_code, temp->response_code_line, content);
         evhttp_request_free(temp);
