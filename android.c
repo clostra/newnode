@@ -17,6 +17,9 @@
 int pfd[2];
 static JavaVM *g_jvm;
 static jobject bugsnagClient;
+port_t http_port;
+port_t socks_port;
+bool use_ephemeral_port;
 
 void* stdio_thread(void *useradata)
 {
@@ -199,6 +202,11 @@ void bugsnag_leave_breadcrumb_log(const char *buf)
     bugsnag_add_breadcrumb(crumb);
 }
 
+JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_useEphemeralPort(JNIEnv* env, jobject thiz)
+{
+    use_ephemeral_port = true;
+}
+
 JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
 {
     const char* cCacheDir = (*env)->GetStringUTFChars(env, cacheDir, NULL);
@@ -206,9 +214,46 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env,
 
     bugsnag_client_setup(env);
 
-    newnode_init();
+    if (!use_ephemeral_port) {
+        http_port = 8006;
+        socks_port = 8007;
+    }
+    newnode_init(&http_port, &socks_port);
 
     (*env)->ReleaseStringUTFChars(env, cacheDir, cCacheDir);
+}
+
+JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_registerProxy(JNIEnv* env, jobject thiz)
+{
+    if (!http_port || !socks_port) {
+        return;
+    }
+
+    IMPORT(java/lang, System);
+    CATCH(return);
+    jmethodID mSetProp = (*env)->GetStaticMethodID(env, cSystem, "setProperty", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+    CATCH(return);
+
+    char port[6];
+    snprintf(port, sizeof(port), "%u", socks_port);
+    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("socksProxyHost"), JSTR("127.0.0.1"));
+    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("socksProxyPort"), JSTR(port));
+
+    snprintf(port, sizeof(port), "%u", http_port);
+    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("proxyHost"), JSTR("127.0.0.1"));
+    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("proxyPort"), JSTR(port));
+}
+
+JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_unregisterProxy(JNIEnv* env, jobject thiz)
+{
+    IMPORT(java/lang, System);
+    CATCH(return);
+    jmethodID mClearProp = (*env)->GetStaticMethodID(env, cSystem, "clearProperty", "(Ljava/lang/String;)Ljava/lang/String;");
+    CATCH(return);
+    (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("socksProxyHost"));
+    (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("socksProxyPort"));
+    (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("proxyHost"));
+    (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("proxyPort"));
 }
 
 // XXX: compat
