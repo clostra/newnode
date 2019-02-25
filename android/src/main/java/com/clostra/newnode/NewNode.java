@@ -129,6 +129,7 @@ public class NewNode {
     public static void init() {
         if (!started) {
             try {
+                useEphemeralPort();
                 setCacheDir(app().getCacheDir().getAbsolutePath());
                 Log.e("newnode", "version " + VERSION + " started");
                 started = true;
@@ -138,10 +139,7 @@ public class NewNode {
         }
 
         if (started) {
-            System.setProperty("socksProxyHost", "127.0.0.1");
-            System.setProperty("socksProxyPort", "8007");
-            System.setProperty("proxyHost", "127.0.0.1");
-            System.setProperty("proxyPort", "8006");
+            registerProxy();
         }
 
         if (updateThread == null) {
@@ -163,10 +161,7 @@ public class NewNode {
     }
 
     public static void shutdown() {
-        System.clearProperty("socksProxyHost");
-        System.clearProperty("socksProxyPort");
-        System.clearProperty("proxyHost");
-        System.clearProperty("proxyPort");
+        unregisterProxy();
 
         if (updateThread != null) {
             updateThread.interrupt();
@@ -186,5 +181,8 @@ public class NewNode {
     }
 
     public static native void setCacheDir(String cacheDir);
+    public static native void useEphemeralPort();
+    public static native void registerProxy();
+    public static native void unregisterProxy();
     public static native void updateBugsnagDetails(int notifyType);
 }
