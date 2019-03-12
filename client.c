@@ -876,7 +876,7 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
             merkle_tree_free(m);
             return -1;
         }
-        debug(stderr, "signature good!\n");
+        debug("signature good!\n");
         p->m = m;
         memcpy(p->root_hash, root_hash, sizeof(root_hash));
         p->merkle_tree_finished = true;
