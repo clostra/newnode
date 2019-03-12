@@ -102,6 +102,9 @@ struct proxy_request {
     evhttp_request *server_req;
     uint64 start_time;
 
+    char *uri;
+    evhttp_cmd_type http_method;
+
     evhttp_request *direct_req;
     evhttp_connection *direct_req_evcon;
 
@@ -502,6 +505,7 @@ void proxy_request_cleanup(proxy_request *p)
     }
     merkle_tree_free(p->m);
     proxy_cache_delete(p);
+    free(p->uri);
     free(p);
 }
 
@@ -624,14 +628,14 @@ void proxy_submit_request(proxy_request *p);
 int direct_header_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("p:%p (%.2fms) direct_header_cb %d %s %s\n", p, pdelta(p), req->response_code, req->response_code_line, evhttp_request_get_uri(p->server_req));
+    debug("p:%p (%.2fms) direct_header_cb %d %s %s\n", p, pdelta(p), req->response_code, req->response_code_line, p->uri);
     // TODO: to mix data from origin with peers, we still need to check hashes.
     // if direct data doesn't (or didn't) match, abort all peers
     proxy_cancel_peer_requests(p);
     p->direct_req_evcon = req->evcon;
     copy_all_headers(req, p->server_req);
 
-    evhttp_add_header(req->input_headers, "Content-Location", evhttp_request_get_uri(p->server_req));
+    evhttp_add_header(req->input_headers, "Content-Location", p->uri);
 
     evkeyval *header;
     TAILQ_FOREACH(header, req->input_headers, next) {
@@ -679,7 +683,7 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
     if (!req) {
         return;
     }
-    debug("p:%p (%.2fms) direct server_request_done_cb %s\n", p, pdelta(p), evhttp_request_get_uri(p->server_req));
+    debug("p:%p (%.2fms) direct server_request_done_cb %s\n", p, pdelta(p), p->uri);
     if (req->response_code != 0) {
         merkle_tree_get_root(p->m, p->root_hash);
         // XXX: the tree isn't finihsed until we have a signature as well?
@@ -823,8 +827,8 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
     }
 
     const char *content_location = evhttp_find_header(req->input_headers, "Content-Location");
-    if (!content_location || !streq(content_location, evhttp_request_get_uri(p->server_req))) {
-        debug("p:%p r:%p (%.2fms) Content-Location mismatch: [%s] != [%s]\n", p, r, pdelta(p), content_location, evhttp_request_get_uri(p->server_req));
+    if (!content_location || !streq(content_location, p->uri)) {
+        debug("p:%p r:%p (%.2fms) Content-Location mismatch: [%s] != [%s]\n", p, r, pdelta(p), content_location, p->uri);
         proxy_send_error(p, 502, "Content-Location mismatch");
         return -1;
     }
@@ -1037,7 +1041,7 @@ void peer_request_chunked_cb(evhttp_request *req, void *arg)
             peer_request_cancel(r);
             return;
         }
-        fprintf(stderr, "r:%p chunk:%"PRIu64" hash success\n", r, r->chunk_index);
+        debug("r:%p chunk:%"PRIu64" hash success\n", r, r->chunk_index);
         p->have_bitfield[r->chunk_index] = true;
 
         peer_verified(p->n, r->pc->peer);
@@ -1053,16 +1057,20 @@ void peer_request_chunked_cb(evhttp_request *req, void *arg)
         if (p->byte_playhead == r->chunk_index * LEAF_CHUNK_SIZE) {
             if (!p->byte_playhead) {
                 proxy_cancel_direct(p);
-                copy_response_headers(req, p->server_req);
-                evhttp_remove_header(p->server_req->output_headers, "Content-Length");
-                char content_range[1024];
-                snprintf(content_range, sizeof(content_range), "bytes %"PRIu64"-%"PRIu64"/%"PRIu64,
-                         p->range_start, p->range_end, p->content_length);
-                evhttp_add_header(p->server_req->output_headers, "Content-Range", content_range);
-                p->byte_playhead = evbuffer_get_length(p->header_buf);
-                evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
+                if (p->server_req) {
+                    copy_response_headers(req, p->server_req);
+                    evhttp_remove_header(p->server_req->output_headers, "Content-Length");
+                    char content_range[1024];
+                    snprintf(content_range, sizeof(content_range), "bytes %"PRIu64"-%"PRIu64"/%"PRIu64,
+                             p->range_start, p->range_end, p->content_length);
+                    evhttp_add_header(p->server_req->output_headers, "Content-Range", content_range);
+                    p->byte_playhead = evbuffer_get_length(p->header_buf);
+                    evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
+                }
             }
-            evhttp_send_reply_chunk(p->server_req, r->chunk_buffer);
+            if (p->server_req) {
+                evhttp_send_reply_chunk(p->server_req, r->chunk_buffer);
+            }
             p->byte_playhead += this_chunk_len - header_prefix;
         }
 
@@ -1087,22 +1095,26 @@ void peer_request_chunked_cb(evhttp_request *req, void *arg)
                 peer_request_cancel(r);
                 return;
             }
-            evbuffer *buf = evbuffer_new();
-            if (!evbuffer_add_file_segment(buf, seg, 0, length)) {
-                evbuffer_file_segment_free(seg);
+            if (p->server_req) {
+                evbuffer *buf = evbuffer_new();
+                if (!evbuffer_add_file_segment(buf, seg, 0, length)) {
+                    evbuffer_file_segment_free(seg);
+                }
+                evhttp_send_reply_chunk(p->server_req, buf);
+                evbuffer_free(buf);
             }
-            evhttp_send_reply_chunk(p->server_req, buf);
-            evbuffer_free(buf);
             p->byte_playhead += length;
         }
 
         debug("p->byte_playhead:%"PRIu64" p->total_length:%"PRIu64"\n", p->byte_playhead, p->total_length);
         if (p->byte_playhead == p->total_length) {
-            if (p->server_req->evcon) {
-                evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+            if (p->server_req) {
+                if (p->server_req->evcon) {
+                    evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+                }
+                evhttp_send_reply_end(p->server_req);
+                p->server_req = NULL;
             }
-            evhttp_send_reply_end(p->server_req);
-            p->server_req = NULL;
 
             //join_url_swarm(p->n, uri);
             evhttp_uri *evuri = evhttp_uri_parse_with_flags(req->uri, EVHTTP_URI_NONCONFORMANT);
@@ -1226,8 +1238,8 @@ void direct_submit_request(proxy_request *p)
     if (!evcon) {
         return;
     }
-    debug("p:%p con:%p direct request submitted: %s\n", p, evcon, evhttp_request_get_uri(p->server_req));
-    evhttp_make_request(evcon, p->direct_req, p->server_req->type, request_uri);
+    debug("p:%p con:%p direct request submitted: %s\n", p, evcon, p->uri);
+    evhttp_make_request(evcon, p->direct_req, p->http_method, request_uri);
 }
 
 address parse_address(const char *addr)
@@ -1298,20 +1310,14 @@ peer_request* proxy_make_request(proxy_request *p)
     evhttp_request_set_header_cb(r->req, peer_request_header_cb);
     evhttp_request_set_error_cb(r->req, peer_request_error_cb);
 
-    // a hack to keep the request method/url, even if the server_req dies
-    r->req->type = p->server_req->type;
-    r->req->uri = strdup(evhttp_request_get_uri(p->server_req));
-
     return r;
 }
 
 void peer_submit_request_on_con(peer_request *r, evhttp_connection *evcon)
 {
-    char *uri = r->req->uri;
-    r->req->uri = NULL;
+    proxy_request *p = r->p;
     debug("r:%p con:%p proxy request submitted: %s\n", r, evcon, evhttp_request_get_uri(r->req));
-    evhttp_make_request(evcon, r->req, r->req->type, uri);
-    free(uri);
+    evhttp_make_request(evcon, r->req, p->http_method, p->uri);
 }
 
 int peer_sort_cmp(const peer_sort *pa, const peer_sort *pb)
@@ -1422,7 +1428,7 @@ void proxy_submit_request(proxy_request *p)
 {
     /*
     if (!dht_num_searches()) {
-        fetch_url_swarm(p->n, evhttp_request_get_uri(p->server_req));
+        fetch_url_swarm(p->n, p->uri);
     }
     */
 
@@ -1482,6 +1488,8 @@ void submit_request(network *n, evhttp_request *server_req)
     p->range_start = range_start;
     p->range_end = range_end;
     p->server_req = server_req;
+    p->http_method = p->server_req->type;
+    p->uri = strdup(evhttp_request_get_uri(p->server_req));
     p->m = alloc(merkle_tree);
     evhttp_connection_set_closecb(p->server_req->evcon, server_evcon_close_cb, p);
 
