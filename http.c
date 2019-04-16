@@ -123,11 +123,11 @@ void copy_all_headers(evhttp_request *from, evhttp_request *to)
     }
 }
 
-evbuffer* build_request_buffer(evhttp_request *req, evkeyvalq *hdrs)
+evbuffer* build_request_buffer(int response_code, evkeyvalq *hdrs)
 {
     evbuffer *buf = evbuffer_new();
-    evbuffer_add_printf(buf, "%d\r\n", req->response_code);
-    assert(req->response_code);
+    evbuffer_add_printf(buf, "%d\r\n", response_code);
+    assert(response_code);
     const char *headers[] = hashed_headers;
     for (size_t i = 0; i < lenof(headers); i++) {
         const char *key = headers[i];
@@ -142,7 +142,7 @@ evbuffer* build_request_buffer(evhttp_request *req, evkeyvalq *hdrs)
 
 void merkle_tree_hash_request(merkle_tree *m, evhttp_request *req, evkeyvalq *hdrs)
 {
-    evbuffer *buf = build_request_buffer(req, hdrs);
+    evbuffer *buf = build_request_buffer(req->response_code, hdrs);
     merkle_tree_add_evbuffer(m, buf);
     evbuffer_free(buf);
 }

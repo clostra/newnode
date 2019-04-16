@@ -19,6 +19,15 @@ void merkle_tree_free(merkle_tree *m)
     free(m);
 }
 
+void merkle_tree_print(merkle_tree *m)
+{
+    size_t nodes_num = m->leaves_num - 1;
+    for (size_t i = 0; i < m->leaves_num + nodes_num; i++) {
+        debug("i:%zu\t", i);
+        hexdump(&m->nodes[i].hash, member_sizeof(node, hash));
+    }
+}
+
 bool merkle_tree_set_leaves(merkle_tree *m, const uint8_t *data, size_t length)
 {
     if (length % member_sizeof(node, hash) != 0) {
@@ -30,6 +39,21 @@ bool merkle_tree_set_leaves(merkle_tree *m, const uint8_t *data, size_t length)
     m->nodes = calloc(m->nodes_alloc, sizeof(node));
     memcpy(m->nodes, data, length);
     return true;
+}
+
+void merkle_tree_set_leaf(merkle_tree *m, size_t leaf_idx, const uint8_t *hash)
+{
+    while (leaf_idx >= m->nodes_alloc) {
+        if (!m->nodes_alloc) {
+            m->nodes_alloc = 1;
+        }
+        m->nodes_alloc *= 2;
+        m->nodes = realloc(m->nodes, m->nodes_alloc * sizeof(node));
+    }
+    memcpy(m->nodes[leaf_idx].hash, hash, sizeof(m->nodes[leaf_idx].hash));
+    if (leaf_idx >= m->leaves_num) {
+        m->leaves_num = leaf_idx + 1;
+    }
 }
 
 void merkle_tree_leaf_finish(merkle_tree *m)
