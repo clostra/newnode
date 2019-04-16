@@ -86,15 +86,26 @@ struct proxy_request;
 typedef struct proxy_request proxy_request;
 
 typedef struct {
+    uint64_t start;
+    uint64_t end;
+    uint64_t chunk_index;
+    evbuffer *chunk_buffer;
+} chunked_range;
+
+typedef struct {
     pending_request r;
     peer_connection *pc;
     evhttp_request *req;
     proxy_request *p;
-    evbuffer *chunk_buffer;
-    uint64_t range_start;
-    uint64_t range_end;
-    uint64_t chunk_index;
+    chunked_range range;
 } peer_request;
+
+typedef struct {
+    evhttp_request *req;
+    evhttp_connection *evcon;
+    proxy_request *p;
+    chunked_range range;
+} direct_request;
 
 struct proxy_request {
     network *n;
@@ -105,8 +116,9 @@ struct proxy_request {
     char *uri;
     evhttp_cmd_type http_method;
 
-    evhttp_request *direct_req;
-    evhttp_connection *direct_req_evcon;
+    char *etag;
+
+    direct_request direct_requests[2];
 
     evkeyvalq direct_headers;
     evkeyvalq output_headers;
@@ -454,19 +466,14 @@ void proxy_cache_delete(proxy_request *p)
     }
 }
 
-void proxy_send_error(proxy_request *p, int error, const char *reason)
+bool proxy_request_any_direct(const proxy_request *p)
 {
-    if (p->direct_req) {
-        return;
-    }
-    if (p->server_req) {
-        assert(!p->server_req->response_code);
-        if (p->server_req->evcon) {
-            evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+    for (size_t i = 0; i < lenof(p->direct_requests); i++) {
+        if (p->direct_requests[i].req) {
+            return true;
         }
-        evhttp_send_error(p->server_req, error, reason);
-        p->server_req = NULL;
     }
+    return false;
 }
 
 bool proxy_request_any_peers(const proxy_request *p)
@@ -479,24 +486,52 @@ bool proxy_request_any_peers(const proxy_request *p)
     return false;
 }
 
+void proxy_send_error(proxy_request *p, int error, const char *reason)
+{
+    if (proxy_request_any_direct(p)) {
+        return;
+    }
+    if (p->server_req) {
+        if (p->server_req->evcon) {
+            evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+        }
+        if (!p->server_req->response_code) {
+            debug("p:%p %s can't send error, terminating connection. %d %s\n", p, __func__, error, reason);
+            evhttp_send_reply_end(p->server_req);
+        } else {
+            evhttp_send_error(p->server_req, error, reason);
+        }
+        p->server_req = NULL;
+    }
+}
+
 void proxy_request_cleanup(proxy_request *p)
 {
     debug("%s:%d p:%p\n", __func__, __LINE__, p);
-    if (p->dont_free || proxy_request_any_peers(p) || p->direct_req) {
+    if (p->dont_free || proxy_request_any_peers(p) || proxy_request_any_direct(p)) {
         return;
     }
     if (p->server_req) {
         proxy_send_error(p, 502, "Bad Gateway (default)");
     }
     for (size_t i = 0; i < lenof(p->requests); i++) {
-        if (p->requests[i].pc) {
-            peer_disconnect(p->requests[i].pc);
-            p->requests[i].pc = NULL;
+        peer_request *r = &p->requests[i];
+        if (r->pc) {
+            peer_disconnect(r->pc);
+            r->pc = NULL;
         }
+        assert(!r->range.chunk_buffer);
     }
-    if (p->direct_req_evcon) {
-        evhttp_connection_free(p->direct_req_evcon);
-        p->direct_req_evcon = NULL;
+    for (size_t i = 0; i < lenof(p->direct_requests); i++) {
+        direct_request *d = &p->direct_requests[i];
+        if (d->evcon) {
+            evhttp_connection_free(d->evcon);
+            d->evcon = NULL;
+        }
+        if (d->range.chunk_buffer) {
+            evbuffer_free(d->range.chunk_buffer);
+            d->range.chunk_buffer = NULL;
+        }
     }
     evhttp_clear_headers(&p->direct_headers);
     evhttp_clear_headers(&p->output_headers);
@@ -504,7 +539,9 @@ void proxy_request_cleanup(proxy_request *p)
         evbuffer_free(p->header_buf);
     }
     merkle_tree_free(p->m);
+    free(p->have_bitfield);
     proxy_cache_delete(p);
+    free(p->etag);
     free(p->uri);
     free(p);
 }
@@ -518,9 +555,9 @@ void peer_request_cleanup(peer_request *r)
         peer_disconnect(r->pc);
         r->pc = NULL;
     }
-    if (r->chunk_buffer) {
-        evbuffer_free(r->chunk_buffer);
-        r->chunk_buffer = NULL;
+    if (r->range.chunk_buffer) {
+        evbuffer_free(r->range.chunk_buffer);
+        r->range.chunk_buffer = NULL;
     }
     proxy_request_cleanup(r->p);
 }
@@ -566,11 +603,18 @@ double pdelta(proxy_request *p)
     return (double)(us_clock() - p->start_time) / 1000.0;
 }
 
-void proxy_cancel_direct(proxy_request *p)
+void direct_request_cancel(direct_request *d)
 {
-    if (p->direct_req) {
-        evhttp_cancel_request(p->direct_req);
-        p->direct_req = NULL;
+    evhttp_cancel_request(d->req);
+    d->req = NULL;
+}
+
+void proxy_direct_requests_cancel(proxy_request *p)
+{
+    for (size_t i = 0; i < lenof(p->direct_requests); i++) {
+        if (p->direct_requests[i].req) {
+            direct_request_cancel(&p->direct_requests[i]);
+        }
     }
 }
 
@@ -589,7 +633,7 @@ void peer_request_cancel(peer_request *r)
     }
 }
 
-void proxy_cancel_peer_requests(proxy_request *p)
+void proxy_peer_requests_cancel(proxy_request *p)
 {
     for (size_t i = 0; i < lenof(p->requests); i++) {
         peer_request_cancel(&p->requests[i]);
@@ -621,18 +665,132 @@ bool write_header_to_file(int headers_file, int code, const char *code_line, evk
     return success;
 }
 
+bool addr_is_localhost(const sockaddr *sa, socklen_t salen)
+{
+    if (sa->sa_family == AF_INET) {
+        const sockaddr_in *sin = (sockaddr_in *)sa;
+        uint8_t *ip = (uint8_t*)&sin->sin_addr;
+        return ip[0] == 127;
+    }
+    return false;
+}
+
+bool evcon_is_local_browser(evhttp_connection *evcon)
+{
+    int fd = bufferevent_getfd(evhttp_connection_get_bufferevent(evcon));
+    sockaddr_storage ss;
+    socklen_t len = sizeof(ss);
+    getsockname(fd, (sockaddr *)&ss, &len);
+    // AF_LOCAL is from socketpair(), which means utp
+    if (ss.ss_family == AF_LOCAL) {
+        return false;
+    }
+    return addr_is_localhost((sockaddr *)&ss, len);
+}
+
+void copy_response_headers(evhttp_request *from, evhttp_request *to)
+{
+    const char *response_header_whitelist[] = hashed_headers;
+    for (uint i = 0; i < lenof(response_header_whitelist); i++) {
+        copy_header(from, to, response_header_whitelist[i]);
+    }
+    copy_header(from, to, "Content-Length");
+    if (!evcon_is_local_browser(to->evcon)) {
+        copy_header(from, to, "Content-Location");
+        copy_header(from, to, "X-MSign");
+        copy_header(from, to, "X-Hashes");
+    }
+}
+
+void direct_submit_request(proxy_request *p);
 void direct_chunked_cb(evhttp_request *req, void *arg);
 peer_request* proxy_make_request(proxy_request *p);
 void proxy_submit_request(proxy_request *p);
 
+int proxy_setup_range(proxy_request *p, evhttp_request *req, chunked_range *range)
+{
+    if (p->cache_file == -1) {
+        snprintf(p->cache_name, sizeof(p->cache_name), CACHE_NAME);
+        mkpath(p->cache_name);
+        p->cache_file = mkstemp(p->cache_name);
+        debug("start cache:%s\n", p->cache_name);
+    }
+
+    if (!p->etag) {
+        const char *etag = evhttp_find_header(req->input_headers, "ETag");
+        p->etag = etag?strdup(etag):NULL;
+    }
+
+    uint64_t total_length = 0;
+    const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
+    const char *content_length = evhttp_find_header(req->input_headers, "Content-Length");
+    debug("Content-Range: %s\n", content_range);
+    debug("Content-Length: %s\n", content_length);
+    if (content_range) {
+        sscanf(content_range, "bytes %"PRIu64"-%"PRIu64"/%"PRIu64, &range->start, &range->end, &total_length);
+        uint64_t header_prefix = p->header_buf ? evbuffer_get_length(p->header_buf) : 0;
+        range->chunk_index = (range->start + header_prefix) / LEAF_CHUNK_SIZE;
+        debug("p:%p start:%"PRIu64" chunk_index:%"PRIu64"\n", p, range->start, range->chunk_index);
+    } else if (content_length) {
+        char *endp;
+        ev_int64_t clen = evutil_strtoll(content_length, &endp, 10);
+        if (*content_length == '\0' || *endp != '\0' || clen < 0) {
+            debug("%s: illegal content length: %s", __func__, content_length);
+            proxy_send_error(p, 502, "Incorrect Gateway Content-Length");
+            return -1;
+        }
+        total_length = (uint64_t)clen;
+        range->end = clen - 1;
+    }
+
+    if (!p->header_buf) {
+        p->header_buf = build_request_buffer(200, req->input_headers);
+        uint64_t header_prefix = p->header_buf ? evbuffer_get_length(p->header_buf) : 0;
+        range->chunk_index = (range->start + header_prefix) / LEAF_CHUNK_SIZE;
+    }
+
+    if (p->content_length && p->content_length != total_length) {
+        proxy_send_error(p, 502, "Incorrect Gateway Content-Length");
+        return -1;
+    }
+
+    p->content_length = total_length;
+    if (!p->range_end) {
+        p->range_end = p->content_length - 1;
+    }
+
+    total_length += evbuffer_get_length(p->header_buf);
+
+    if (p->total_length && p->total_length != total_length) {
+        proxy_send_error(p, 502, "Incorrect Gateway Range");
+        return -1;
+    }
+
+    p->total_length = total_length;
+
+    if (!p->have_bitfield) {
+        uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
+        p->have_bitfield = calloc(1, num_chunks);
+    }
+
+    return 1;
+}
+
 int direct_header_cb(evhttp_request *req, void *arg)
 {
-    proxy_request *p = (proxy_request*)arg;
-    debug("p:%p (%.2fms) direct_header_cb %d %s %s\n", p, pdelta(p), req->response_code, req->response_code_line, p->uri);
+    direct_request *d = (direct_request*)arg;
+    proxy_request *p = d->p;
+    debug("d:%p (%.2fms) direct_header_cb %d %s %s\n", d, pdelta(p), req->response_code, req->response_code_line, p->uri);
+
+    // "416 Range Not Satisfiable" means we can't use additional connections at all.
+    if (req->response_code == 416) {
+        return -1;
+    }
+
     // TODO: to mix data from origin with peers, we still need to check hashes.
-    // if direct data doesn't (or didn't) match, abort all peers
-    proxy_cancel_peer_requests(p);
-    p->direct_req_evcon = req->evcon;
+    // if direct data doesn't (or didn't) match, abort all peers. see MIX_DIRECT
+    proxy_peer_requests_cancel(p);
+    d->evcon = req->evcon;
     copy_all_headers(req, p->server_req);
 
     evhttp_add_header(req->input_headers, "Content-Location", p->uri);
@@ -642,76 +800,301 @@ int direct_header_cb(evhttp_request *req, void *arg)
         evhttp_add_header(&p->direct_headers, header->key, header->value);
     }
 
-    merkle_tree_hash_request(p->m, req, req->input_headers);
+    int res = proxy_setup_range(p, req, &d->range);
+    if (res < 1) {
+        return res;
+    }
 
-    evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
-
-    snprintf(p->cache_name, sizeof(p->cache_name), CACHE_NAME);
-    mkpath(p->cache_name);
-    p->cache_file = mkstemp(p->cache_name);
+    // if the server is capable of range requests, submit more requests
+    const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
+    if (content_range) {
+        direct_submit_request(p);
+    }
 
     evhttp_request_set_chunked_cb(req, direct_chunked_cb);
     return 0;
 }
 
+bool proxy_needs_any(const proxy_request *p)
+{
+    if (!p->have_bitfield) {
+        return true;
+    }
+    uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
+    for (size_t i = 0; i < num_chunks; i++) {
+        if (!p->have_bitfield[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool proxy_is_complete(const proxy_request *p)
+{
+    if (!p->merkle_tree_finished || !p->have_bitfield) {
+        return false;
+    }
+    return !proxy_needs_any(p);
+}
+
+uint64_t proxy_new_range_start(const proxy_request *p)
+{
+    uint64_t range_start = p->range_start;
+    if (p->have_bitfield) {
+        uint64_t start_run = 0;
+        uint64_t run_length = 0;
+        uint64_t longest_run[2] = {0, 0};
+        uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
+        for (size_t i = 0; i < num_chunks; i++) {
+            //debug("have: %zu/%"PRIu64":%d\n", i, num_chunks, p->have_bitfield[i]);
+            if (!p->have_bitfield[i]) {
+                if (!run_length) {
+                    start_run = i;
+                }
+                run_length++;
+                if (run_length > longest_run[1] - longest_run[0]) {
+                    longest_run[0] = start_run;
+                    longest_run[1] = start_run + run_length;
+                }
+            } else {
+                run_length = 0;
+            }
+        }
+        debug("num_chunks:%"PRIu64" longest_run:%"PRIu64"-%"PRIu64"\n", num_chunks, longest_run[0], longest_run[1]);
+        uint64_t mid = longest_run[0] + (longest_run[1] - longest_run[0]) / 2;
+        range_start = mid * LEAF_CHUNK_SIZE - evbuffer_get_length(p->header_buf);
+        debug("p:%p range_start:%"PRIu64" mid:%"PRIu64" %zu\n", p, range_start, mid, evbuffer_get_length(p->header_buf));
+        
+        // maybe consider:
+        /*
+        for (size_t i = 0; i < lenof(p->direct_requests); i++) {
+            if (!p->direct_requests[i].req) {
+                range_start = MAX(range_start, (p->range_end - p->requests[i].range.start) / 2);
+            }
+        }
+        */
+    }
+    return range_start;
+}
+
+uint64_t chunk_length(proxy_request *p, uint64_t chunk_index)
+{
+    if ((chunk_index + 1) * LEAF_CHUNK_SIZE <= p->total_length) {
+        return LEAF_CHUNK_SIZE;
+    }
+    return p->total_length % LEAF_CHUNK_SIZE;
+}
+
+char* cache_name_from_uri(const char *uri)
+{
+    size_t name_max = NAME_MAX - strlen(".headers");
+    char *encoded_uri = evhttp_encode_uri(uri);
+    if (strlen(encoded_uri) > name_max) {
+        uint8_t uri_hash[crypto_generichash_BYTES];
+        crypto_generichash(uri_hash, sizeof(uri_hash), (uint8_t*)uri, strlen(uri), NULL, 0);
+        size_t b64_hash_len;
+        char *b64_hash = base64_urlsafe_encode(uri_hash, sizeof(uri_hash), &b64_hash_len);
+        assert(b64_hash_len > name_max);
+        encoded_uri[name_max - b64_hash_len - 2] = '.';
+        strcpy(&encoded_uri[name_max - b64_hash_len - 1], b64_hash);
+        free(b64_hash);
+    }
+    return encoded_uri;
+}
+
 void direct_chunked_cb(evhttp_request *req, void *arg)
 {
-    proxy_request *p = (proxy_request*)arg;
+    direct_request *d = (direct_request*)arg;
+    proxy_request *p = d->p;
+    chunked_range *r = &d->range;
     evbuffer *input = req->input_buffer;
-    //debug("p:%p direct_chunked_cb length:%zu\n", p, evbuffer_get_length(input));
-    if (!evbuffer_write_to_file(input, p->cache_file)) {
-        proxy_cancel_direct(p);
-        return;
+    debug("d:%p %s length:%zu\n", d, __func__, evbuffer_get_length(input));
+
+    if (!r->chunk_buffer) {
+        r->chunk_buffer = evbuffer_new();
     }
-    if (p->server_req) {
-        evhttp_send_reply_chunk(p->server_req, input);
+
+    for (;;) {
+        uint64_t this_chunk_len = chunk_length(p, r->chunk_index);
+        debug("d:%p chunk_index:%"PRIu64" this_chunk_len:%"PRIu64"\n", d, r->chunk_index, this_chunk_len);
+
+        uint64_t header_prefix = 0;
+        if (!r->chunk_index) {
+            header_prefix = evbuffer_get_length(p->header_buf);
+        }
+
+        evbuffer_remove_buffer(input, r->chunk_buffer, this_chunk_len - header_prefix - evbuffer_get_length(r->chunk_buffer));
+
+        debug("d:%p chunk:%"PRIu64" %"PRIu64" < %"PRIu64"\n", d, r->chunk_index, header_prefix + evbuffer_get_length(r->chunk_buffer), this_chunk_len);
+        if (header_prefix + evbuffer_get_length(r->chunk_buffer) < this_chunk_len) {
+            return;
+        }
+
+        if (p->have_bitfield[r->chunk_index]) {
+            debug("d:%p duplicate chunk: %"PRIu64"\n", d, r->chunk_index);
+        } else {
+            debug("d:%p got chunk: %"PRIu64"\n", d, r->chunk_index);
+            p->have_bitfield[r->chunk_index] = true;
+
+            crypto_generichash_state content_state;
+            crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
+
+            if (!r->chunk_index) {
+                evbuffer_hash_update(p->header_buf, &content_state);
+            }
+            evbuffer_hash_update(r->chunk_buffer, &content_state);
+
+            uint8_t chunk_hash[crypto_generichash_BYTES];
+            crypto_generichash_final(&content_state, chunk_hash, sizeof(chunk_hash));
+            
+            merkle_tree_set_leaf(p->m, r->chunk_index, chunk_hash);
+
+            uint64_t this_chunk_offset = r->chunk_index * LEAF_CHUNK_SIZE;
+            //debug("d:%p writing offset:%"PRIu64" length:%zu\n", d, this_chunk_offset, evbuffer_get_length(r->chunk_buffer));
+            lseek(p->cache_file, this_chunk_offset, SEEK_SET);
+            if (!evbuffer_write_to_file(r->chunk_buffer, p->cache_file)) {
+                direct_request_cancel(d);
+                return;
+            }
+
+            if (p->byte_playhead == r->chunk_index * LEAF_CHUNK_SIZE) {
+                debug("d:%p send this chunk p->byte_playhead:%"PRIu64" (r->chunk_index * LEAF_CHUNK_SIZE):%"PRIu64"\n",
+                      d, p->byte_playhead, r->chunk_index * LEAF_CHUNK_SIZE);
+                if (!p->byte_playhead) {
+                    if (p->server_req) {
+                        copy_response_headers(req, p->server_req);
+                        evhttp_remove_header(p->server_req->output_headers, "Content-Length");
+                        char content_range[1024];
+                        snprintf(content_range, sizeof(content_range), "bytes %"PRIu64"-%"PRIu64"/%"PRIu64,
+                                 p->range_start, p->range_end, p->content_length);
+                        overwrite_kv_header(p->server_req->output_headers, "Content-Range", content_range);
+                        p->byte_playhead = evbuffer_get_length(p->header_buf);
+                        const char *range = evhttp_find_header(p->server_req->input_headers, "Range");
+                        if (range) {
+                            evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
+                        } else {
+                            evhttp_send_reply_start(p->server_req, 200, "OK");
+                        }
+                    }
+                }
+                if (p->server_req) {
+                    evhttp_send_reply_chunk(p->server_req, r->chunk_buffer);
+                }
+                p->byte_playhead += this_chunk_len - header_prefix;
+            }
+        }
+
+        evbuffer_drain(r->chunk_buffer, evbuffer_get_length(r->chunk_buffer));
+        r->chunk_index++;
+
+        uint64_t c = p->byte_playhead;
+        while (c < p->total_length && p->have_bitfield[c / LEAF_CHUNK_SIZE]) {
+            c++;
+        }
+
+        off_t offset = p->byte_playhead;
+        uint64_t length = c - offset;
+        if (length) {
+            debug("d:%p sending offset:%"PRIu64" length:%"PRIu64"\n", d, offset, length);
+            evbuffer_file_segment *seg = evbuffer_file_segment_new(p->cache_file, offset, length, 0);
+            if (!seg) {
+                fprintf(stderr, "d:%p evbuffer_file_segment_new %d (%s)\n", d, errno, strerror(errno));
+                direct_request_cancel(d);
+                return;
+            }
+            if (p->server_req) {
+                evbuffer *buf = evbuffer_new();
+                if (!evbuffer_add_file_segment(buf, seg, 0, length)) {
+                    evbuffer_file_segment_free(seg);
+                }
+                evhttp_send_reply_chunk(p->server_req, buf);
+                evbuffer_free(buf);
+            }
+            p->byte_playhead += length;
+        }
+
+        debug("d:%p progress p->byte_playhead:%"PRIu64" p->total_length:%"PRIu64"\n", d, p->byte_playhead, p->total_length);
+        if (p->byte_playhead == p->total_length) {
+            if (p->server_req) {
+                if (p->server_req->evcon) {
+                    evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+                }
+                evhttp_send_reply_end(p->server_req);
+                p->server_req = NULL;
+                proxy_direct_requests_cancel(p);
+            }
+
+            //join_url_swarm(p->n, uri);
+            evhttp_uri *evuri = evhttp_uri_parse_with_flags(req->uri, EVHTTP_URI_NONCONFORMANT);
+            const char *host = evhttp_uri_get_host(evuri);
+            if (host) {
+                join_url_swarm(p->n, host);
+            }
+            evhttp_uri_free(evuri);
+
+            merkle_tree_get_root(p->m, p->root_hash);
+
+            // submit a proxy-only request with If-None-Match: "base64(root_hash)" and let it cache
+            size_t b64_hash_len;
+            char *b64_hash = base64_urlsafe_encode((uint8_t*)&p->root_hash, sizeof(p->root_hash), &b64_hash_len);
+            char etag[2048];
+            snprintf(etag, sizeof(etag), "\"%s\"", b64_hash);
+            free(b64_hash);
+            debug("d:%p submitting a cache request %s\n", d, etag);
+            evhttp_add_header(&p->output_headers, "If-None-Match", etag);
+
+            proxy_submit_request(p);
+            return;
+        }
+
+        uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
+        assert(r->chunk_index <= num_chunks);
+        if (r->chunk_index >= num_chunks) {
+            // done, let the connection close naturally
+            debug("d:%p done, let the connection close naturally\n", d);
+            return;
+        }
+        if (!p->have_bitfield[r->chunk_index]) {
+            continue;
+        }
+
+        // nothing else is needed from this connection, but it's still getting data
+        debug("d:%p teminating connection due to overlap\n", d);
+        direct_request_cancel(d);
+        direct_submit_request(p);
+        return;
     }
 }
 
 void direct_error_cb(evhttp_request_error error, void *arg)
 {
-    proxy_request *p = (proxy_request*)arg;
-    debug("p:%p direct_error_cb %d\n", p, error);
-    p->direct_req = NULL;
+    direct_request *d = (direct_request*)arg;
+    proxy_request *p = d->p;
+    debug("d:%p direct_error_cb %d\n", d, error);
+    assert(d->req);
+    d->req = NULL;
+    if (error == EVREQ_HTTP_REQUEST_CANCEL) {
+        return;
+    }
     proxy_request_cleanup(p);
 }
 
 void direct_request_done_cb(evhttp_request *req, void *arg)
 {
-    proxy_request *p = (proxy_request*)arg;
-    debug("p:%p direct_request_done_cb %p\n", p, req);
+    direct_request *d = (direct_request*)arg;
+    proxy_request *p = d->p;
+    debug("d:%p %s req:%p\n", d, __func__, req);
     if (!req) {
         return;
     }
-    debug("p:%p (%.2fms) direct server_request_done_cb %s\n", p, pdelta(p), p->uri);
+    debug("d:%p (%.2fms) %s %s\n", d, pdelta(p), __func__, p->uri);
     if (req->response_code != 0) {
-        merkle_tree_get_root(p->m, p->root_hash);
-        // XXX: the tree isn't finihsed until we have a signature as well?
-        //p->merkle_tree_finished = true;
-
-        return_connection(p->direct_req_evcon);
-        p->direct_req_evcon = NULL;
-
-        // submit a proxy-only request with If-None-Match: "base64(root_hash)" and let it cache
-        assert(!proxy_request_any_peers(p));
-        size_t b64_hash_len;
-        char *b64_hash = base64_urlsafe_encode((uint8_t*)&p->root_hash, sizeof(p->root_hash), &b64_hash_len);
-        char etag[2048];
-        snprintf(etag, sizeof(etag), "\"%s\"", b64_hash);
-        free(b64_hash);
-        debug("submitting a cache request %s\n", etag);
-        evhttp_add_header(&p->output_headers, "If-None-Match", etag);
-
-        proxy_submit_request(p);
-
-        if (p->server_req->evcon) {
-            evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
-        }
-        evhttp_send_reply_end(p->server_req);
-        p->server_req = NULL;
+        return_connection(d->evcon);
+        d->evcon = NULL;
     }
-    p->direct_req = NULL;
-    if (!proxy_request_any_peers(p)) {
+    d->req = NULL;
+    direct_submit_request(p);
+    if (!proxy_request_any_direct(p) && !proxy_request_any_peers(p)) {
         proxy_request_cleanup(p);
     }
 }
@@ -756,43 +1139,6 @@ bool verify_signature(const uint8_t *content_hash, const char *sign)
 
     free(raw_sig);
     return true;
-}
-
-bool addr_is_localhost(const sockaddr *sa, socklen_t salen)
-{
-    if (sa->sa_family == AF_INET) {
-        const sockaddr_in *sin = (sockaddr_in *)sa;
-        uint8_t *ip = (uint8_t*)&sin->sin_addr;
-        return ip[0] == 127;
-    }
-    return false;
-}
-
-bool evcon_is_local_browser(evhttp_connection *evcon)
-{
-    int fd = bufferevent_getfd(evhttp_connection_get_bufferevent(evcon));
-    sockaddr_storage ss;
-    socklen_t len = sizeof(ss);
-    getsockname(fd, (sockaddr *)&ss, &len);
-    // AF_LOCAL is from socketpair(), which means utp
-    if (ss.ss_family == AF_LOCAL) {
-        return false;
-    }
-    return addr_is_localhost((sockaddr *)&ss, len);
-}
-
-void copy_response_headers(evhttp_request *from, evhttp_request *to)
-{
-    const char *response_header_whitelist[] = hashed_headers;
-    for (uint i = 0; i < lenof(response_header_whitelist); i++) {
-        copy_header(from, to, response_header_whitelist[i]);
-    }
-    copy_header(from, to, "Content-Length");
-    if (!evcon_is_local_browser(to->evcon)) {
-        copy_header(from, to, "Content-Location");
-        copy_header(from, to, "X-MSign");
-        copy_header(from, to, "X-Hashes");
-    }
 }
 
 void peer_request_chunked_cb(evhttp_request *req, void *arg);
@@ -900,103 +1246,19 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
             // have hash, file, and headers.
             return 0;
         }
+        // we probably asked for If-None-Match and it didn't match. forget about the file
         proxy_cache_delete(p);
+        free(p->have_bitfield);
+        p->have_bitfield = NULL;
     }
 
-    if (p->cache_file == -1) {
-        snprintf(p->cache_name, sizeof(p->cache_name), CACHE_NAME);
-        mkpath(p->cache_name);
-        p->cache_file = mkstemp(p->cache_name);
-        debug("start cache:%s\n", p->cache_name);
-    }
-
-    uint64_t total_length = 0;
-    const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
-    const char *content_length = evhttp_find_header(req->input_headers, "Content-Length");
-    if (content_range) {
-        sscanf(content_range, "bytes %"PRIu64"-%"PRIu64"/%"PRIu64, &r->range_start, &r->range_end, &total_length);
-        r->chunk_index = r->range_start / LEAF_CHUNK_SIZE;
-    } else if (content_length) {
-        char *endp;
-        ev_int64_t clen = evutil_strtoll(content_length, &endp, 10);
-        if (*content_length == '\0' || *endp != '\0' || clen < 0) {
-            debug("%s: illegal content length: %s", __func__, content_length);
-            proxy_send_error(p, 502, "Incorrect Gateway Content-Length");
-            return -1;
-        }
-        total_length = (uint64_t)clen;
-        r->range_end = clen - 1;
-    }
-
-    if (!p->header_buf) {
-        p->header_buf = build_request_buffer(req, req->input_headers);
-    }
-
-    if (p->content_length && p->content_length != total_length) {
-        proxy_send_error(p, 502, "Incorrect Gateway Content-Length");
-        return -1;
-    }
-
-    p->content_length = total_length;
-    if (!p->range_end) {
-        p->range_end = p->content_length;
-    }
-
-    total_length += evbuffer_get_length(p->header_buf);
-
-    if (p->total_length && p->total_length != total_length) {
-        proxy_send_error(p, 502, "Incorrect Gateway Range");
-        return -1;
-    }
-
-    p->total_length = total_length;
-
-    if (!p->have_bitfield) {
-        uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
-        p->have_bitfield = calloc(1, num_chunks);
+    int res = proxy_setup_range(p, req, &r->range);
+    if (res < 1) {
+        return res;
     }
 
     evhttp_request_set_chunked_cb(req, peer_request_chunked_cb);
     return 0;
-}
-
-uint64_t chunk_length(proxy_request *p, uint64_t chunk_index)
-{
-    if ((chunk_index + 1) * LEAF_CHUNK_SIZE <= p->total_length) {
-        return LEAF_CHUNK_SIZE;
-    }
-    return p->total_length % LEAF_CHUNK_SIZE;
-}
-
-char* cache_name_from_uri(const char *uri)
-{
-    size_t name_max = NAME_MAX - strlen(".headers");
-    char *encoded_uri = evhttp_encode_uri(uri);
-    if (strlen(encoded_uri) > name_max) {
-        uint8_t uri_hash[crypto_generichash_BYTES];
-        crypto_generichash(uri_hash, sizeof(uri_hash), (uint8_t*)uri, strlen(uri), NULL, 0);
-        size_t b64_hash_len;
-        char *b64_hash = base64_urlsafe_encode(uri_hash, sizeof(uri_hash), &b64_hash_len);
-        assert(b64_hash_len > name_max);
-        encoded_uri[name_max - b64_hash_len - 2] = '.';
-        strcpy(&encoded_uri[name_max - b64_hash_len - 1], b64_hash);
-        free(b64_hash);
-    }
-    return encoded_uri;
-}
-
-bool proxy_is_complete(const proxy_request *p)
-{
-    if (!p->merkle_tree_finished || !p->have_bitfield) {
-        return false;
-    }
-    uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
-    for (size_t i = 0; i < num_chunks; i++) {
-        if (!p->have_bitfield[i]) {
-            return false;
-        }
-    }
-    return true;
 }
 
 void peer_request_chunked_cb(evhttp_request *req, void *arg)
@@ -1006,57 +1268,57 @@ void peer_request_chunked_cb(evhttp_request *req, void *arg)
     evbuffer *input = req->input_buffer;
     debug("r:%p peer_request_chunked_cb length:%zu\n", r, evbuffer_get_length(input));
 
-    if (!r->chunk_buffer) {
-        r->chunk_buffer = evbuffer_new();
+    if (!r->range.chunk_buffer) {
+        r->range.chunk_buffer = evbuffer_new();
     }
 
     for (;;) {
-        uint64_t this_chunk_len = chunk_length(p, r->chunk_index);
-        debug("chunk_index:%"PRIu64" this_chunk_len:%"PRIu64"\n", r->chunk_index, this_chunk_len);
+        uint64_t this_chunk_len = chunk_length(p, r->range.chunk_index);
+        //debug("chunk_index:%"PRIu64" this_chunk_len:%"PRIu64"\n", r->range.chunk_index, this_chunk_len);
 
         uint64_t header_prefix = 0;
-        if (!r->chunk_index) {
+        if (!r->range.chunk_index) {
             header_prefix = evbuffer_get_length(p->header_buf);
         }
 
-        evbuffer_remove_buffer(input, r->chunk_buffer, this_chunk_len - header_prefix - evbuffer_get_length(r->chunk_buffer));
+        evbuffer_remove_buffer(input, r->range.chunk_buffer, this_chunk_len - header_prefix - evbuffer_get_length(r->range.chunk_buffer));
 
-        if (header_prefix + evbuffer_get_length(r->chunk_buffer) < this_chunk_len) {
+        if (header_prefix + evbuffer_get_length(r->range.chunk_buffer) < this_chunk_len) {
             return;
         }
 
         crypto_generichash_state content_state;
         crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
 
-        if (!r->chunk_index) {
+        if (!r->range.chunk_index) {
             evbuffer_hash_update(p->header_buf, &content_state);
         }
-        evbuffer_hash_update(r->chunk_buffer, &content_state);
+        evbuffer_hash_update(r->range.chunk_buffer, &content_state);
 
         uint8_t chunk_hash[crypto_generichash_BYTES];
         crypto_generichash_final(&content_state, chunk_hash, sizeof(chunk_hash));
 
-        if (!memeq(chunk_hash, p->m->nodes[r->chunk_index].hash, sizeof(chunk_hash))) {
-            fprintf(stderr, "r:%p chunk:%"PRIu64" hash failed\n", r, r->chunk_index);
+        if (!memeq(chunk_hash, p->m->nodes[r->range.chunk_index].hash, sizeof(chunk_hash))) {
+            fprintf(stderr, "r:%p chunk:%"PRIu64" hash failed\n", r, r->range.chunk_index);
             peer_request_cancel(r);
             return;
         }
-        debug("r:%p chunk:%"PRIu64" hash success\n", r, r->chunk_index);
-        p->have_bitfield[r->chunk_index] = true;
+        debug("r:%p chunk:%"PRIu64" hash success\n", r, r->range.chunk_index);
+        p->have_bitfield[r->range.chunk_index] = true;
 
         peer_verified(p->n, r->pc->peer);
 
-        uint64_t this_chunk_offset = r->chunk_index * LEAF_CHUNK_SIZE;
+        uint64_t this_chunk_offset = r->range.chunk_index * LEAF_CHUNK_SIZE;
         lseek(p->cache_file, this_chunk_offset, SEEK_SET);
-        if (!evbuffer_write_to_file(r->chunk_buffer, p->cache_file)) {
+        if (!evbuffer_write_to_file(r->range.chunk_buffer, p->cache_file)) {
             peer_request_cancel(r);
             return;
         }
 
-        debug("p->byte_playhead:%"PRIu64" (r->chunk_index * LEAF_CHUNK_SIZE):%"PRIu64"\n", p->byte_playhead, r->chunk_index * LEAF_CHUNK_SIZE);
-        if (p->byte_playhead == r->chunk_index * LEAF_CHUNK_SIZE) {
+        debug("p->byte_playhead:%"PRIu64" (r->chunk_index * LEAF_CHUNK_SIZE):%"PRIu64"\n", p->byte_playhead, r->range.chunk_index * LEAF_CHUNK_SIZE);
+        if (p->byte_playhead == r->range.chunk_index * LEAF_CHUNK_SIZE) {
             if (!p->byte_playhead) {
-                proxy_cancel_direct(p);
+                proxy_direct_requests_cancel(p);
                 if (p->server_req) {
                     copy_response_headers(req, p->server_req);
                     evhttp_remove_header(p->server_req->output_headers, "Content-Length");
@@ -1065,20 +1327,25 @@ void peer_request_chunked_cb(evhttp_request *req, void *arg)
                              p->range_start, p->range_end, p->content_length);
                     evhttp_add_header(p->server_req->output_headers, "Content-Range", content_range);
                     p->byte_playhead = evbuffer_get_length(p->header_buf);
-                    evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
+                    const char *range = evhttp_find_header(p->server_req->input_headers, "Range");
+                    if (range) {
+                        evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
+                    } else {
+                        evhttp_send_reply_start(p->server_req, 200, "OK");
+                    }
                 }
             }
             if (p->server_req) {
-                evhttp_send_reply_chunk(p->server_req, r->chunk_buffer);
+                evhttp_send_reply_chunk(p->server_req, r->range.chunk_buffer);
             }
             p->byte_playhead += this_chunk_len - header_prefix;
         }
 
-        evbuffer_drain(r->chunk_buffer, evbuffer_get_length(r->chunk_buffer));
+        evbuffer_drain(r->range.chunk_buffer, evbuffer_get_length(r->range.chunk_buffer));
 
-        debug("(r->chunk_index * LEAF_CHUNK_SIZE)):%"PRIu64" r->range_end:%"PRIu64"\n", r->chunk_index * LEAF_CHUNK_SIZE, r->range_end);
-        if (r->chunk_index * LEAF_CHUNK_SIZE <= r->range_end) {
-            r->chunk_index++;
+        debug("(r->chunk_index * LEAF_CHUNK_SIZE)):%"PRIu64" r->end:%"PRIu64"\n", r->range.chunk_index * LEAF_CHUNK_SIZE, r->range.end);
+        if (r->range.chunk_index * LEAF_CHUNK_SIZE <= r->range.end) {
+            r->range.chunk_index++;
         }
 
         uint64_t c = p->byte_playhead;
@@ -1114,6 +1381,7 @@ void peer_request_chunked_cb(evhttp_request *req, void *arg)
                 }
                 evhttp_send_reply_end(p->server_req);
                 p->server_req = NULL;
+                proxy_peer_requests_cancel(p);
             }
 
             //join_url_swarm(p->n, uri);
@@ -1124,7 +1392,7 @@ void peer_request_chunked_cb(evhttp_request *req, void *arg)
             }
             evhttp_uri_free(evuri);
 
-            // only cache if have_bitfield is all 1's. otherwise we need to track partials (or hashcehck on upload, which prevents sendfile)
+            // only cache if have_bitfield is all 1's. otherwise we need to track partials (or hashcheck on upload, which prevents sendfile)
             assert(p->merkle_tree_finished);
             assert(p->have_bitfield);
             if (proxy_is_complete(p)) {
@@ -1162,11 +1430,6 @@ void peer_request_chunked_cb(evhttp_request *req, void *arg)
                 rename(headers_name, cache_headers_path);
             }
 
-            if (r->chunk_index * LEAF_CHUNK_SIZE > r->range_end) {
-                // this request is done, and we can let the connection complete naturally
-                return;
-            }
-            proxy_cancel_peer_requests(p);
             return;
         }
     }
@@ -1210,7 +1473,7 @@ void peer_request_done_cb(evhttp_request *req, void *arg)
     r->pc = NULL;
     r->req = NULL;
     if (proxy_is_complete(r->p)) {
-        proxy_cancel_peer_requests(p);
+        proxy_peer_requests_cancel(p);
     } else {
         peer_request_cleanup(r);
     }
@@ -1218,13 +1481,39 @@ void peer_request_done_cb(evhttp_request *req, void *arg)
 
 void direct_submit_request(proxy_request *p)
 {
-    assert(!p->direct_req);
-    p->direct_req = evhttp_request_new(direct_request_done_cb, p);
+    direct_request *d = NULL;
 
-    copy_all_headers(p->server_req, p->direct_req);
+    if (!proxy_needs_any(p)) {
+        return;
+    }
 
-    evhttp_request_set_header_cb(p->direct_req, direct_header_cb);
-    evhttp_request_set_error_cb(p->direct_req, direct_error_cb);
+    for (size_t i = 0; i < lenof(p->direct_requests); i++) {
+        if (!p->direct_requests[i].req) {
+            d = &p->direct_requests[i];
+            break;
+        }
+    }
+    if (!d) {
+        return;
+    }
+
+    d->p = p;
+    d->req = evhttp_request_new(direct_request_done_cb, d);
+
+    copy_all_headers(p->server_req, d->req);
+
+    evhttp_request_set_header_cb(d->req, direct_header_cb);
+    evhttp_request_set_error_cb(d->req, direct_error_cb);
+
+    uint64_t range_start = proxy_new_range_start(p);
+    char range[1024];
+    snprintf(range, sizeof(range), "bytes=%"PRIu64"-", range_start);
+    evhttp_add_header(d->req->output_headers, "Range", range);
+    debug("%s: %s\n", "Range", range);
+    // if we have an ETag already, add If-Match so we get "416 Range Not Satisfiable" if the second request gets a different copy.
+    if (p->etag) {
+        evhttp_add_header(d->req->output_headers, "If-Match", p->etag);
+    }
 
     char request_uri[2048];
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(p->server_req);
@@ -1238,8 +1527,8 @@ void direct_submit_request(proxy_request *p)
     if (!evcon) {
         return;
     }
-    debug("p:%p con:%p direct request submitted: %s\n", p, evcon, p->uri);
-    evhttp_make_request(evcon, p->direct_req, p->http_method, request_uri);
+    debug("p:%p con:%p d:%p direct request submitted: %s\n", p, evcon, d, p->uri);
+    evhttp_make_request(evcon, d->req, p->http_method, request_uri);
 }
 
 address parse_address(const char *addr)
@@ -1252,7 +1541,7 @@ address parse_address(const char *addr)
     return a;
 }
 
-void append_via(evhttp_request *from, evhttp_request *to)
+void append_via(evhttp_request *from, evkeyvalq *to)
 {
     const char *via = NULL;
     char viab[2048];
@@ -1261,40 +1550,32 @@ void append_via(evhttp_request *from, evhttp_request *to)
     }
     assert(!via || strlen(via) < sizeof(viab)/2);
     snprintf(viab, sizeof(viab), "%s%s%s", via?:"", via ? ", " : "", via_tag);
-    overwrite_header(to, "Via", viab);
+    overwrite_kv_header(to, "Via", viab);
 }
 
 peer_request* proxy_make_request(proxy_request *p)
 {
     peer_request *r = NULL;
 
-    uint64_t range_start = p->range_start;
     for (size_t i = 0; i < lenof(p->requests); i++) {
         if (!p->requests[i].req) {
-            if (!r) {
-                r = &p->requests[i];
-            }
-        } else if (p->content_length) {
-            range_start = MAX(range_start, (p->range_end - p->requests[i].range_start) / 2);
+            r = &p->requests[i];
+            break;
         }
     }
     if (!r) {
         return NULL;
     }
+
     r->p = p;
     r->req = evhttp_request_new(peer_request_done_cb, r);
-    const char *request_header_whitelist[] = {"Referer", "Host", "Via", "Range"};
-    for (uint i = 0; i < lenof(request_header_whitelist); i++) {
-        copy_header(p->server_req, r->req, request_header_whitelist[i]);
-    }
-
-    append_via(p->server_req, r->req);
 
     evkeyval *header;
     TAILQ_FOREACH(header, &p->output_headers, next) {
         evhttp_add_header(r->req->output_headers, header->key, header->value);
     }
 
+    uint64_t range_start = proxy_new_range_start(p);
     char range[1024];
     snprintf(range, sizeof(range), "bytes=%"PRIu64"-", range_start);
     evhttp_add_header(r->req->output_headers, "Range", range);
@@ -1337,8 +1618,8 @@ peer* select_peer(peer_array *pa)
         c.never_connected = !p->last_connect;
         c.salt = random() & 0xFF;
         c.peer = p;
-        address *a = &p->addr;
         /*
+        address *a = &p->addr;
         sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
         debug("peer %s failed:%d verified_ago:%d last_connect:%d never_connected:%d salt:%d p:%p\n",
             peer_addr_str(p),
@@ -1432,11 +1713,12 @@ void proxy_submit_request(proxy_request *p)
     }
     */
 
-    const evhttp_uri *uri = evhttp_request_get_evhttp_uri(p->server_req);
+    evhttp_uri *uri = evhttp_uri_parse(p->uri);
     const char *host = evhttp_uri_get_host(uri);
     if (host) {
         fetch_url_swarm(p->n, host);
     }
+    evhttp_uri_free(uri);
 
     // TODO: kick off a separate HEAD request for hashes which blocks until hashes are available.
     // then we can use them immediately, before the download is finished.
@@ -1445,7 +1727,7 @@ void proxy_submit_request(proxy_request *p)
         return;
     }
 
-    const char *via = evhttp_find_header(p->server_req->input_headers, "Via");
+    const char *via = evhttp_find_header(r->req->input_headers, "Via");
     queue_request(p->n, &r->r, via, ^(peer_connection *pc) {
         r->pc = pc;
         peer_submit_request_on_con(r, r->pc->evcon);
@@ -1459,8 +1741,8 @@ void server_evcon_close_cb(evhttp_connection *evcon, void *ctx)
     evhttp_connection_set_closecb(evcon, NULL, NULL);
     p->server_req = NULL;
     p->dont_free = true;
-    proxy_cancel_direct(p);
-    proxy_cancel_peer_requests(p);
+    proxy_direct_requests_cancel(p);
+    proxy_peer_requests_cancel(p);
     p->dont_free = false;
     proxy_request_cleanup(p);
 }
@@ -1492,6 +1774,16 @@ void submit_request(network *n, evhttp_request *server_req)
     p->uri = strdup(evhttp_request_get_uri(p->server_req));
     p->m = alloc(merkle_tree);
     evhttp_connection_set_closecb(p->server_req->evcon, server_evcon_close_cb, p);
+
+    const char *request_header_whitelist[] = {"Referer", "Host", "Via", "Range"};
+    for (uint i = 0; i < lenof(request_header_whitelist); i++) {
+        const char *key = request_header_whitelist[i];
+        const char *value = evhttp_find_header(p->server_req->input_headers, key);
+        if (value) {
+            evhttp_add_header(&p->output_headers, key, value);
+        }
+    }
+    append_via(p->server_req, &p->output_headers);
 
     p->dont_free = true;
 
@@ -1609,7 +1901,7 @@ void trace_submit_request_on_con(trace_request *t, evhttp_connection *evcon)
     snprintf(user_agent, sizeof(user_agent), "newnode/%s", VERSION);
 #endif
     overwrite_header(req, "User-Agent", user_agent);
-    append_via(NULL, req);
+    append_via(NULL, req->output_headers);
     evhttp_request_set_error_cb(req, trace_error_cb);
     char request_uri[256];
     static uint32_t instance = 0;
@@ -1950,7 +2242,7 @@ void connect_peer(connect_req *c, bool injector_preference)
         c->proxy_req = evhttp_request_new(connect_done_cb, c);
         debug("c:%p %s made req:%p\n", c, __func__, c->proxy_req);
 
-        append_via(c->server_req, c->proxy_req);
+        append_via(c->server_req, c->proxy_req->output_headers);
 
         evhttp_request_set_header_cb(c->proxy_req, connect_header_cb);
         evhttp_request_set_error_cb(c->proxy_req, connect_error_cb);
@@ -2451,6 +2743,12 @@ network* client_init(port_t *http_port, port_t *socks_port)
     printf("listening on TCP:%s:%d,%d\n", "127.0.0.1", *http_port, *socks_port);
 
     load_peers(n);
+
+    // for local debugging
+    /*
+    sin.sin_port = htons(8004);
+    add_sockaddr(n, (sockaddr *)&sin, sizeof(sin));
+    */
 
     timer_callback cb = ^{
         dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm);

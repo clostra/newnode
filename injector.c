@@ -310,7 +310,7 @@ void connect_cleanup(connect_req *c, int err)
         // XXX: remove after no X-Sign clients exist
         crypto_generichash_state content_state;
         crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
-        evbuffer *request_buf = build_request_buffer(c->server_req, c->server_req->output_headers);
+        evbuffer *request_buf = build_request_buffer(c->server_req->response_code, c->server_req->output_headers);
         evbuffer_hash_update(request_buf, &content_state);
         evbuffer_free(request_buf);
 
