@@ -810,6 +810,7 @@ int direct_header_cb(evhttp_request *req, void *arg)
 
     evkeyval *header;
     TAILQ_FOREACH(header, req->input_headers, next) {
+        //debug("%s: %s\n", header->key, header->value);
         evhttp_add_header(&p->direct_headers, header->key, header->value);
     }
 
@@ -818,11 +819,13 @@ int direct_header_cb(evhttp_request *req, void *arg)
         return res;
     }
 
-    // if the server is capable of range requests, submit more requests
-    const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
-    const char *accept_ranges = evhttp_find_header(req->input_headers, "Accept-Ranges");
-    if (content_range || (accept_ranges && strstr(accept_ranges, "bytes"))) {
-        direct_submit_request(p);
+    if (req->type == EVHTTP_REQ_GET) {
+        // if the server is capable of range requests, submit more requests
+        const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
+        const char *accept_ranges = evhttp_find_header(req->input_headers, "Accept-Ranges");
+        if (content_range || (accept_ranges && strstr(accept_ranges, "bytes"))) {
+            direct_submit_request(p);
+        }
     }
 
     evhttp_request_set_chunked_cb(req, direct_chunked_cb);
@@ -1137,9 +1140,11 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
         return_connection(d->evcon);
         d->evcon = NULL;
     }
-    const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
-    if (content_range) {
-        direct_submit_request(p);
+    if (req->type == EVHTTP_REQ_GET) {
+        const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
+        if (content_range) {
+            direct_submit_request(p);
+        }
     }
     if (!proxy_request_any_direct(p) && !proxy_request_any_peers(p)) {
         proxy_request_cleanup(p);
@@ -1825,6 +1830,9 @@ void submit_request(network *n, evhttp_request *server_req)
     p->http_method = p->server_req->type;
     p->uri = strdup(evhttp_request_get_uri(p->server_req));
     p->m = alloc(merkle_tree);
+
+    debug("p:%p new request %s\n", p, p->uri);
+
     evhttp_connection_set_closecb(p->server_req->evcon, server_evcon_close_cb, p);
 
     const char *request_header_whitelist[] = {"Referer", "Host", "Via", "Range"};
