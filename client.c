@@ -140,6 +140,7 @@ struct proxy_request {
     uint64_t byte_playhead;
     bool *have_bitfield;
 
+    bool chunked:1;
     bool merkle_tree_finished:1;
     bool dont_free:1;
 };
@@ -726,8 +727,10 @@ int proxy_setup_range(proxy_request *p, evhttp_request *req, chunked_range *rang
     uint64_t total_length = 0;
     const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
     const char *content_length = evhttp_find_header(req->input_headers, "Content-Length");
+    const char *transfer_encoding = evhttp_find_header(req->input_headers, "Transfer-Encoding");
     debug("Content-Range: %s\n", content_range);
     debug("Content-Length: %s\n", content_length);
+    debug("Transfer-Encoding: %s\n", transfer_encoding);
     if (content_range) {
         sscanf(content_range, "bytes %"PRIu64"-%"PRIu64"/%"PRIu64, &range->start, &range->end, &total_length);
         uint64_t header_prefix = p->header_buf ? evbuffer_get_length(p->header_buf) : 0;
@@ -743,6 +746,9 @@ int proxy_setup_range(proxy_request *p, evhttp_request *req, chunked_range *rang
         }
         total_length = (uint64_t)clen;
         range->end = clen - 1;
+    } else if (transfer_encoding && strstr(transfer_encoding, "chunked")) {
+        // oh, bother.
+        p->chunked = true;
     }
 
     if (!p->header_buf) {
@@ -887,6 +893,9 @@ uint64_t proxy_new_range_start(const proxy_request *p)
 
 uint64_t chunk_length(proxy_request *p, uint64_t chunk_index)
 {
+    if (p->chunked) {
+        return LEAF_CHUNK_SIZE;
+    }
     if ((chunk_index + 1) * LEAF_CHUNK_SIZE <= p->total_length) {
         return LEAF_CHUNK_SIZE;
     }
@@ -1023,7 +1032,7 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
         }
 
         debug("d:%p progress p->byte_playhead:%"PRIu64" p->total_length:%"PRIu64"\n", d, p->byte_playhead, p->total_length);
-        if (p->byte_playhead == p->total_length) {
+        if (!p->chunked && p->byte_playhead == p->total_length) {
             if (p->server_req) {
                 if (p->server_req->evcon) {
                     evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
@@ -1054,6 +1063,13 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
 
             proxy_submit_request(p);
             return true;
+        }
+
+        if (p->chunked) {
+            p->total_length = evbuffer_get_length(p->header_buf) + p->byte_playhead;
+            uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
+            p->have_bitfield = realloc(p->have_bitfield, num_chunks);
+            continue;
         }
 
         uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
@@ -1107,10 +1123,16 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
     }
     debug("d:%p (%.2fms) %s %s\n", d, pdelta(p), __func__, p->uri);
     d->req = NULL;
-    // if there is not content there weren't any chunks. manually trigger the chunk_cb
-    if (!p->content_length) {
-        direct_request_process_chunks(d, req);
+
+    if (p->chunked) {
+        p->total_length = evbuffer_get_length(p->header_buf) + p->byte_playhead;
+        uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
+        p->have_bitfield = realloc(p->have_bitfield, num_chunks);
+        p->chunked = false;
     }
+    // there may have been no chunks, or a chunked transfer of unknown length. call the chunked_cb one last time
+    direct_request_process_chunks(d, req);
+
     if (req->response_code != 0) {
         return_connection(d->evcon);
         d->evcon = NULL;
