@@ -496,7 +496,7 @@ void proxy_send_error(proxy_request *p, int error, const char *reason)
         if (p->server_req->evcon) {
             evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
         }
-        if (!p->server_req->response_code) {
+        if (p->server_req->response_code) {
             debug("p:%p %s can't send error, terminating connection. %d %s\n", p, __func__, error, reason);
             evhttp_send_reply_end(p->server_req);
         } else {
@@ -634,6 +634,10 @@ void peer_request_cancel(peer_request *r)
         peer_disconnect(r->pc);
         r->pc = NULL;
     }
+    if (r->range.chunk_buffer) {
+        evbuffer_free(r->range.chunk_buffer);
+        r->range.chunk_buffer = NULL;
+    }
 }
 
 void proxy_peer_requests_cancel(proxy_request *p)
@@ -770,6 +774,10 @@ int proxy_setup_range(proxy_request *p, evhttp_request *req, chunked_range *rang
     p->content_length = total_length;
     if (!p->range_end && p->content_length > 0) {
         p->range_end = p->content_length - 1;
+    }
+
+    if (req->type == EVHTTP_REQ_HEAD) {
+        total_length = 0;
     }
 
     total_length += evbuffer_get_length(p->header_buf);
@@ -922,6 +930,29 @@ char* cache_name_from_uri(const char *uri)
     return encoded_uri;
 }
 
+void proxy_request_reply_start(proxy_request *p, evhttp_request *req)
+{
+    assert(!p->byte_playhead);
+    if (!p->server_req) {
+        return;
+    }
+    copy_response_headers(req, p->server_req);
+    evhttp_remove_header(p->server_req->output_headers, "Content-Length");
+    p->byte_playhead = evbuffer_get_length(p->header_buf);
+    const char *range = evhttp_find_header(p->server_req->input_headers, "Range");
+    if (!range && req->response_code == 206) {
+        evhttp_send_reply_start(p->server_req, 200, "OK");
+    } else {
+        if (range) {
+            char content_range[1024];
+            snprintf(content_range, sizeof(content_range), "bytes %"PRIu64"-%"PRIu64"/%"PRIu64,
+                     p->range_start, p->range_end, p->content_length);
+            overwrite_kv_header(p->server_req->output_headers, "Content-Range", content_range);
+        }
+        evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
+    }
+}
+
 bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
 {
     proxy_request *p = d->p;
@@ -981,23 +1012,7 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
                 debug("d:%p send this chunk p->byte_playhead:%"PRIu64" (r->chunk_index * LEAF_CHUNK_SIZE):%"PRIu64"\n",
                       d, p->byte_playhead, r->chunk_index * LEAF_CHUNK_SIZE);
                 if (!p->byte_playhead) {
-                    if (p->server_req) {
-                        copy_response_headers(req, p->server_req);
-                        evhttp_remove_header(p->server_req->output_headers, "Content-Length");
-                        p->byte_playhead = evbuffer_get_length(p->header_buf);
-                        const char *range = evhttp_find_header(p->server_req->input_headers, "Range");
-                        if (!range && req->response_code == 206) {
-                            evhttp_send_reply_start(p->server_req, 200, "OK");
-                        } else {
-                            if (range) {
-                                char content_range[1024];
-                                snprintf(content_range, sizeof(content_range), "bytes %"PRIu64"-%"PRIu64"/%"PRIu64,
-                                         p->range_start, p->range_end, p->content_length);
-                                overwrite_kv_header(p->server_req->output_headers, "Content-Range", content_range);
-                            }
-                            evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
-                        }
-                    }
+                    proxy_request_reply_start(p, req);
                 }
                 if (p->server_req) {
                     evhttp_send_reply_chunk(p->server_req, r->chunk_buffer);
@@ -1133,6 +1148,7 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
         p->have_bitfield = realloc(p->have_bitfield, num_chunks);
         p->chunked = false;
     }
+
     // there may have been no chunks, or a chunked transfer of unknown length. call the chunked_cb one last time
     direct_request_process_chunks(d, req);
 
@@ -1369,22 +1385,9 @@ bool peer_request_process_chunks(peer_request *r, evhttp_request *req)
         debug("p->byte_playhead:%"PRIu64" (r->chunk_index * LEAF_CHUNK_SIZE):%"PRIu64"\n", p->byte_playhead, r->range.chunk_index * LEAF_CHUNK_SIZE);
         if (p->byte_playhead == r->range.chunk_index * LEAF_CHUNK_SIZE) {
             if (!p->byte_playhead) {
+                // XXX: TODO: MIX_DIRECT
                 proxy_direct_requests_cancel(p);
-                if (p->server_req) {
-                    copy_response_headers(req, p->server_req);
-                    evhttp_remove_header(p->server_req->output_headers, "Content-Length");
-                    char content_range[1024];
-                    snprintf(content_range, sizeof(content_range), "bytes %"PRIu64"-%"PRIu64"/%"PRIu64,
-                             p->range_start, p->range_end, p->content_length);
-                    evhttp_add_header(p->server_req->output_headers, "Content-Range", content_range);
-                    p->byte_playhead = evbuffer_get_length(p->header_buf);
-                    const char *range = evhttp_find_header(p->server_req->input_headers, "Range");
-                    if (!range && req->response_code == 206) {
-                        evhttp_send_reply_start(p->server_req, 200, "OK");
-                    } else {
-                        evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
-                    }
-                }
+                proxy_request_reply_start(p, req);
             }
             if (p->server_req) {
                 evhttp_send_reply_chunk(p->server_req, r->range.chunk_buffer);
@@ -1522,10 +1525,8 @@ void peer_request_done_cb(evhttp_request *req, void *arg)
         return;
     }
 
-    // if there is not content there weren't any chunks. manually process the first header-filled chunk
-    if (!p->content_length) {
-        peer_request_process_chunks(r, req);
-    }
+    // there may have been no chunks, or a chunked transfer of unknown length. call the chunked_cb one last time
+    peer_request_process_chunks(r, req);
 
     peer_reuse(p->n, r->pc);
     r->pc = NULL;
@@ -1654,7 +1655,7 @@ peer_request* proxy_make_request(proxy_request *p)
 void peer_submit_request_on_con(peer_request *r, evhttp_connection *evcon)
 {
     proxy_request *p = r->p;
-    debug("r:%p con:%p proxy request submitted: %s\n", r, evcon, evhttp_request_get_uri(r->req));
+    debug("r:%p con:%p proxy request submitted: %s\n", r, evcon, p->uri);
     evhttp_make_request(evcon, r->req, p->http_method, p->uri);
 }
 
