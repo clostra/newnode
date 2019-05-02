@@ -25,7 +25,8 @@ typedef enum evhttp_request_error evhttp_request_error;
 void join_url_swarm(network *n, const char *url);
 void fetch_url_swarm(network *n, const char *url);
 
-const char *evhttp_method(evhttp_cmd_type type);
+const char* evhttp_method(evhttp_cmd_type type);
+const char* evhttp_request_error_str(evhttp_request_error error);
 
 int get_port_for_scheme(const char *scheme);
 

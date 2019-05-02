@@ -47,7 +47,7 @@ void fetch_url_swarm(network *n, const char *url)
     dht_get_peers(n->dht, url_hash);
 }
 
-const char *evhttp_method(evhttp_cmd_type type)
+const char* evhttp_method(evhttp_cmd_type type)
 {
     switch (type) {
     case EVHTTP_REQ_GET: return "GET";
@@ -60,6 +60,19 @@ const char *evhttp_method(evhttp_cmd_type type)
     case EVHTTP_REQ_CONNECT: return "CONNECT";
     case EVHTTP_REQ_PATCH: return "PATCH";
     }
+    return NULL;
+}
+
+const char* evhttp_request_error_str(evhttp_request_error error)
+{
+    switch (error) {
+    case EVREQ_HTTP_TIMEOUT: return "TIMEOUT";
+    case EVREQ_HTTP_EOF: return "EOF";
+    case EVREQ_HTTP_INVALID_HEADER: return "INVALID_HEADER";
+    case EVREQ_HTTP_BUFFER_ERROR: return "BUFFER_ERROR";
+    case EVREQ_HTTP_REQUEST_CANCEL: return "REQUEST_CANCEL";
+    case EVREQ_HTTP_DATA_TOO_LONG: return "DATA_TOO_LONG";
+    };
     return NULL;
 }
 
