@@ -735,25 +735,25 @@ int proxy_setup_range(proxy_request *p, evhttp_request *req, chunked_range *rang
     const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
     const char *content_length = evhttp_find_header(req->input_headers, "Content-Length");
     const char *transfer_encoding = evhttp_find_header(req->input_headers, "Transfer-Encoding");
-    debug("Content-Range: %s\n", content_range);
-    debug("Content-Length: %s\n", content_length);
-    debug("Transfer-Encoding: %s\n", transfer_encoding);
     if (content_range) {
+        debug("Content-Range: %s\n", content_range);
         sscanf(content_range, "bytes %"PRIu64"-%"PRIu64"/%"PRIu64, &range->start, &range->end, &total_length);
         uint64_t header_prefix = p->header_buf ? evbuffer_get_length(p->header_buf) : 0;
         range->chunk_index = (range->start + header_prefix) / LEAF_CHUNK_SIZE;
         debug("p:%p start:%"PRIu64" chunk_index:%"PRIu64"\n", p, range->start, range->chunk_index);
     } else if (content_length) {
+        debug("Content-Length: %s\n", content_length);
         char *endp;
         ev_int64_t clen = evutil_strtoll(content_length, &endp, 10);
         if (*content_length == '\0' || *endp != '\0' || clen < 0) {
             debug("%s: illegal content length: %s", __func__, content_length);
-            proxy_send_error(p, 502, "Incorrect Gateway Content-Length");
+            proxy_send_error(p, 502, "Invalid Gateway Content-Length");
             return -1;
         }
         total_length = (uint64_t)clen;
         range->end = clen - 1;
     } else if (transfer_encoding && strstr(transfer_encoding, "chunked")) {
+        debug("Transfer-Encoding: %s\n", transfer_encoding);
         // oh, bother.
         p->chunked = true;
     }
