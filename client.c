@@ -1892,7 +1892,7 @@ void submit_request(network *n, evhttp_request *server_req)
 
     evhttp_connection_set_closecb(p->server_req->evcon, server_evcon_close_cb, p);
 
-    const char *request_header_whitelist[] = {"Referer", "Origin", "Host", "Via", "Range"};
+    const char *request_header_whitelist[] = {"Referer", "Origin", "Host", "Via", "Range", "Accept-Encoding"};
     for (uint i = 0; i < lenof(request_header_whitelist); i++) {
         const char *key = request_header_whitelist[i];
         const char *value = evhttp_find_header(p->server_req->input_headers, key);
