@@ -43,6 +43,25 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		3C3C0895227BC79500232FDB /* log.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = log.h; sourceTree = "<group>"; };
+		3C3C0896227BC79500232FDB /* utp_bufferevent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = utp_bufferevent.h; sourceTree = "<group>"; };
+		3C3C0897227BC79500232FDB /* khash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = khash.h; sourceTree = "<group>"; };
+		3C3C0898227BC79500232FDB /* merkle_tree.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = merkle_tree.h; sourceTree = "<group>"; };
+		3C3C0899227BC79500232FDB /* icmp_handler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = icmp_handler.h; sourceTree = "<group>"; };
+		3C3C089A227BC79500232FDB /* base64.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = base64.h; sourceTree = "<group>"; };
+		3C3C089B227BC79500232FDB /* hash_table.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hash_table.h; sourceTree = "<group>"; };
+		3C3C089C227BC79500232FDB /* bev_splice.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = bev_splice.h; sourceTree = "<group>"; };
+		3C3C089D227BC79500232FDB /* timer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = timer.h; sourceTree = "<group>"; };
+		3C3C089E227BC79500232FDB /* backtrace.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = backtrace.h; sourceTree = "<group>"; };
+		3C3C089F227BC79500232FDB /* ios.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ios.h; sourceTree = "<group>"; };
+		3C3C08A0227BC79500232FDB /* obfoo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = obfoo.h; sourceTree = "<group>"; };
+		3C3C08A1227BC79500232FDB /* dht.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = dht.h; sourceTree = "<group>"; };
+		3C3C08A2227BC79500232FDB /* lsd.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = lsd.h; sourceTree = "<group>"; };
+		3C3C08A3227BC79500232FDB /* http.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = http.h; sourceTree = "<group>"; };
+		3C3C08A4227BC79500232FDB /* newnode.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = newnode.h; sourceTree = "<group>"; };
+		3C3C08A5227BC79500232FDB /* constants.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = constants.h; sourceTree = "<group>"; };
+		3C3C08A6227BC79600232FDB /* network.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = network.h; sourceTree = "<group>"; };
+		3C3C08A7227BC79600232FDB /* sha1.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = sha1.h; sourceTree = "<group>"; };
 		3C4B399321B2A3B40031CCA2 /* newnode */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = newnode; sourceTree = BUILT_PRODUCTS_DIR; };
 		3C4B399D21B2A4830031CCA2 /* lsd.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = lsd.c; sourceTree = "<group>"; };
 		3C4B399E21B2A4830031CCA2 /* timer.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = timer.c; sourceTree = "<group>"; };
@@ -103,22 +122,41 @@
 		3C4B399521B2A3B40031CCA2 /* newnode */ = {
 			isa = PBXGroup;
 			children = (
+				3C3C089E227BC79500232FDB /* backtrace.h */,
 				3C4B399F21B2A4830031CCA2 /* base64.c */,
+				3C3C089A227BC79500232FDB /* base64.h */,
 				3C4B39AC21B2A4830031CCA2 /* bev_splice.c */,
+				3C3C089C227BC79500232FDB /* bev_splice.h */,
 				3C4B39A421B2A4830031CCA2 /* client_main.c */,
 				3C4B39A821B2A4830031CCA2 /* client.c */,
+				3C3C08A5227BC79500232FDB /* constants.h */,
 				3C4B39A021B2A4830031CCA2 /* dht.c */,
+				3C3C08A1227BC79500232FDB /* dht.h */,
 				3C4B39A921B2A4830031CCA2 /* hash_table.c */,
+				3C3C089B227BC79500232FDB /* hash_table.h */,
 				3C4B39A521B2A4830031CCA2 /* http.c */,
+				3C3C08A3227BC79500232FDB /* http.h */,
 				3C4B39A621B2A4830031CCA2 /* icmp_handler.c */,
+				3C3C0899227BC79500232FDB /* icmp_handler.h */,
+				3C3C089F227BC79500232FDB /* ios.h */,
+				3C3C0897227BC79500232FDB /* khash.h */,
 				3C4B39A121B2A4830031CCA2 /* log.c */,
+				3C3C0895227BC79500232FDB /* log.h */,
 				3C4B399D21B2A4830031CCA2 /* lsd.c */,
+				3C3C08A2227BC79500232FDB /* lsd.h */,
 				3C4B39AA21B2A4830031CCA2 /* merkle_tree.c */,
+				3C3C0898227BC79500232FDB /* merkle_tree.h */,
 				3C4B39A221B2A4830031CCA2 /* network.c */,
+				3C3C08A6227BC79600232FDB /* network.h */,
+				3C3C08A4227BC79500232FDB /* newnode.h */,
 				3C4B39A721B2A4830031CCA2 /* obfoo.c */,
+				3C3C08A0227BC79500232FDB /* obfoo.h */,
 				3C4B39AB21B2A4830031CCA2 /* sha1.c */,
+				3C3C08A7227BC79600232FDB /* sha1.h */,
 				3C4B399E21B2A4830031CCA2 /* timer.c */,
+				3C3C089D227BC79500232FDB /* timer.h */,
 				3C4B39A321B2A4830031CCA2 /* utp_bufferevent.c */,
+				3C3C0896227BC79500232FDB /* utp_bufferevent.h */,
 			);
 			name = newnode;
 			sourceTree = "<group>";
