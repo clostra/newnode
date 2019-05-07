@@ -1918,6 +1918,7 @@ void submit_request(network *n, evhttp_request *server_req)
     case EVHTTP_REQ_HEAD:
     case EVHTTP_REQ_CONNECT:
     case EVHTTP_REQ_TRACE:
+    case EVHTTP_REQ_OPTIONS:
         proxy_submit_request(p);
     default:
         break;
