@@ -1058,7 +1058,7 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
         off_t offset = p->byte_playhead;
         uint64_t length = c - offset;
         if (length) {
-            debug("d:%p sending offset:%"PRIu64" length:%"PRIu64"\n", d, offset, length);
+            debug("d:%p sending offset:%"PRIu64" length:%"PRIu64"\n", d, (uint64_t)offset, length);
             evbuffer_file_segment *seg = evbuffer_file_segment_new(p->cache_file, offset, length, 0);
             if (!seg) {
                 fprintf(stderr, "d:%p evbuffer_file_segment_new %d (%s)\n", d, errno, strerror(errno));
