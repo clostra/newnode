@@ -184,5 +184,6 @@ public class NewNode {
     public static native void useEphemeralPort();
     public static native void registerProxy();
     public static native void unregisterProxy();
+    public static native void setLogLevel(int level);
     public static native void updateBugsnagDetails(int notifyType);
 }
