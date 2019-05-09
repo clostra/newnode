@@ -256,6 +256,11 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_unregisterProxy(JNIEnv* 
     (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("proxyPort"));
 }
 
+JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
+{
+    o_debug = level;
+}
+
 // XXX: compat
 JNIEXPORT void JNICALL Java_com_clostra_dcdn_Dcdn_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
 {
