@@ -39,6 +39,18 @@ LIBUTP_CFLAGS=-Ilibutp
 LIBUTP=libutp/libutp.a
 
 
+if ! echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null; then
+    cd blocksruntime
+    if [ ! -f $TRIPLE/libBlocksRuntime.a ]; then
+        ./buildlib
+        mkdir $TRIPLE
+        mv libBlocksRuntime.a $TRIPLE
+    fi
+    cd ..
+    LIBBLOCKSRUNTIME_CFLAGS=-Iblocksruntime/BlocksRuntime
+    LIBBLOCKSRUNTIME="-lBlocksRuntime"
+fi
+
 FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Wno-error=shadow -Wfatal-errors \
   -fPIC -fblocks -fdata-sections -ffunction-sections \
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
@@ -54,8 +66,6 @@ CFLAGS="$FLAGS -std=gnu11"
 
 echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
-echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LIBBLOCKSRUNTIME="-lBlocksRuntime"
-echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LIBBLOCKSRUNTIME_CFLAGS=-Iblocksruntime/BlocksRuntime
 
 rm *.o || true
 clang $CFLAGS -c dht/dht.c -o dht_dht.o
