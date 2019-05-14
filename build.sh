@@ -55,12 +55,13 @@ CFLAGS="$FLAGS -std=gnu11"
 echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
 echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LIBBLOCKSRUNTIME="-lBlocksRuntime"
+echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null || LIBBLOCKSRUNTIME_CFLAGS=-Iblocksruntime/BlocksRuntime
 
 rm *.o || true
 clang $CFLAGS -c dht/dht.c -o dht_dht.o
 for file in client.c client_main.c injector.c dht.c bev_splice.c base64.c http.c log.c lsd.c icmp_handler.c hash_table.c \
             merkle_tree.c network.c obfoo.c sha1.c timer.c utp_bufferevent.c; do
-    clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS -c $file
+    clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
 done
 mv client.o client.o.tmp
 mv client_main.o client_main.o.tmp
