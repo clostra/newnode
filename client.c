@@ -935,7 +935,7 @@ char* cache_name_from_uri(const char *uri)
         crypto_generichash(uri_hash, sizeof(uri_hash), (uint8_t*)uri, strlen(uri), NULL, 0);
         size_t b64_hash_len;
         char *b64_hash = base64_urlsafe_encode(uri_hash, sizeof(uri_hash), &b64_hash_len);
-        assert(b64_hash_len > name_max);
+        assert(b64_hash_len < name_max);
         encoded_uri[name_max - b64_hash_len - 2] = '.';
         strcpy(&encoded_uri[name_max - b64_hash_len - 1], b64_hash);
         free(b64_hash);
@@ -1620,9 +1620,6 @@ void direct_submit_request(proxy_request *p)
         break;
     }
     case EVHTTP_REQ_POST: {
-        int blen = (int)evbuffer_get_length(p->server_req->input_buffer);
-        const char *p2 = (const char*)evbuffer_pullup(p->server_req->input_buffer, blen);
-        debug("%.*s\n", blen, p2);
         evbuffer_add_buffer_reference(d->req->output_buffer, p->server_req->input_buffer);
     }
     default:
@@ -2067,15 +2064,25 @@ typedef struct {
     evhttp_request *server_req;
     // SOCKS5 request
     bufferevent *server_bev;
-    char *host;
-    port_t port;
 
+    // through proxy
     evhttp_request *proxy_req;
-    bufferevent *direct;
     pending_request r;
     peer_connection *pc;
+    // direct
+    bufferevent *direct;
+
     network *n;
+
+    evbuffer *intro_data;
+    bufferevent *pending_bev;
+    bufferevent *bevs[10];
+
+    char *host;
+    port_t port;
     int attempts;
+
+    bool dont_free:1;
 } connect_req;
 
 void free_write_cb(bufferevent *bev, void *ctx)
@@ -2094,8 +2101,16 @@ void socks_reply(bufferevent *bev, uint8_t resp)
 
 bool connect_exhausted(connect_req *c)
 {
-    debug("%s direct:%p proxy_req:%p on_connect:%p\n", __func__, c->direct, c->proxy_req, c->r.on_connect);
-    return !(c->direct || c->proxy_req || c->r.on_connect);
+    debug("c:%p %s direct:%p proxy_req:%p on_connect:%p\n", c, __func__, c->direct, c->proxy_req, c->r.on_connect);
+    if (c->direct || c->proxy_req || c->r.on_connect) {
+        return false;
+    }
+    for (size_t i = 0; i < lenof(c->bevs); i++) {
+        if (c->bevs[i]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void connect_socks_reply(connect_req *c, uint8_t resp)
@@ -2123,43 +2138,26 @@ void connect_send_error(connect_req *c, int error, const char *reason)
 
 void connect_cleanup(connect_req *c)
 {
-    if (!connect_exhausted(c)) {
+    debug("c:%p %s\n", c, __func__);
+    if (c->dont_free || !connect_exhausted(c) ) {
         return;
     }
     assert(!c->server_req);
     assert(!c->server_bev);
+    if (c->pending_bev) {
+        bufferevent_free(c->pending_bev);
+        c->pending_bev = NULL;
+    }
+    if (c->intro_data) {
+        evbuffer_free(c->intro_data);
+        c->intro_data = NULL;
+    }
     if (c->pc) {
         peer_disconnect(c->pc);
         c->pc = NULL;
     }
     free(c->host);
     free(c);
-}
-
-void connected(connect_req *c, bufferevent *other)
-{
-    debug("c:%p connected other:%p\n", c, other);
-    bufferevent *bev;
-    if (c->server_req) {
-        evhttp_connection *evcon = c->server_req->evcon;
-        bev = evhttp_connection_detach_bufferevent(evcon);
-        debug("c:%p detach from server r:%p evcon:%p bev:%p\n", c, c->server_req, evcon, bev);
-        bufferevent_setcb(bev, NULL, NULL, NULL, NULL);
-        evhttp_connection_set_closecb(evcon, NULL, NULL);
-        c->server_req = NULL;
-        evbuffer_add_printf(bufferevent_get_output(bev), "HTTP/1.0 200 Connection established\r\n\r\n");
-    } else {
-        bev = c->server_bev;
-        c->server_bev = NULL;
-        bufferevent_setcb(bev, NULL, NULL, NULL, NULL);
-        // XXX: should contain ipv4/v6:port instead of 0x00s
-        uint8_t r[] = {0x05, SOCKS5_REPLY_GRANTED, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-        bufferevent_write(bev, r, sizeof(r));
-    }
-    connect_cleanup(c);
-    bev_splice(bev, other);
-    bufferevent_enable(bev, EV_READ|EV_WRITE);
-    bufferevent_enable(other, EV_READ|EV_WRITE);
 }
 
 void connect_proxy_cancel(connect_req *c)
@@ -2176,9 +2174,124 @@ void connect_proxy_cancel(connect_req *c)
 
 void connect_direct_cancel(connect_req *c)
 {
+    debug("c:%p %s\n", c, __func__);
     if (c->direct) {
         bufferevent_free(c->direct);
         c->direct = NULL;
+    }
+}
+
+void connect_server_read_cb(bufferevent *bev, void *ctx)
+{
+    connect_req *c = (connect_req *)ctx;
+    debug("c:%p %s\n", c, __func__);
+    evbuffer *input = bufferevent_get_input(bev);
+    for (size_t i = 0; i < lenof(c->bevs); i++) {
+        if (c->bevs[i]) {
+            evbuffer_add_buffer_reference(bufferevent_get_output(c->bevs[i]), input);
+        }
+    }
+    bufferevent_read_buffer(c->pending_bev, c->intro_data);
+}
+
+void connect_server_event_cb(bufferevent *bev, short events, void *ctx)
+{
+    connect_req *c = (connect_req *)ctx;
+    debug("c:%p %s events:0x%x\n", c, __func__, events);
+    c->dont_free = true;
+    connect_proxy_cancel(c);
+    connect_direct_cancel(c);
+    c->dont_free = false;
+    connect_cleanup(c);
+}
+
+void connect_other_read_cb(bufferevent *bev, void *ctx)
+{
+    connect_req *c = (connect_req *)ctx;
+    debug("c:%p %s\n", c, __func__);
+
+    for (size_t i = 0; i < lenof(c->bevs); i++) {
+        if (c->bevs[i] && c->bevs[i] != bev) {
+            bufferevent_free(c->bevs[i]);
+        }
+        c->bevs[i] = NULL;
+    }
+
+    // connected!
+    bufferevent *server = c->pending_bev;
+    c->pending_bev = NULL;
+    c->dont_free = true;
+    connect_proxy_cancel(c);
+    connect_direct_cancel(c);
+    c->dont_free = false;
+    connect_cleanup(c);
+    bev_splice(server, bev);
+    bufferevent_enable(server, EV_READ|EV_WRITE);
+    bufferevent_enable(bev, EV_READ|EV_WRITE);
+}
+
+void connect_other_event_cb(bufferevent *bev, short events, void *ctx)
+{
+    connect_req *c = (connect_req *)ctx;
+    debug("c:%p %s bev:%p events:0x%x\n", c, __func__, bev, events);
+
+    for (size_t i = 0; i < lenof(c->bevs); i++) {
+        if (c->bevs[i] == bev) {
+            c->bevs[i] = NULL;
+            break;
+        }
+        assert(i != lenof(c->bevs) - 1);
+    }
+}
+
+void connected(connect_req *c, bufferevent *other)
+{
+    debug("c:%p %s other:%p\n", c, __func__, other);
+
+    if (c->server_req) {
+        evhttp_connection *evcon = c->server_req->evcon;
+        c->pending_bev = evhttp_connection_detach_bufferevent(evcon);
+        evhttp_connection_set_closecb(evcon, NULL, NULL);
+        c->server_req = NULL;
+        debug("c:%p detach from server_req r:%p evcon:%p bev:%p\n", c, c->server_req, evcon, c->pending_bev);
+
+        bufferevent_setcb(c->pending_bev, connect_server_read_cb, NULL, connect_server_event_cb, c);
+        bufferevent_setcb(other, connect_other_read_cb, NULL, connect_other_event_cb, c);
+        bufferevent_enable(c->pending_bev, EV_READ|EV_WRITE);
+        bufferevent_enable(other, EV_READ|EV_WRITE);
+        if (c->intro_data) {
+            evbuffer_add_buffer_reference(bufferevent_get_output(other), c->intro_data);
+        } else {
+            c->intro_data = evbuffer_new();
+            bufferevent_read_buffer(c->pending_bev, c->intro_data);
+            evbuffer_add_printf(bufferevent_get_output(c->pending_bev), "HTTP/1.0 200 Connection established\r\n\r\n");
+        }
+    } else {
+        if (c->server_bev) {
+            c->pending_bev = c->server_bev;
+            c->server_bev = NULL;
+            debug("c:%p detach from server_bev bev:%p\n", c, c->pending_bev);
+        }
+        bufferevent_setcb(c->pending_bev, connect_server_read_cb, NULL, connect_server_event_cb, c);
+        bufferevent_setcb(other, connect_other_read_cb, NULL, connect_other_event_cb, c);
+        bufferevent_enable(c->pending_bev, EV_READ|EV_WRITE);
+        bufferevent_enable(other, EV_READ|EV_WRITE);
+        if (c->intro_data) {
+            evbuffer_add_buffer_reference(bufferevent_get_output(other), c->intro_data);
+        } else {
+            c->intro_data = evbuffer_new();
+            bufferevent_read_buffer(c->pending_bev, c->intro_data);
+            // XXX: should contain ipv4/v6:port instead of 0x00s
+            uint8_t r[] = {0x05, SOCKS5_REPLY_GRANTED, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+            bufferevent_write(c->pending_bev, r, sizeof(r));
+        }
+    }
+    for (size_t i = 0; i < lenof(c->bevs); i++) {
+        if (!c->bevs[i]) {
+            c->bevs[i] = other;
+            break;
+        }
+        assert(i != lenof(c->bevs) - 1);
     }
 }
 
@@ -2277,8 +2390,6 @@ int connect_header_cb(evhttp_request *req, void *arg)
     free(c->pc);
     c->pc = NULL;
 
-    connect_direct_cancel(c);
-
     debug("c:%p detach from client r:%p evcon:%p\n", c, req, req->evcon);
     connected(c, evhttp_connection_detach_bufferevent(req->evcon));
     return -1;
@@ -2310,10 +2421,10 @@ void connect_error_cb(evhttp_request_error error, void *arg)
     connect_cleanup(c);
 }
 
-void connect_event_cb(bufferevent *bev, short events, void *ctx)
+void connect_direct_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p connect_event_cb events:0x%x bev:%p req:%s\n", c, events, bev,
+    debug("c:%p %s events:0x%x bev:%p req:%s\n", c, __func__, events, bev,
         c->server_req ? evhttp_request_get_uri(c->server_req) : "(null)");
 
     if (events & BEV_EVENT_TIMEOUT) {
@@ -2337,7 +2448,6 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
         connect_send_error(c, code, reason);
         connect_cleanup(c);
     } else if (events & BEV_EVENT_CONNECTED) {
-        connect_proxy_cancel(c);
         c->direct = NULL;
         connected(c, bev);
     }
@@ -2349,8 +2459,10 @@ void connect_evcon_close_cb(evhttp_connection *evcon, void *ctx)
     debug("c:%p connect_evcon_close_cb\n", c);
     evhttp_connection_set_closecb(evcon, NULL, NULL);
     c->server_req = NULL;
+    c->dont_free = true;
     connect_proxy_cancel(c);
     connect_direct_cancel(c);
+    c->dont_free = false;
     connect_cleanup(c);
 }
 
@@ -2361,7 +2473,7 @@ void connect_peer(connect_req *c, bool injector_preference)
     assert(!c->pc);
     assert(!c->r.on_connect);
     assert(!c->proxy_req);
-    const char *via = evhttp_find_header(c->server_req->input_headers, "Via");
+    const char *via = c->server_req ? evhttp_find_header(c->server_req->input_headers, "Via") : NULL;
     queue_request(c->n, &c->r, via, ^(peer_connection *pc) {
         debug("c:%p %s on_connect\n", c, __func__);
         assert(!c->pc);
@@ -2414,7 +2526,7 @@ void connect_request(network *n, evhttp_request *req)
 
 #if !NO_DIRECT
     c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
-    bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
+    bufferevent_setcb(c->direct, NULL, NULL, connect_direct_event_cb, c);
     bufferevent_enable(c->direct, EV_READ);
 #endif
 
@@ -2632,7 +2744,6 @@ void socks_connect_event_cb(bufferevent *bev, short events, void *ctx)
         c->direct = NULL;
         connect_cleanup(c);
     } else if (events & BEV_EVENT_CONNECTED) {
-        connect_proxy_cancel(c);
         c->direct = NULL;
         connected(c, bev);
     }
