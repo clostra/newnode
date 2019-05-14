@@ -15,7 +15,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get -q update && \
 RUN adduser --home /opt/newnode newnode
 
 ADD ./ /opt/newnode
-RUN chown 1000:1000 /opt/newnode
+RUN chown -R 1000:1000 /opt/newnode
 
 USER newnode
 WORKDIR /opt/newnode
