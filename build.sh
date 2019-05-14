@@ -41,14 +41,14 @@ LIBUTP=libutp/libutp.a
 
 if ! echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null; then
     cd blocksruntime
-    if [ ! -f $TRIPLE/libBlocksRuntime.a ]; then
+    if [ ! -f native/libBlocksRuntime.a ]; then
         ./buildlib
-        mkdir $TRIPLE
-        mv libBlocksRuntime.a $TRIPLE
+        mkdir native
+        mv libBlocksRuntime.a native
     fi
     cd ..
     LIBBLOCKSRUNTIME_CFLAGS=-Iblocksruntime/BlocksRuntime
-    LIBBLOCKSRUNTIME="-lBlocksRuntime"
+    LIBBLOCKSRUNTIME=blocksruntime/native/libBlocksRuntime.a
 fi
 
 FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Wno-error=shadow -Wfatal-errors \
