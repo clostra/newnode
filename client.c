@@ -1110,7 +1110,7 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
         }
 
         if (p->chunked) {
-            p->total_length = evbuffer_get_length(p->header_buf) + p->byte_playhead;
+            p->total_length = p->byte_playhead;
             uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
             p->have_bitfield = realloc(p->have_bitfield, num_chunks);
             continue;
