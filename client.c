@@ -1169,7 +1169,11 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
 
     if (p->chunked) {
         size_t buffered = d->range.chunk_buffer ? evbuffer_get_length(d->range.chunk_buffer) : 0;
-        p->total_length = evbuffer_get_length(p->header_buf) + p->byte_playhead + buffered;
+        if (!d->range.chunk_index) {
+            p->total_length = evbuffer_get_length(p->header_buf) + buffered;
+        } else {
+            p->total_length = p->byte_playhead + buffered;
+        }
         uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
         p->have_bitfield = realloc(p->have_bitfield, num_chunks);
         p->chunked = false;
