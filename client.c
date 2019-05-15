@@ -2078,8 +2078,7 @@ typedef struct {
     bufferevent *pending_bev;
     bufferevent *bevs[10];
 
-    char *host;
-    port_t port;
+    char *authority;
     int attempts;
 
     bool dont_free:1;
@@ -2156,7 +2155,7 @@ void connect_cleanup(connect_req *c)
         peer_disconnect(c->pc);
         c->pc = NULL;
     }
-    free(c->host);
+    free(c->authority);
     free(c);
 }
 
@@ -2487,14 +2486,7 @@ void connect_peer(connect_req *c, bool injector_preference)
 
         evhttp_request_set_header_cb(c->proxy_req, connect_header_cb);
         evhttp_request_set_error_cb(c->proxy_req, connect_error_cb);
-        if (c->server_req) {
-            evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, evhttp_request_get_uri(c->server_req));
-        } else {
-            assert(c->server_bev);
-            char authority[1024];
-            snprintf(authority, sizeof(authority), "%s:%u", c->host, c->port);
-            evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, authority);
-        }
+        evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, c->authority);
     });
 }
 
@@ -2521,6 +2513,7 @@ void connect_request(network *n, evhttp_request *req)
     connect_req *c = alloc(connect_req);
     c->n = n;
     c->server_req = req;
+    c->authority = strdup(evhttp_request_get_uri(c->server_req));
 
     evhttp_connection_set_closecb(c->server_req->evcon, connect_evcon_close_cb, c);
 
@@ -2774,8 +2767,9 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
     connect_req *c = alloc(connect_req);
     c->n = n;
     c->server_bev = bev;
-    c->host = strdup(host);
-    c->port = port;
+    char authority[1024];
+    snprintf(authority, sizeof(authority), "%s:%u", host, port);
+    c->authority = strdup(authority);
 
     debug("c:%p %s bev:%p SOCKS5 CONNECT %s:%u\n", c, __func__, bev, host, port);
 
