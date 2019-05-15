@@ -1642,7 +1642,7 @@ void direct_submit_request(proxy_request *p)
     if (!evcon) {
         return;
     }
-    debug("p:%p d:%p con:%p direct request submitted: %s\n", p, d, evcon, p->uri);
+    debug("p:%p d:%p con:%p direct request submitted: %s %s\n", p, d, evcon, evhttp_method(p->http_method), p->uri);
     int r = evhttp_make_request(evcon, d->req, p->http_method, request_uri);
 }
 
@@ -1712,7 +1712,7 @@ peer_request* proxy_make_request(proxy_request *p)
 void peer_submit_request_on_con(peer_request *r, evhttp_connection *evcon)
 {
     proxy_request *p = r->p;
-    debug("p:%p r:%p con:%p peer request submitted: %s\n", p, r, evcon, p->uri);
+    debug("p:%p r:%p con:%p peer request submitted: %s %s\n", p, r, evcon, evhttp_method(p->http_method), p->uri);
     evhttp_make_request(evcon, r->req, p->http_method, p->uri);
 }
 
