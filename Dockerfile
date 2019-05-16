@@ -25,4 +25,4 @@ RUN ./build.sh
 EXPOSE 8006/tcp
 EXPOSE 8007/tcp
 
-CMD ["./client"]
+CMD ["./client", "-v"]
