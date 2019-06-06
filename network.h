@@ -75,6 +75,7 @@ void evbuffer_hash_update(evbuffer *buf, crypto_generichash_state *content_state
 bool evbuffer_write_to_file(evbuffer *buf, int fd);
 void bufferevent_free_checked(bufferevent *bev);
 int bufferevent_get_error(bufferevent *bev);
+const char* bev_events_to_str(short events);
 port_t sockaddr_get_port(const sockaddr* sa);
 void sockaddr_set_port(sockaddr* sa, port_t port);
 
