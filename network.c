@@ -214,6 +214,20 @@ uint64 utp_callback_get_random(utp_callback_arguments *args)
     return r;
 }
 
+const char* bev_events_to_str(short events)
+{
+    static char s[1024];
+    snprintf(s, sizeof(s), "%s%s%s%s%s%s",
+             events & BEV_EVENT_READING ? "reading " : "",
+             events & BEV_EVENT_WRITING ? "writing " : "",
+             events & BEV_EVENT_EOF ? "eof " : "",
+             events & BEV_EVENT_ERROR ? "error " : "",
+             events & BEV_EVENT_TIMEOUT ? "timeout " : "",
+             events & BEV_EVENT_CONNECTED ? "connected " : ""
+             );
+    return s;
+}
+
 port_t sockaddr_get_port(const sockaddr* sa)
 {
     switch (sa->sa_family) {

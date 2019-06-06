@@ -266,7 +266,7 @@ void bev_event_cb(bufferevent *bufev, short events, void *arg)
 {
     peer_connection *pc = (peer_connection *)arg;
     assert(pc->bev == bufev);
-    debug("bev_event_cb pc:%p peer:%p events:0x%x\n", pc, pc->peer, events);
+    debug("bev_event_cb pc:%p peer:%p events:0x%x %s\n", pc, pc->peer, events, bev_events_to_str(events));
     if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
         bufferevent_free(pc->bev);
         pc->bev = NULL;
@@ -2200,7 +2200,7 @@ void connect_server_read_cb(bufferevent *bev, void *ctx)
 void connect_server_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p %s events:0x%x\n", c, __func__, events);
+    debug("c:%p %s events:0x%x %s\n", c, __func__, events, bev_events_to_str(events));
     c->dont_free = true;
     connect_proxy_cancel(c);
     connect_direct_cancel(c);
@@ -2236,7 +2236,7 @@ void connect_other_read_cb(bufferevent *bev, void *ctx)
 void connect_other_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p %s bev:%p events:0x%x\n", c, __func__, bev, events);
+    debug("c:%p %s bev:%p events:0x%x %s\n", c, __func__, bev, events, bev_events_to_str(events));
 
     for (size_t i = 0; i < lenof(c->bevs); i++) {
         if (c->bevs[i] == bev) {
@@ -2427,8 +2427,8 @@ void connect_error_cb(evhttp_request_error error, void *arg)
 void connect_direct_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p %s events:0x%x bev:%p req:%s\n", c, __func__, events, bev,
-        c->server_req ? evhttp_request_get_uri(c->server_req) : "(null)");
+    debug("c:%p %s bev:%p req:%s events:0x%x %s\n", c, __func__, bev,
+        c->server_req ? evhttp_request_get_uri(c->server_req) : "(null)", events, bev_events_to_str(events));
 
     if (events & BEV_EVENT_TIMEOUT) {
         bufferevent_free(bev);
@@ -2721,8 +2721,8 @@ void load_peers(network *n)
 void socks_connect_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = ctx;
-    debug("c:%p %s events:0x%x bev:%p req:%s\n", c, __func__, events, bev,
-        c->server_req ? evhttp_request_get_uri(c->server_req) : "(null)");
+    debug("c:%p %s bev:%p req:%s events:0x%x %s\n", c, __func__, bev,
+        c->server_req ? evhttp_request_get_uri(c->server_req) : "(null)", events, bev_events_to_str(events));
 
     if (events & BEV_EVENT_TIMEOUT) {
         socks_reply(bev, SOCKS5_REPLY_TIMEDOUT);
@@ -2749,13 +2749,13 @@ void socks_connect_event_cb(bufferevent *bev, short events, void *ctx)
 void socks_connect_req_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = ctx;
-    debug("%s bev:%p events:0x%x\n", __func__, bev, events);
+    debug("%s bev:%p events:0x%x %s\n", __func__, bev, events, bev_events_to_str(events));
     connect_cleanup(c);
 }
 
 void socks_event_cb(bufferevent *bev, short events, void *ctx)
 {
-    debug("%s bev:%p events:0x%x\n", __func__, bev, events);
+    debug("%s bev:%p events:0x%x %s\n", __func__, bev, events, bev_events_to_str(events));
     bufferevent_free(bev);
 }
 
@@ -2763,7 +2763,7 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
 {
     // proxied CONNECT requests to port 80 will be rejected, but direct connections might work
     if (port != 443 && port != 80) {
-        debug("SOCK5 port not allowed %s:%u\n", host, port);
+        debug("SOCKS5 port not allowed %s:%u\n", host, port);
         socks_reply(bev, SOCKS5_REPLY_NOT_ALLOWED);
         return NULL;
     }
