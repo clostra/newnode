@@ -1,5 +1,6 @@
 #include "newnode.h"
 #include "constants.h"
+#include "log.h"
 #define BSG_KSLogger_Level TRACE
 #define BSG_LOG_LEVEL BSG_LOGLEVEL_DEBUG
 #include "NewNode-iOS.h"
@@ -20,8 +21,12 @@ uint16_t socks_port;
     NSURLSessionConfiguration *urlConfig = NSURLSessionConfiguration.defaultSessionConfiguration;
     urlConfig.connectionProxyDictionary = NewNode.connectionProxyDictionary;
     config.session = [NSURLSession sessionWithConfiguration:urlConfig];
-    */
     [Bugsnag startBugsnagWithConfiguration:config];
+    */
+
+    NSString *cachesPath = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).lastObject;
+    chdir(cachesPath.UTF8String);
+
     newnode_init(&http_port, &socks_port);
 }
 
