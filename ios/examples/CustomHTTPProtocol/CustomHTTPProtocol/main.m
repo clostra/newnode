@@ -51,6 +51,9 @@ int main(int argc, char **argv)
 {
     int                 retVal;
 
+    signal(SIGPIPE, SIG_IGN);
+    setenv("CFNETWORK_DIAGNOSTICS", "3", 1);
+
     @autoreleasepool {
         retVal = UIApplicationMain(argc, argv, nil, @"AppDelegate");
     }

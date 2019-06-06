@@ -119,7 +119,7 @@ static NSTimeInterval sAppStartTime;            // since reference date
     webViewController = [[UIStoryboard storyboardWithName:@"Main" bundle:[NSBundle bundleForClass:[self class]]] instantiateViewControllerWithIdentifier:@"webView"];
     assert(webViewController != nil);
     webViewController.delegate = self;
-    if (NO) {
+    if (/* DISABLES CODE */ (NO)) {
         webViewController.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Test" style:UIBarButtonItemStyleBordered target:self action:@selector(testAction:)];
     }
     [((UINavigationController *) self.window.rootViewController) pushViewController:webViewController animated:NO];
