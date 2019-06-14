@@ -2196,6 +2196,7 @@ void connect_server_read_cb(bufferevent *bev, void *ctx)
         }
     }
     bufferevent_read_buffer(c->pending_bev, c->intro_data);
+    debug("c:%p %s intro_data_length:%zu\n", c, __func__, evbuffer_get_length(c->intro_data));
 }
 
 void connect_server_event_cb(bufferevent *bev, short events, void *ctx)
@@ -2224,6 +2225,7 @@ void connect_other_read_cb(bufferevent *bev, void *ctx)
 
     // connected!
     bufferevent *server = c->pending_bev;
+    debug("c:%p %s connection complete server:%p bev:%p intro_data_length:%zu\n", c, __func__, server, bev, evbuffer_get_length(c->intro_data));
     c->pending_bev = NULL;
     c->dont_free = true;
     connect_proxy_cancel(c);
@@ -2291,6 +2293,7 @@ void connected(connect_req *c, bufferevent *other)
             bufferevent_write(c->pending_bev, r, sizeof(r));
         }
     }
+    debug("c:%p %s intro_data_length:%zu\n", c, __func__, evbuffer_get_length(c->intro_data));
     for (size_t i = 0; i < lenof(c->bevs); i++) {
         if (!c->bevs[i]) {
             c->bevs[i] = other;
