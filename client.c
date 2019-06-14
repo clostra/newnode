@@ -2187,8 +2187,9 @@ void connect_direct_cancel(connect_req *c)
 void connect_server_read_cb(bufferevent *bev, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p %s\n", c, __func__);
     evbuffer *input = bufferevent_get_input(bev);
+    debug("c:%p %s length:%zu\n", c, __func__, evbuffer_get_length(input));
+
     for (size_t i = 0; i < lenof(c->bevs); i++) {
         if (c->bevs[i]) {
             evbuffer_add_buffer_reference(bufferevent_get_output(c->bevs[i]), input);
@@ -2211,7 +2212,8 @@ void connect_server_event_cb(bufferevent *bev, short events, void *ctx)
 void connect_other_read_cb(bufferevent *bev, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p %s\n", c, __func__);
+    evbuffer *input = bufferevent_get_input(bev);
+    debug("c:%p %s length:%zu\n", c, __func__, evbuffer_get_length(input));
 
     for (size_t i = 0; i < lenof(c->bevs); i++) {
         if (c->bevs[i] && c->bevs[i] != bev) {
