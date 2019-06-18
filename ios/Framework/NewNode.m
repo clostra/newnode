@@ -28,6 +28,9 @@ uint16_t socks_port;
     chdir(cachesPath.UTF8String);
 
     newnode_init(&http_port, &socks_port);
+    if (!http_port || !socks_port) {
+        NSLog(@"Error: NewNode could not be initialized");
+    }
 }
 
 + (NSDictionary*)connectionProxyDictionary
@@ -46,6 +49,16 @@ uint16_t socks_port;
         @"SOCKSProxy": @"127.0.0.1",
         @"SOCKSPort": @(socks_port)
     };
+}
+
++ (int)logLevel
+{
+    return o_debug;
+}
+
++ (void)setLogLevel:(int)level
+{
+    o_debug = level;
 }
 
 @end
