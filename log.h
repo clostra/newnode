@@ -3,13 +3,10 @@
 
 #include <sys/types.h>
 
-#ifdef ANDROID
-#include <android/log.h>
-#endif
-
 extern int o_debug;
 
-#ifdef ANDROID
+#ifdef __ANDROID__
+#include <android/log.h>
 void bugsnag_log(const char *fmt, ...);
 #define debug(...) if (o_debug) { __android_log_print(ANDROID_LOG_VERBOSE, "newnode", __VA_ARGS__); } \
     bugsnag_log(__VA_ARGS__);
@@ -19,7 +16,9 @@ void bugsnag_log(const char *fmt, ...);
     bugsnag_log("%s:%d: %s: assertion \"%s\" failed", __FILE__, __LINE__, __PRETTY_FUNCTION__, #e); \
     __assert2(__FILE__, __LINE__, __PRETTY_FUNCTION__, #e); \
 }
-
+#elif defined __APPLE_
+#include <os/log.h>
+#define debug(...) if (o_debug) { os_log(OS_LOG_DEFAULT, __VA_ARGS__); }
 #else
 #define debug(...) if (o_debug) { fflush(stdout); fprintf(stderr, __VA_ARGS__); fflush(stderr); }
 #endif

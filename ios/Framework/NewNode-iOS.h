@@ -2,6 +2,7 @@
 
 @interface NewNode : NSObject
 
-+ (NSDictionary*)connectionProxyDictionary;
+@property (class, readonly) NSDictionary* connectionProxyDictionary;
+@property (class) int logLevel;
 
 @end
