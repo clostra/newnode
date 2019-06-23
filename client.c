@@ -2098,7 +2098,7 @@ void socks_reply(bufferevent *bev, uint8_t resp)
 {
     debug("%s bev:%p reply:%02x\n", __func__, bev, resp);
     bufferevent_setcb(bev, NULL, free_write_cb, NULL, NULL);
-    uint8_t r[] = {0x05, resp};
+    uint8_t r[] = {0x05, resp, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     bufferevent_write(bev, r, sizeof(r));
 }
 
@@ -2730,20 +2730,22 @@ void socks_connect_event_cb(bufferevent *bev, short events, void *ctx)
         c->server_req ? evhttp_request_get_uri(c->server_req) : "(null)", events, bev_events_to_str(events));
 
     if (events & BEV_EVENT_TIMEOUT) {
-        socks_reply(bev, SOCKS5_REPLY_TIMEDOUT);
+        bufferevent_free(bev);
         c->direct = NULL;
+        connect_socks_reply(c, SOCKS5_REPLY_TIMEDOUT);
         connect_cleanup(c);
     } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
         int err = bufferevent_get_error(bev);
-        switch (err) {
-        case ENETUNREACH: socks_reply(bev, SOCKS5_REPLY_NETUNREACH); break;
-        case EHOSTUNREACH: socks_reply(bev, SOCKS5_REPLY_HOSTUNREACH); break;
-        case ECONNREFUSED: socks_reply(bev, SOCKS5_REPLY_CONNREFUSED); break;
-        case ETIMEDOUT: socks_reply(bev, SOCKS5_REPLY_TIMEDOUT); break;
-        default:
-        case 0: socks_reply(bev, SOCKS5_REPLY_FAILURE); break;
-        }
+        bufferevent_free(bev);
         c->direct = NULL;
+        switch (err) {
+        case ENETUNREACH: connect_socks_reply(c, SOCKS5_REPLY_NETUNREACH); break;
+        case EHOSTUNREACH: connect_socks_reply(c, SOCKS5_REPLY_HOSTUNREACH); break;
+        case ECONNREFUSED: connect_socks_reply(c, SOCKS5_REPLY_CONNREFUSED); break;
+        case ETIMEDOUT: connect_socks_reply(c, SOCKS5_REPLY_TIMEDOUT); break;
+        default:
+        case 0: connect_socks_reply(c, SOCKS5_REPLY_FAILURE); break;
+        }
         connect_cleanup(c);
     } else if (events & BEV_EVENT_CONNECTED) {
         c->direct = NULL;
