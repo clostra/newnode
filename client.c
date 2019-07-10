@@ -160,6 +160,8 @@ char via_tag[] = "1.1 _.newnode";
 time_t injector_reachable;
 time_t last_request;
 timer *saving_peers;
+uint16_t g_http_port;
+uint16_t g_socks_port;
 
 size_t pending_requests_len;
 TAILQ_HEAD(, pending_request) pending_requests;
@@ -2582,10 +2584,19 @@ void http_request_cb(evhttp_request *req, void *arg)
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(req);
     const char *scheme = evhttp_uri_get_scheme(uri);
     const char *host = evhttp_uri_get_host(uri);
+    if (req->type == EVHTTP_REQ_GET && !host &&
+        evcon_is_local_browser(req->evcon) && streq(evhttp_request_get_uri(req), "/proxy.pac")) {
+        evhttp_add_header(req->output_headers, "Content-Type", "application/x-ns-proxy-autoconfig");
+        evbuffer *body = evbuffer_new();
+        evbuffer_add_printf(body, "function FindProxyForURL(url, host) {return \"SOCKS5 127.0.0.1:%d\";}", g_socks_port);
+        evhttp_send_reply(req, 200, "OK", body);
+        evbuffer_free(body);
+        return;
+    }
     if (req->type != EVHTTP_REQ_TRACE &&
         (!host || !scheme ||
          (evutil_ascii_strcasecmp(scheme, "http") && evutil_ascii_strcasecmp(scheme, "https")))) {
-        debug("invalid proxy request: %s %s\n", evhttp_method(req->type), evhttp_request_get_uri(req));
+        debug("invalid proxy request: %s %s %s %s\n", scheme, evhttp_method(req->type), host, evhttp_request_get_uri(req));
         evhttp_send_error(req, 501, "Not Implemented");
         return;
     }
@@ -2987,6 +2998,8 @@ network* client_init(port_t *http_port, port_t *socks_port)
     getsockname(fd, (sockaddr *)&ss, &sslen);
     *socks_port = sockaddr_get_port((sockaddr *)&ss);
 
+    g_http_port = *http_port;
+    g_socks_port = *socks_port;
     printf("listening on TCP:%s:%d,%d\n", "127.0.0.1", *http_port, *socks_port);
 
     load_peers(n);
