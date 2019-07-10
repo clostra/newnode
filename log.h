@@ -16,7 +16,7 @@ void bugsnag_log(const char *fmt, ...);
     bugsnag_log("%s:%d: %s: assertion \"%s\" failed", __FILE__, __LINE__, __PRETTY_FUNCTION__, #e); \
     __assert2(__FILE__, __LINE__, __PRETTY_FUNCTION__, #e); \
 }
-#elif defined __APPLE_
+#elif defined __APPLE__
 #include <os/log.h>
 #define debug(...) if (o_debug) { os_log(OS_LOG_DEFAULT, __VA_ARGS__); }
 #else
