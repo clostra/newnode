@@ -2588,7 +2588,9 @@ void http_request_cb(evhttp_request *req, void *arg)
         evcon_is_local_browser(req->evcon) && streq(evhttp_request_get_uri(req), "/proxy.pac")) {
         evhttp_add_header(req->output_headers, "Content-Type", "application/x-ns-proxy-autoconfig");
         evbuffer *body = evbuffer_new();
-        evbuffer_add_printf(body, "function FindProxyForURL(url, host) {return \"SOCKS5 127.0.0.1:%d\";}", g_socks_port);
+        evbuffer_add_printf(body, "function FindProxyForURL(url, host) {return \""
+                            "PROXY 127.0.0.1:%d; SOCKS 127.0.0.1:%d; DIRECT"
+                            "\";}", g_http_port, g_socks_port);
         evhttp_send_reply(req, 200, "OK", body);
         evbuffer_free(body);
         return;
@@ -2779,13 +2781,6 @@ void socks_event_cb(bufferevent *bev, short events, void *ctx)
 
 bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *host, port_t port)
 {
-    // proxied CONNECT requests to port 80 will be rejected, but direct connections might work
-    if (port != 443 && port != 80) {
-        debug("SOCKS5 port not allowed %s:%u\n", host, port);
-        socks_reply(bev, SOCKS5_REPLY_NOT_ALLOWED);
-        return NULL;
-    }
-
     connect_req *c = alloc(connect_req);
     c->n = n;
     c->server_bev = bev;
@@ -2804,7 +2799,9 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
     bufferevent_enable(c->direct, EV_READ);
 #endif
 
-    connect_peer(c, false);
+    if (port == 443 || port == 80) {
+        connect_peer(c, false);
+    }
 
     return c->direct;
 }
