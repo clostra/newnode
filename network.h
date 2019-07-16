@@ -15,8 +15,12 @@ typedef struct network network;
 #include "dht.h"
 
 
+#ifndef MIN
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
+#endif
+#ifndef MAX
 #define MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
+#endif
 #define PACKED __attribute__((__packed__))
 #define lenof(x) (sizeof(x)/sizeof(x[0]))
 #define member_sizeof(type, member) sizeof(((type *)0)->member)
