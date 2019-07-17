@@ -2931,6 +2931,13 @@ void socks_accept_cb(evconnlistener *listener, evutil_socket_t nfd, sockaddr *pe
     bufferevent_enable(bev, EV_READ|EV_WRITE);
 }
 
+void socks_error_cb(evconnlistener *lis, void *ptr)
+{
+    network *n = ptr;
+    int err = EVUTIL_SOCKET_ERROR();
+    debug("%s %d (%s)\n", __func__, err, evutil_socket_error_to_string(err));
+}
+
 network* client_init(port_t *http_port, port_t *socks_port)
 {
     //o_debug = 1;
@@ -2990,6 +2997,7 @@ network* client_init(port_t *http_port, port_t *socks_port)
         *socks_port = 0;
         return NULL;
     }
+    evconnlistener_set_error_cb(listener, socks_error_cb);
     fd = evconnlistener_get_fd(listener);
     sslen = sizeof(ss);
     getsockname(fd, (sockaddr *)&ss, &sslen);
