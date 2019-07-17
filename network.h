@@ -66,6 +66,8 @@ typedef in_port_t port_t;
 struct network {
     event_base *evbase;
     evdns_base *evdns;
+    char *address;
+    port_t port;
     int fd;
     event udp_event;
     utp_context *utp;

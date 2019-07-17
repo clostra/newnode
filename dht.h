@@ -10,7 +10,7 @@ typedef struct dht dht;
 
 typedef struct sockaddr sockaddr;
 
-dht* dht_setup(network *n, int fd);
+dht* dht_setup(network *n);
 time_t dht_tick(dht *d);
 bool dht_process_udp(dht *d, const uint8_t *buffer, size_t len, const sockaddr *to, socklen_t tolen, time_t *tosleep);
 bool dht_process_icmp(dht *d, const uint8_t *buffer, size_t len, const sockaddr *to, socklen_t tolen, time_t *tosleep);
