@@ -19,7 +19,6 @@
 
 struct dht {
     network *n;
-    int fd;
     time_t save_time;
     unsigned char save_hash[crypto_generichash_BYTES];
     sockaddr_storage *peer_ss;
@@ -78,17 +77,16 @@ void dht_add_bootstrap(dht *d, const char *host, port_t port)
     evdns_getaddrinfo(d->n->evdns, host, portbuf, &hint, dht_add_bootstrap_cb, d);
 }
 
-dht* dht_setup(network *n, int fd)
+dht* dht_setup(network *n)
 {
     if (o_debug >= 2) {
         dht_debug = stdout;
     }
     dht *d = alloc(dht);
     d->n = n;
-    d->fd = fd;
     uint8_t myid[20];
     randombytes_buf(myid, sizeof(myid));
-    dht_init(fd, 0, myid, NULL);
+    dht_init(d->n->fd, 0, myid, NULL);
 
     FILE *f = fopen("dht.dat", "rb");
     if (f) {
@@ -210,7 +208,7 @@ void dht_announce(dht *d, const uint8_t *info_hash)
 {
     sockaddr_storage sa;
     socklen_t salen = sizeof(sa);
-    if (getsockname(d->fd, (sockaddr *)&sa, &salen) == -1) {
+    if (getsockname(d->n->fd, (sockaddr *)&sa, &salen) == -1) {
         fprintf(stderr, "dht getsockname failed %d (%s)\n", errno, strerror(errno));
         return;
     }
@@ -222,7 +220,7 @@ void dht_get_peers(dht *d, const uint8_t *info_hash)
 {
     sockaddr_storage sa;
     socklen_t salen = sizeof(sa);
-    if (getsockname(d->fd, (sockaddr *)&sa, &salen) == -1) {
+    if (getsockname(d->n->fd, (sockaddr *)&sa, &salen) == -1) {
         fprintf(stderr, "dht getsockname failed %d (%s)\n", errno, strerror(errno));
         return;
     }

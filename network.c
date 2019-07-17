@@ -73,6 +73,90 @@ void dht_schedule(network *n, time_t tosleep)
     });
 }
 
+void udp_read(evutil_socket_t fd, short events, void *arg);
+
+bool network_make_socket(network *n)
+{
+    addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_protocol = IPPROTO_UDP;
+
+    addrinfo *res;
+    char port_s[6];
+    snprintf(port_s, sizeof(port_s), "%u", n->port);
+    int error = getaddrinfo(n->address, port_s, &hints, &res);
+    if (error) {
+        die("getaddrinfo: %s\n", gai_strerror(error));
+    }
+
+    n->fd = socket(((sockaddr*)res->ai_addr)->sa_family, SOCK_DGRAM, IPPROTO_UDP);
+    if (n->fd < 0) {
+        pdie("socket");
+    }
+
+#ifdef __linux__
+    int on = 1;
+    if (setsockopt(n->fd, SOL_IP, IP_RECVERR, &on, sizeof(on)) != 0) {
+        pdie("setsockopt");
+    }
+#endif
+
+    port_t port = n->port;
+    for (;;) {
+        if (bind(n->fd, res->ai_addr, res->ai_addrlen) != 0) {
+            debug("bind fail %d %s\n", errno, strerror(errno));
+            if (port == 0) {
+                pdie("bind");
+            }
+            freeaddrinfo(res);
+            port = 0;
+            snprintf(port_s, sizeof(port_s), "%u", port);
+            error = getaddrinfo(n->address, port_s, &hints, &res);
+            if (error) {
+                die("getaddrinfo: %s\n", gai_strerror(error));
+            }
+            continue;
+        }
+        freeaddrinfo(res);
+        break;
+    }
+
+    evutil_make_socket_closeonexec(n->fd);
+    evutil_make_socket_nonblocking(n->fd);
+
+    sockaddr_storage sin;
+    socklen_t len = sizeof(sin);
+    if (getsockname(n->fd, (sockaddr *)&sin, &len) != 0) {
+        pdie("getsockname");
+    }
+
+    char host[NI_MAXHOST];
+    char serv[NI_MAXSERV];
+    error = getnameinfo((sockaddr *)&sin, len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+    if (error) {
+        die("getnameinfo: %s\n", gai_strerror(error));
+    }
+
+    event_assign(&n->udp_event, n->evbase, n->fd, EV_READ|EV_PERSIST, udp_read, n);
+    if (event_add(&n->udp_event, NULL) < 0) {
+        fprintf(stderr, "event_add udp_read failed\n");
+        return false;
+    }
+
+    if (n->dht) {
+        // the dht has to be re-created when the fd changes
+        dht_destroy(n->dht);
+        n->dht = NULL;
+    }
+    n->dht = dht_setup(n);
+
+    printf("listening on UDP:%s:%s\n", host, serv);
+
+    return true;
+}
+
 void udp_read(evutil_socket_t fd, short events, void *arg)
 {
     network *n = (network*)arg;
@@ -96,7 +180,11 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
             }
             debug("%s recvfrom error %d %s\n", __func__, errno, strerror(errno));
             if (errno == ENOTCONN) {
-                // TODO: recreate socket
+                // recreate socket
+                debug("%s recreating socket\n", __func__);
+                event_del(&n->udp_event);
+                evutil_closesocket(n->fd);
+                network_make_socket(n);
             }
             break;
         }
@@ -280,7 +368,8 @@ void network_free(network *n)
 {
     utp_destroy(n->utp);
     dht_destroy(n->dht);
-    close(n->fd);
+    free(n->address);
+    evutil_closesocket(n->fd);
     evdns_base_free(n->evdns, 0);
     event_base_free(n->evbase);
     free(n);
@@ -292,70 +381,10 @@ network* network_setup(char *address, port_t port)
 
     set_max_nofile();
 
-    addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_DGRAM;
-    hints.ai_protocol = IPPROTO_UDP;
-
-    addrinfo *res;
-    char port_s[6];
-    snprintf(port_s, sizeof(port_s), "%u", port);
-    int error = getaddrinfo(address, port_s, &hints, &res);
-    if (error) {
-        die("getaddrinfo: %s\n", gai_strerror(error));
-    }
-
     network *n = alloc(network);
 
-    n->fd = socket(((sockaddr*)res->ai_addr)->sa_family, SOCK_DGRAM, IPPROTO_UDP);
-    if (n->fd < 0) {
-        pdie("socket");
-    }
-
-#ifdef __linux__
-    int on = 1;
-    if (setsockopt(n->fd, SOL_IP, IP_RECVERR, &on, sizeof(on)) != 0) {
-        pdie("setsockopt");
-    }
-#endif
-
-    for (;;) {
-        if (bind(n->fd, res->ai_addr, res->ai_addrlen) != 0) {
-            debug("bind fail %d %s\n", errno, strerror(errno));
-            if (port == 0) {
-                pdie("bind");
-            }
-            freeaddrinfo(res);
-            port = 0;
-            snprintf(port_s, sizeof(port_s), "%u", port);
-            error = getaddrinfo(address, port_s, &hints, &res);
-            if (error) {
-                die("getaddrinfo: %s\n", gai_strerror(error));
-            }
-            continue;
-        }
-        freeaddrinfo(res);
-        break;
-    }
-
-    evutil_make_socket_closeonexec(n->fd);
-    evutil_make_socket_nonblocking(n->fd);
-
-    sockaddr_storage sin;
-    socklen_t len = sizeof(sin);
-    if (getsockname(n->fd, (sockaddr *)&sin, &len) != 0) {
-        pdie("getsockname");
-    }
-
-    char host[NI_MAXHOST];
-    char serv[NI_MAXSERV];
-    error = getnameinfo((sockaddr *)&sin, len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-    if (error) {
-        die("getnameinfo: %s\n", gai_strerror(error));
-    }
-
-    printf("listening on UDP:%s:%s\n", host, serv);
+    n->address = strdup(address);
+    n->port = port;
 
 #ifdef EVTHREAD_USE_PTHREADS_IMPLEMENTED
     evthread_use_pthreads();
@@ -377,6 +406,8 @@ network* network_setup(char *address, port_t port)
         network_free(n);
         return NULL;
     }
+
+    fprintf(stderr, "libevent method: %s\n", event_base_get_method(n->evbase));
 
     // EVDNS_BASE_INITIALIZE_NAMESERVERS is broken on Android
     // https://github.com/libevent/libevent/issues/569
@@ -415,15 +446,17 @@ network* network_setup(char *address, port_t port)
     evhttp_set_default_content_type(n->http, NULL);
     evhttp_set_bevcb(n->http, create_bev, NULL);
 
-    debug("libevent method: %s\n", event_base_get_method(n->evbase));
-
     if (evthread_make_base_notifiable(n->evbase)) {
         fprintf(stderr, "evthread_make_base_notifiable failed\n");
         network_free(n);
         return NULL;
     }
 
-    n->dht = dht_setup(n, n->fd);
+    if (!network_make_socket(n)) {
+        network_free(n);
+        return NULL;
+    }
+
     n->utp = utp_init(2);
     lsd_setup(n);
 
@@ -442,13 +475,6 @@ network* network_setup(char *address, port_t port)
         utp_context_set_option(n->utp, UTP_LOG_NORMAL, 1);
         utp_context_set_option(n->utp, UTP_LOG_MTU, 1);
         utp_context_set_option(n->utp, UTP_LOG_DEBUG, 1);
-    }
-
-    event_assign(&n->udp_event, n->evbase, n->fd, EV_READ|EV_PERSIST, udp_read, n);
-    if (event_add(&n->udp_event, NULL) < 0) {
-        fprintf(stderr, "event_add udp_read failed\n");
-        network_free(n);
-        return NULL;
     }
 
     // XXX: TODO: only run while (ctx->utp_sockets->GetCount() && ctx->rst_info.GetCount())
