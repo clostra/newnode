@@ -1782,17 +1782,38 @@ void queue_request(network *n, pending_request *r, const char *via, peer_connect
         lsd_send(n, false);
     }
 
+    uint via_excluded = 0;
     for (uint i = 0; i < lenof(peer_connections); i++) {
         peer_connection *pc = peer_connections[i];
-        if (pc && pc->evcon && !via_contains(via, pc->peer->via)) {
-            peer_connections[i] = NULL;
-            debug("using pc:%p evcon:%p via:%c (%s) for request:%p\n", pc, pc->evcon, pc->peer->via, via, r);
-            on_connect(pc);
-            return;
+        if (!pc || !pc->evcon) {
+            continue;
         }
+        if (via_contains(via, pc->peer->via)) {
+            via_excluded++;
+            continue;
+        }
+        peer_connections[i] = NULL;
+        debug("using pc:%p evcon:%p via:%c (%s) for request:%p\n", pc, pc->evcon, pc->peer->via, via, r);
+        on_connect(pc);
+        return;
     }
 
     // XXX: TODO: if none of the peer_connections were applicable (due to via loops), disconnect some
+    if (via_excluded > lenof(peer_connections) / 2) {
+        uint disconnected = 0;
+        for (uint i = 0; i < lenof(peer_connections); i++) {
+            peer_connection *pc = peer_connections[i];
+            if (pc && pc->evcon && via_contains(via, pc->peer->via)) {
+                debug("discarding pc:%p due to via loop saturation\n", pc);
+                peer_disconnect(pc);
+                peer_connections[i] = NULL;
+                disconnected++;
+                if (disconnected >= 2) {
+                    break;
+                }
+            }
+        }
+    }
 
     r->via = via?strdup(via):NULL;
     assert(!r->on_connect);
