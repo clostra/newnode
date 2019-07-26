@@ -1798,7 +1798,7 @@ void queue_request(network *n, pending_request *r, const char *via, peer_connect
         return;
     }
 
-    // XXX: TODO: if none of the peer_connections were applicable (due to via loops), disconnect some
+    // if none of the peer_connections were applicable (due to via loops), disconnect some
     if (via_excluded > lenof(peer_connections) / 2) {
         uint disconnected = 0;
         for (uint i = 0; i < lenof(peer_connections); i++) {
