@@ -1119,7 +1119,13 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
         }
 
         uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
-        assert(r->chunk_index <= num_chunks);
+        if (r->chunk_index > num_chunks) {
+            const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
+            const char *content_length = evhttp_find_header(req->input_headers, "Content-Length");
+            debug("d:%p r->chunk_index:%"PRIu64" > num_chunks:%"PRIu64" Content-Length:%s Content-Range:%s url:%s\n",
+                d, r->chunk_index, num_chunks, content_length, content_range, p->uri);
+            assert(r->chunk_index <= num_chunks);
+        }
         if (r->chunk_index >= num_chunks) {
             // done, let the connection close naturally
             debug("d:%p done, let the connection close naturally\n", d);
