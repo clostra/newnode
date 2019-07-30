@@ -59,6 +59,13 @@ const char* evhttp_method(evhttp_cmd_type type)
     case EVHTTP_REQ_TRACE: return "TRACE";
     case EVHTTP_REQ_CONNECT: return "CONNECT";
     case EVHTTP_REQ_PATCH: return "PATCH";
+    case EVHTTP_REQ_PROPFIND: return "PROPFIND";
+    case EVHTTP_REQ_PROPPATCH: return "PROPPATCH";
+    case EVHTTP_REQ_MKCOL: return "MKCOL";
+    case EVHTTP_REQ_LOCK: return "LOCK";
+    case EVHTTP_REQ_UNLOCK: return "UNLOCK";
+    case EVHTTP_REQ_COPY: return "COPY";
+    case EVHTTP_REQ_MOVE: return "MOVE";
     }
     return NULL;
 }
