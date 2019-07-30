@@ -714,6 +714,22 @@ void copy_response_headers(evhttp_request *from, evhttp_request *to)
     }
 }
 
+uint64_t num_chunks(const proxy_request *p)
+{
+    return DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
+}
+
+uint64_t chunk_length(const proxy_request *p, uint64_t chunk_index)
+{
+    if (p->chunked) {
+        return LEAF_CHUNK_SIZE;
+    }
+    if ((chunk_index + 1) * LEAF_CHUNK_SIZE <= p->total_length) {
+        return LEAF_CHUNK_SIZE;
+    }
+    return p->total_length % LEAF_CHUNK_SIZE;
+}
+
 void direct_submit_request(proxy_request *p);
 void direct_chunked_cb(evhttp_request *req, void *arg);
 peer_request* proxy_make_request(proxy_request *p);
@@ -795,8 +811,7 @@ int proxy_setup_range(proxy_request *p, evhttp_request *req, chunked_range *rang
     p->total_length = total_length;
 
     if (!p->have_bitfield) {
-        uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
-        p->have_bitfield = calloc(1, num_chunks);
+        p->have_bitfield = calloc(1, num_chunks(p));
     }
 
     return 1;
@@ -860,8 +875,7 @@ bool proxy_needs_any(const proxy_request *p)
     if (!p->have_bitfield) {
         return true;
     }
-    uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
-    for (size_t i = 0; i < num_chunks; i++) {
+    for (size_t i = 0; i < num_chunks(p); i++) {
         if (!p->have_bitfield[i]) {
             return true;
         }
@@ -884,8 +898,7 @@ uint64_t proxy_new_range_start(const proxy_request *p)
         uint64_t start_run = 0;
         uint64_t run_length = 0;
         uint64_t longest_run[2] = {0, 0};
-        uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
-        for (size_t i = 0; i < num_chunks; i++) {
+        for (size_t i = 0; i < num_chunks(p); i++) {
             //debug("have: %zu/%"PRIu64":%d\n", i, num_chunks, p->have_bitfield[i]);
             if (!p->have_bitfield[i]) {
                 if (!run_length) {
@@ -900,7 +913,7 @@ uint64_t proxy_new_range_start(const proxy_request *p)
                 run_length = 0;
             }
         }
-        debug("num_chunks:%"PRIu64" longest_run:%"PRIu64"-%"PRIu64"\n", num_chunks, longest_run[0], longest_run[1]);
+        debug("num_chunks:%"PRIu64" longest_run:%"PRIu64"-%"PRIu64"\n", num_chunks(p), longest_run[0], longest_run[1]);
         uint64_t mid = longest_run[0] + (longest_run[1] - longest_run[0]) / 2;
         range_start = !mid ? mid : (mid * LEAF_CHUNK_SIZE - evbuffer_get_length(p->header_buf));
         debug("p:%p range_start:%"PRIu64" mid:%"PRIu64" %zu\n", p, range_start, mid, evbuffer_get_length(p->header_buf));
@@ -915,17 +928,6 @@ uint64_t proxy_new_range_start(const proxy_request *p)
         */
     }
     return range_start;
-}
-
-uint64_t chunk_length(proxy_request *p, uint64_t chunk_index)
-{
-    if (p->chunked) {
-        return LEAF_CHUNK_SIZE;
-    }
-    if ((chunk_index + 1) * LEAF_CHUNK_SIZE <= p->total_length) {
-        return LEAF_CHUNK_SIZE;
-    }
-    return p->total_length % LEAF_CHUNK_SIZE;
 }
 
 char* cache_name_from_uri(const char *uri)
@@ -991,7 +993,6 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
 
     for (;;) {
         uint64_t this_chunk_len = chunk_length(p, r->chunk_index);
-        debug("d:%p chunk_index:%"PRIu64" this_chunk_len:%"PRIu64"\n", d, r->chunk_index, this_chunk_len);
 
         uint64_t header_prefix = 0;
         if (!r->chunk_index) {
@@ -1000,7 +1001,8 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
 
         evbuffer_remove_buffer(input, r->chunk_buffer, this_chunk_len - header_prefix - evbuffer_get_length(r->chunk_buffer));
 
-        debug("d:%p chunk:%"PRIu64" %"PRIu64" < %"PRIu64"\n", d, r->chunk_index, header_prefix + evbuffer_get_length(r->chunk_buffer), this_chunk_len);
+        debug("d:%p chunk_index:%"PRIu64"/%"PRIu64" %"PRIu64" < %"PRIu64"\n", d, r->chunk_index, num_chunks(p),
+            header_prefix + evbuffer_get_length(r->chunk_buffer), this_chunk_len);
         if (header_prefix + evbuffer_get_length(r->chunk_buffer) < this_chunk_len) {
             return true;
         }
@@ -1113,20 +1115,18 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
 
         if (p->chunked) {
             p->total_length = p->byte_playhead;
-            uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
-            p->have_bitfield = realloc(p->have_bitfield, num_chunks);
+            p->have_bitfield = realloc(p->have_bitfield, num_chunks(p));
             continue;
         }
 
-        uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
-        if (r->chunk_index > num_chunks) {
+        if (r->chunk_index > num_chunks(p)) {
             const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
             const char *content_length = evhttp_find_header(req->input_headers, "Content-Length");
             debug("d:%p r->chunk_index:%"PRIu64" > num_chunks:%"PRIu64" Content-Length:%s Content-Range:%s url:%s\n",
-                d, r->chunk_index, num_chunks, content_length, content_range, p->uri);
-            assert(r->chunk_index <= num_chunks);
+                d, r->chunk_index, num_chunks(p), content_length, content_range, p->uri);
+            assert(r->chunk_index <= num_chunks(p));
         }
-        if (r->chunk_index >= num_chunks) {
+        if (r->chunk_index >= num_chunks(p)) {
             // done, let the connection close naturally
             debug("d:%p done, let the connection close naturally\n", d);
             return true;
@@ -1182,8 +1182,7 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
         } else {
             p->total_length = p->byte_playhead + buffered;
         }
-        uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
-        p->have_bitfield = realloc(p->have_bitfield, num_chunks);
+        p->have_bitfield = realloc(p->have_bitfield, num_chunks(p));
         p->chunked = false;
     }
 
@@ -1526,9 +1525,8 @@ bool peer_request_process_chunks(peer_request *r, evhttp_request *req)
             return true;
         }
 
-        uint64_t num_chunks = DIV_ROUND_UP(p->total_length, LEAF_CHUNK_SIZE);
-        assert(r->range.chunk_index <= num_chunks);
-        if (r->range.chunk_index >= num_chunks) {
+        assert(r->range.chunk_index <= num_chunks(p));
+        if (r->range.chunk_index >= num_chunks(p)) {
             // done, let the connection close naturally
             debug("r:%p done, let the connection close naturally\n", r);
             return true;
