@@ -916,8 +916,8 @@ uint64_t proxy_new_range_start(const proxy_request *p)
         debug("num_chunks:%"PRIu64" longest_run:%"PRIu64"-%"PRIu64"\n", num_chunks(p), longest_run[0], longest_run[1]);
         uint64_t mid = longest_run[0] + (longest_run[1] - longest_run[0]) / 2;
         range_start = !mid ? mid : (mid * LEAF_CHUNK_SIZE - evbuffer_get_length(p->header_buf));
-        debug("p:%p range_start:%"PRIu64" mid:%"PRIu64" %zu\n", p, range_start, mid, evbuffer_get_length(p->header_buf));
-        
+        debug("p:%p range_start:%"PRIu64" mid:%"PRIu64" header_buf:%zu\n", p, range_start, mid, evbuffer_get_length(p->header_buf));
+
         // maybe consider:
         /*
         for (size_t i = 0; i < lenof(p->direct_requests); i++) {
@@ -1039,8 +1039,8 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
             }
 
             if (p->byte_playhead == r->chunk_index * LEAF_CHUNK_SIZE) {
-                debug("d:%p send this chunk p->byte_playhead:%"PRIu64" (r->chunk_index * LEAF_CHUNK_SIZE):%"PRIu64"\n",
-                      d, p->byte_playhead, r->chunk_index * LEAF_CHUNK_SIZE);
+                debug("d:%p send chunk:%"PRIu64"/%"PRIu64" p->byte_playhead:%"PRIu64" (r->chunk_index * LEAF_CHUNK_SIZE):%"PRIu64"\n",
+                      d, r->chunk_index, num_chunks(p), p->byte_playhead, r->chunk_index * LEAF_CHUNK_SIZE);
                 if (!p->byte_playhead) {
                     proxy_request_reply_start(p, req);
                 }
@@ -1056,12 +1056,12 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
 
         uint64_t c = p->byte_playhead;
         while (c < p->total_length && p->have_bitfield[c / LEAF_CHUNK_SIZE]) {
-            c++;
+            c += LEAF_CHUNK_SIZE;
         }
 
-        off_t offset = p->byte_playhead;
-        uint64_t length = c - offset;
-        if (length) {
+        if (c > p->byte_playhead) {
+            off_t offset = p->byte_playhead - evbuffer_get_length(p->header_buf);
+            uint64_t length = c - p->byte_playhead;
             debug("d:%p sending offset:%"PRIu64" length:%"PRIu64"\n", d, (uint64_t)offset, length);
             evbuffer_file_segment *seg = evbuffer_file_segment_new(p->cache_file, offset, length, 0);
             if (!seg) {
@@ -1475,12 +1475,12 @@ bool peer_request_process_chunks(peer_request *r, evhttp_request *req)
 
         uint64_t c = p->byte_playhead;
         while (c < p->total_length && p->have_bitfield[c / LEAF_CHUNK_SIZE]) {
-            c++;
+            c += LEAF_CHUNK_SIZE;
         }
 
-        off_t offset = p->byte_playhead;
-        uint64_t length = c - offset;
-        if (length) {
+        if (c > p->byte_playhead) {
+            off_t offset = p->byte_playhead - evbuffer_get_length(p->header_buf);
+            uint64_t length = c - p->byte_playhead;
             evbuffer_file_segment *seg = evbuffer_file_segment_new(p->cache_file, offset, length, 0);
             if (!seg) {
                 fprintf(stderr, "r:%p evbuffer_file_segment_new %d (%s)\n", r, errno, strerror(errno));
