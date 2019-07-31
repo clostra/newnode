@@ -3,15 +3,20 @@ set -e
 
 
 function build_android {
-    TRIPLE=`python -c "import sys; sys.path.append(sys.argv[1]); import make_standalone_toolchain; print(make_standalone_toolchain.get_triple(sys.argv[2]))" $ANDROID_NDK_HOME/build/tools $ARCH`
-    TOOLCHAIN="$(pwd)/android-toolchain-$TRIPLE"
-    if [ ! -d $TOOLCHAIN ]; then
-        $ANDROID_NDK_HOME/build/tools/make_standalone_toolchain.py --force --api=$NDK_API --arch=$ARCH --stl=libc++ --install-dir="$TOOLCHAIN"
-    fi
-    export PATH="$TOOLCHAIN/bin/":"$TOOLCHAIN/$TRIPLE/bin/":"$PATH"
-    export CC=clang
-    export CXX=clang++
+    HOST_OS=$(uname -s)
+    HOST_ARCH=$(uname -m)
+    HOST_TAG=$(echo "$HOST_OS-$HOST_ARCH" | tr '[:upper:]' '[:lower:]')
+    TRIPLE=$NDK_TRIPLE
 
+    export TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/$HOST_TAG
+    export AR=$TOOLCHAIN/bin/$NDK_TRIPLE-ar
+    export AS=$TOOLCHAIN/bin/$NDK_TRIPLE-as
+    export CC=$TOOLCHAIN/bin/$NDK_CLANG_TRIPLE-clang
+    export CXX=$TOOLCHAIN/bin/$NDK_CLANG_TRIPLE-clang++
+    export LD=$TOOLCHAIN/bin/$NDK_TRIPLE-ld
+    export OBJDUMP=$TOOLCHAIN/bin/$NDK_TRIPLE-objdump
+    export RANLIB=$TOOLCHAIN/bin/$NDK_TRIPLE-ranlib
+    export STRIP=$TOOLCHAIN/bin/$NDK_TRIPLE-strip
 
     cd Libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
@@ -85,7 +90,7 @@ function build_android {
     CFLAGS="$FLAGS -std=gnu11"
 
     rm *.o || true
-    clang $CFLAGS -c dht/dht.c -o dht_dht.o
+    $CC $CFLAGS -c dht/dht.c -o dht_dht.o
     for file in android.c bev_splice.c base64.c client.c dht.c http.c log.c lsd.c \
                 icmp_handler.c hash_table.c merkle_tree.c network.c obfoo.c sha1.c timer.c utp_bufferevent.c \
                 bugsnag/bugsnag_ndk.c \
@@ -94,15 +99,15 @@ function build_android {
                 bugsnag/deps/bugsnag/report.c \
                 bugsnag/deps/bugsnag/serialize.c \
                 bugsnag/deps/deps/parson/parson.c; do
-        clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBUNWIND_CFLAGS -c $file
+        $CC $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBUNWIND_CFLAGS -c $file
     done
-    #clang $CFLAGS -shared -Wl,--version-script=android_export_list -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND
-    clang $CFLAGS -shared -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND
+    #$CC $CFLAGS -shared -Wl,--version-script=android_export_list -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND
+    $CC $CFLAGS -shared -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND
     # -fuse-ld=gold
     OUT=android/src/main/jniLibs/$ABI
     test -d $OUT || mkdir -p $OUT
     mv libnewnode.so $OUT
-    objdump --disassemble --demangle --line-numbers --section=.text $OUT/libnewnode.so > $OUT/mapping.txt
+    $OBJDUMP --disassemble --demangle --line-numbers --section=.text $OUT/libnewnode.so > $OUT/mapping.txt
     ls -ld $OUT/*
 }
 
@@ -110,6 +115,8 @@ NDK_API=16
 ARCH=arm
 ABI=armeabi-v7a
 CPU_ARCH=armv7-a
+NDK_TRIPLE=arm-linux-androideabi
+NDK_CLANG_TRIPLE=armv7a-linux-androideabi$NDK_API
 SODIUM_SCRIPT=$CPU_ARCH
 # large file support doesn't work for sendfile until API 21
 # https://github.com/android-ndk/ndk/issues/536#issuecomment-333197557
@@ -121,6 +128,8 @@ NDK_API=21
 ARCH=arm64
 ABI=arm64-v8a
 CPU_ARCH=armv8-a
+NDK_TRIPLE=aarch64-linux-android
+NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$CPU_ARCH
 build_android
 
@@ -128,6 +137,8 @@ NDK_API=21
 ARCH=x86
 ABI=x86
 CPU_ARCH=i686
+NDK_TRIPLE=i686-linux-android
+NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$ABI
 build_android
 
@@ -135,5 +146,7 @@ NDK_API=21
 ARCH=x86_64
 ABI=x86_64
 CPU_ARCH=westmere
+NDK_TRIPLE=x86_64-linux-android
+NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$ABI
 build_android
