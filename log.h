@@ -18,7 +18,7 @@ void bugsnag_log(const char *fmt, ...);
 }
 #elif defined __APPLE__
 #include <os/log.h>
-#define debug(...) if (o_debug) { os_log(OS_LOG_DEFAULT, __VA_ARGS__); }
+#define debug(...) if (o_debug) { fflush(stdout); fprintf(stderr, __VA_ARGS__); fflush(stderr); os_log(OS_LOG_DEFAULT, __VA_ARGS__); }
 #else
 #define debug(...) if (o_debug) { fflush(stdout); fprintf(stderr, __VA_ARGS__); fflush(stderr); }
 #endif
