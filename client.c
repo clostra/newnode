@@ -1855,7 +1855,7 @@ void proxy_submit_request(proxy_request *p)
     }
     */
 
-    evhttp_uri *uri = evhttp_uri_parse(p->uri);
+    evhttp_uri *uri = evhttp_uri_parse_with_flags(p->uri, EVHTTP_URI_NONCONFORMANT);
     const char *host = evhttp_uri_get_host(uri);
     if (host) {
         fetch_url_swarm(p->n, host);
