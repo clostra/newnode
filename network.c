@@ -171,7 +171,7 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
         sockaddr_storage src_addr;
         socklen_t addrlen = sizeof(src_addr);
         unsigned char buf[64 * 1024 + 1];
-        ssize_t len = recvfrom(n->fd, buf, sizeof(buf), MSG_DONTWAIT, (sockaddr *)&src_addr, &addrlen);
+        ssize_t len = recvfrom(n->fd, buf, sizeof(buf), 0, (sockaddr *)&src_addr, &addrlen);
         if (len < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNREFUSED ||
                 errno == ECONNRESET || errno == EHOSTUNREACH || errno == ENETUNREACH) {
