@@ -16,10 +16,10 @@ typedef struct network network;
 
 
 #ifndef MIN
-#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
+#define MIN(a, b) (((a)<(b))?(a):(b))
 #endif
 #ifndef MAX
-#define MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
+#define MAX(a, b) (((a)>(b))?(a):(b))
 #endif
 #define PACKED __attribute__((__packed__))
 #define lenof(x) (sizeof(x)/sizeof(x[0]))
