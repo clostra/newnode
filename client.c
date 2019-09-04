@@ -2469,9 +2469,9 @@ void connect_direct_event_cb(bufferevent *bev, short events, void *ctx)
         connect_cleanup(c);
     } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
         int err = bufferevent_get_error(bev);
+        debug("c:%p bev:%p error:%d %s\n", c, bev, err, strerror(err));
         bufferevent_free(bev);
         c->direct = NULL;
-        debug("err:%d\n", err);
         int code = 502;
         const char *reason = "Bad Gateway";
         switch (err) {
@@ -2774,6 +2774,7 @@ void socks_connect_event_cb(bufferevent *bev, short events, void *ctx)
         connect_cleanup(c);
     } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
         int err = bufferevent_get_error(bev);
+        debug("c:%p bev:%p error:%d %s\n", c, bev, err, strerror(err));
         bufferevent_free(bev);
         c->direct = NULL;
         switch (err) {
