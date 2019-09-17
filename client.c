@@ -1737,7 +1737,7 @@ peer* select_peer(peer_array *pa)
         c.time_since_verified = time(NULL) - p->last_verified;
         c.last_connect_attempt = p->last_connect_attempt;
         c.never_connected = !p->last_connect;
-        c.salt = random() & 0xFF;
+        c.salt = randombytes_uniform(0xFF);
         c.peer = p;
         /*
         address *a = &p->addr;
@@ -1836,7 +1836,7 @@ void connect_more_injectors(network *n, bool injector_preference)
             continue;
         }
         peer_array *o[2] = {injectors, injector_proxies};
-        if (!injector_preference && random() & 1) {
+        if (!injector_preference && randombytes_uniform(2)) {
             o[0] = injector_proxies;
             o[1] = injectors;
         }
