@@ -2997,7 +2997,7 @@ network* client_init(port_t *http_port, port_t *socks_port)
     }
 
     evhttp_set_allowed_methods(n->http,
-                               EVHTTP_REQ_GET | EVHTTP_REQ_POST | EVHTTP_REQ_HEAD| EVHTTP_REQ_PUT | EVHTTP_REQ_DELETE |
+                               EVHTTP_REQ_GET | EVHTTP_REQ_POST | EVHTTP_REQ_HEAD | EVHTTP_REQ_PUT | EVHTTP_REQ_DELETE |
                                EVHTTP_REQ_OPTIONS | EVHTTP_REQ_TRACE | EVHTTP_REQ_CONNECT | EVHTTP_REQ_PATCH);
     evhttp_set_gencb(n->http, http_request_cb, n);
     evhttp_bound_socket *bound = evhttp_bind_socket_with_handle(n->http, "127.0.0.1", *http_port);
