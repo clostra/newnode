@@ -1505,6 +1505,8 @@ bool peer_request_process_chunks(peer_request *r, evhttp_request *req)
                 }
                 evhttp_send_reply_end(p->server_req);
                 p->server_req = NULL;
+                peer_reuse(p->n, r->pc);
+                r->pc = NULL;
                 proxy_peer_requests_cancel(p);
             }
 
