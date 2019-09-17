@@ -1932,12 +1932,7 @@ void submit_request(network *n, evhttp_request *server_req)
 
     p->dont_free = true;
 
-    // https://github.com/libevent/libevent/issues/510
-    int fd = bufferevent_getfd(evhttp_connection_get_bufferevent(server_req->evcon));
-    sockaddr_storage ss;
-    socklen_t len = sizeof(ss);
-    getpeername(fd, (sockaddr *)&ss, &len);
-    if (!NO_DIRECT && addr_is_localhost((sockaddr *)&ss, len)) {
+    if (!NO_DIRECT && evcon_is_local_browser(server_req->evcon)) {
         direct_submit_request(p);
     }
 
