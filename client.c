@@ -681,8 +681,7 @@ bool addr_is_localhost(const sockaddr *sa, socklen_t salen)
 {
     if (sa->sa_family == AF_INET) {
         const sockaddr_in *sin = (sockaddr_in *)sa;
-        uint8_t *ip = (uint8_t*)&sin->sin_addr;
-        return ip[0] == 127;
+        return IN_LOOPBACK(ntohl(sin->sin_addr.s_addr));
     }
     return false;
 }
