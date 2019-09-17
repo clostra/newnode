@@ -686,9 +686,9 @@ bool addr_is_localhost(const sockaddr *sa, socklen_t salen)
     return false;
 }
 
-bool evcon_is_local_browser(evhttp_connection *evcon)
+bool bufferevent_is_local_browser(bufferevent *bev)
 {
-    int fd = bufferevent_getfd(evhttp_connection_get_bufferevent(evcon));
+    int fd = bufferevent_getfd(bev);
     sockaddr_storage ss;
     socklen_t len = sizeof(ss);
     getsockname(fd, (sockaddr *)&ss, &len);
@@ -697,6 +697,11 @@ bool evcon_is_local_browser(evhttp_connection *evcon)
         return false;
     }
     return addr_is_localhost((sockaddr *)&ss, len);
+}
+
+bool evcon_is_local_browser(evhttp_connection *evcon)
+{
+    return bufferevent_is_local_browser(evhttp_connection_get_bufferevent(evcon));
 }
 
 void copy_response_headers(evhttp_request *from, evhttp_request *to)
@@ -1651,16 +1656,6 @@ void direct_submit_request(proxy_request *p)
     }
     debug("p:%p d:%p con:%p direct request submitted: %s %s\n", p, d, evcon, evhttp_method(p->http_method), p->uri);
     int r = evhttp_make_request(evcon, d->req, p->http_method, request_uri);
-}
-
-address parse_address(const char *addr)
-{
-    address a;
-    char *port = strchr(addr, ':');
-    *port = '\0';
-    a.ip = inet_addr(addr);
-    a.port = htons(atoi(port+1));
-    return a;
 }
 
 void append_via(evhttp_request *from, evkeyvalq *to)
