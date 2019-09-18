@@ -32,6 +32,9 @@ typedef struct network network;
 #define memeq(a, b, len) (memcmp(a, b, len) == 0)
 #define memdup(m, len) memcpy(malloc(len), m, len)
 
+#ifndef IN_LOOPBACK
+#define	IN_LOOPBACK(a) ((((long int) (a)) & 0xff000000) == 0x7f000000)
+#endif
 
 typedef struct event_base event_base;
 typedef struct evdns_base evdns_base;
