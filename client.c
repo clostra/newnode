@@ -154,7 +154,7 @@ peer_array *injectors;
 peer_array *injector_proxies;
 peer_array *all_peers;
 
-peer_connection *peer_connections[10];
+peer_connection *peer_connections[20];
 
 char via_tag[] = "1.1 _.newnode";
 time_t injector_reachable;
@@ -162,6 +162,14 @@ time_t last_request;
 timer *saving_peers;
 uint16_t g_http_port;
 uint16_t g_socks_port;
+
+static_assert(20 >= crypto_generichash_BYTES_MIN, "dht hash must fit in generichash size");
+uint8_t encrypted_injector_swarm_m1[20];
+uint8_t encrypted_injector_swarm_p0[20];
+uint8_t encrypted_injector_swarm_p1[20];
+uint8_t encrypted_injector_proxy_swarm_m1[20];
+uint8_t encrypted_injector_proxy_swarm_p0[20];
+uint8_t encrypted_injector_proxy_swarm_p1[20];
 
 size_t pending_requests_len;
 TAILQ_HEAD(, pending_request) pending_requests;
@@ -221,6 +229,16 @@ bool via_contains(const char *via, char v)
     char vtag[] = "_.newnode";
     vtag[0] = v;
     return !!strstr(via, vtag);
+}
+
+bool bufferevent_is_utp(bufferevent *bev)
+{
+    int fd = bufferevent_getfd(bev);
+    sockaddr_storage ss;
+    socklen_t len = sizeof(ss);
+    getpeername(fd, (sockaddr *)&ss, &len);
+    // AF_LOCAL is from socketpair(), which means utp
+    return ss.ss_family == AF_LOCAL;
 }
 
 void on_utp_connect(network *n, peer_connection *pc)
@@ -378,7 +396,6 @@ void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, size_t num
 
 void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
 {
-    dht_ping_node(addr, addrlen);
     address a = {.ip = ((sockaddr_in*)addr)->sin_addr.s_addr, .port = ((sockaddr_in*)addr)->sin_port};
     add_addresses(n, &all_peers, (const byte*)&a, 1);
 }
@@ -394,9 +411,13 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
     const uint8_t* peers = data;
     size_t num_peers = data_len / 6;
     debug("dht_event_callback num_peers:%zu\n", num_peers);
-    if (memeq(info_hash, encrypted_injector_swarm, sizeof(encrypted_injector_swarm))) {
+    if (memeq(info_hash, encrypted_injector_swarm_m1, sizeof(encrypted_injector_swarm_m1)) ||
+        memeq(info_hash, encrypted_injector_swarm_p0, sizeof(encrypted_injector_swarm_p0)) ||
+        memeq(info_hash, encrypted_injector_swarm_p1, sizeof(encrypted_injector_swarm_p1))) {
         add_addresses(n, &injectors, peers, num_peers);
-    } else if (memeq(info_hash, encrypted_injector_proxy_swarm, sizeof(encrypted_injector_proxy_swarm))) {
+    } else if (memeq(info_hash, encrypted_injector_proxy_swarm_m1, sizeof(encrypted_injector_proxy_swarm_m1)) ||
+               memeq(info_hash, encrypted_injector_proxy_swarm_p0, sizeof(encrypted_injector_proxy_swarm_p0)) ||
+               memeq(info_hash, encrypted_injector_proxy_swarm_p1, sizeof(encrypted_injector_proxy_swarm_p1))) {
         add_addresses(n, &injector_proxies, peers, num_peers);
     } else {
         add_addresses(n, &all_peers, peers, num_peers);
@@ -424,10 +445,30 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
 
 void update_injector_proxy_swarm(network *n)
 {
+    time_t t = time(NULL);
+    tm *tm = gmtime(&t);
+    char name[1024];
+
     if (injector_reachable) {
-        dht_announce(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm);
+        snprintf(name, sizeof(name), "injector proxy %d-%d", tm->tm_year, (tm->tm_yday - 1));
+        crypto_generichash(encrypted_injector_proxy_swarm_m1, sizeof(encrypted_injector_proxy_swarm_m1), (uint8_t*)name, strlen(name), NULL, 0);
+        dht_announce(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm_m1);
+        snprintf(name, sizeof(name), "injector proxy %d-%d", tm->tm_year, (tm->tm_yday + 0));
+        crypto_generichash(encrypted_injector_proxy_swarm_p0, sizeof(encrypted_injector_proxy_swarm_p0), (uint8_t*)name, strlen(name), NULL, 0);
+        dht_announce(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm_p0);
+        snprintf(name, sizeof(name), "injector proxy %d-%d", tm->tm_year, (tm->tm_yday + 1));
+        crypto_generichash(encrypted_injector_proxy_swarm_p1, sizeof(encrypted_injector_proxy_swarm_p1), (uint8_t*)name, strlen(name), NULL, 0);
+        dht_announce(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm_p1);
     } else {
-        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm);
+        snprintf(name, sizeof(name), "injector proxy %d-%d", tm->tm_year, (tm->tm_yday - 1));
+        crypto_generichash(encrypted_injector_proxy_swarm_m1, sizeof(encrypted_injector_proxy_swarm_m1), (uint8_t*)name, strlen(name), NULL, 0);
+        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm_m1);
+        snprintf(name, sizeof(name), "injector proxy %d-%d", tm->tm_year, (tm->tm_yday + 0));
+        crypto_generichash(encrypted_injector_proxy_swarm_p0, sizeof(encrypted_injector_proxy_swarm_p0), (uint8_t*)name, strlen(name), NULL, 0);
+        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm_p0);
+        snprintf(name, sizeof(name), "injector proxy %d-%d", tm->tm_year, (tm->tm_yday + 1));
+        crypto_generichash(encrypted_injector_proxy_swarm_p1, sizeof(encrypted_injector_proxy_swarm_p1), (uint8_t*)name, strlen(name), NULL, 0);
+        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_proxy_swarm_p1);
     }
 }
 
@@ -1596,6 +1637,50 @@ void peer_request_done_cb(evhttp_request *req, void *arg)
     }
 }
 
+typedef struct {
+    uint64_t from_browser;
+    uint64_t to_browser;
+    uint64_t from_peer;
+    uint64_t to_peer;
+    uint64_t from_direct;
+    uint64_t to_direct;
+    uint64_t from_p2p;
+    uint64_t to_p2p;
+} byte_counts;
+byte_counts byte_count;
+
+void byte_count_cb(evbuffer *buf, const evbuffer_cb_info *info, void *userdata)
+{
+    uint64_t *counter = (uint64_t*)userdata;
+    //debug("%s counter:%p bytes:%zu\n", __func__, counter, info->n_deleted);
+    *counter += info->n_deleted;
+}
+
+void bufferevent_count_bytes(bufferevent *from, bufferevent *to)
+{
+    debug("%s from:%s to:%s\n", __func__,
+          bufferevent_is_local_browser(from) ? "browser" : (bufferevent_is_utp(from) ? "peer" : "???"),
+          bufferevent_is_utp(to) ? "peer" : "direct");
+    if (bufferevent_is_utp(from) && bufferevent_is_utp(to)) {
+        evbuffer_add_cb(bufferevent_get_input(from), byte_count_cb, &byte_count.from_p2p);
+        evbuffer_add_cb(bufferevent_get_output(from), byte_count_cb, &byte_count.to_p2p);
+        evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count.from_p2p);
+        evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &byte_count.to_p2p);
+        return;
+    }
+    if (bufferevent_is_local_browser(from)) {
+        evbuffer_add_cb(bufferevent_get_input(from), byte_count_cb, &byte_count.from_browser);
+        evbuffer_add_cb(bufferevent_get_output(from), byte_count_cb, &byte_count.to_browser);
+    }
+    if (bufferevent_is_utp(to)) {
+        evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count.from_peer);
+        evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &byte_count.to_peer);
+    } else {
+        evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count.from_direct);
+        evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &byte_count.to_direct);
+    }
+}
+
 void direct_submit_request(proxy_request *p)
 {
     direct_request *d = NULL;
@@ -1654,8 +1739,11 @@ void direct_submit_request(proxy_request *p)
     if (!evcon) {
         return;
     }
+    bufferevent *server = evhttp_connection_get_bufferevent(p->server_req->evcon);
+    bufferevent *bev = evhttp_connection_get_bufferevent(evcon);
+    bufferevent_count_bytes(server, bev);
     debug("p:%p d:%p con:%p direct request submitted: %s %s\n", p, d, evcon, evhttp_method(p->http_method), p->uri);
-    int r = evhttp_make_request(evcon, d->req, p->http_method, request_uri);
+    evhttp_make_request(evcon, d->req, p->http_method, request_uri);
 }
 
 void append_via(evhttp_request *from, evkeyvalq *to)
@@ -1715,6 +1803,9 @@ void peer_submit_request_on_con(peer_request *r, evhttp_connection *evcon)
 {
     proxy_request *p = r->p;
     debug("p:%p r:%p con:%p peer request submitted: %s %s\n", p, r, evcon, evhttp_method(p->http_method), p->uri);
+    bufferevent *server = evhttp_connection_get_bufferevent(p->server_req->evcon);
+    bufferevent *bev = evhttp_connection_get_bufferevent(evcon);
+    bufferevent_count_bytes(server, bev);
     evhttp_make_request(evcon, r->req, p->http_method, p->uri);
 }
 
@@ -2250,6 +2341,7 @@ void connect_other_read_cb(bufferevent *bev, void *ctx)
     connect_direct_cancel(c);
     c->dont_free = false;
     connect_cleanup(c);
+    bufferevent_count_bytes(server, bev);
     bev_splice(server, bev);
     bufferevent_enable(server, EV_READ|EV_WRITE);
     bufferevent_enable(bev, EV_READ|EV_WRITE);
@@ -2730,9 +2822,7 @@ void load_peer_file(const char *s, peer_array **pa)
     if (f) {
         peer p;
         while (fread(&p, sizeof(p), 1, f) == 1) {
-            if (!get_peer(*pa, &p.addr)) {
-                add_peer(pa, memdup(&p, sizeof(p)));
-            }
+            add_peer(pa, memdup(&p, sizeof(p)));
         }
         const char *label = "peers";
         if (*pa == injectors) {
@@ -3032,8 +3122,24 @@ network* client_init(port_t *http_port, port_t *socks_port)
     add_sockaddr(n, (sockaddr *)&sin, sizeof(sin));
     */
 
+    sockaddr_in iin = {.sin_family = AF_INET, .sin_addr.s_addr = inet_addr("52.88.7.21"), .sin_port = htons(9000)};
+    add_sockaddr(n, (sockaddr *)&iin, sizeof(iin));
+
     timer_callback cb = ^{
-        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm);
+        time_t t = time(NULL);
+        tm *tm = gmtime(&t);
+        char name[1024];
+
+        snprintf(name, sizeof(name), "injector %d-%d", tm->tm_year, (tm->tm_yday - 1));
+        crypto_generichash(encrypted_injector_swarm_m1, sizeof(encrypted_injector_swarm_m1), (uint8_t*)name, strlen(name), NULL, 0);
+        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm_m1);
+        snprintf(name, sizeof(name), "injector %d-%d", tm->tm_year, (tm->tm_yday + 0));
+        crypto_generichash(encrypted_injector_swarm_p0, sizeof(encrypted_injector_swarm_p0), (uint8_t*)name, strlen(name), NULL, 0);
+        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm_p0);
+        snprintf(name, sizeof(name), "injector %d-%d", tm->tm_year, (tm->tm_yday + 1));
+        crypto_generichash(encrypted_injector_swarm_p1, sizeof(encrypted_injector_swarm_p1), (uint8_t*)name, strlen(name), NULL, 0);
+        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm_p1);
+
         submit_trace_request(n);
         update_injector_proxy_swarm(n);
     };
