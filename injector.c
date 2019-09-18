@@ -564,8 +564,32 @@ int main(int argc, char *argv[])
     network *n = network_setup(address, port);
 
     timer_callback cb = ^{
+#define SHA1BA(a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t) (const uint8_t[]){0x##a,0x##b,0x##c,0x##d,0x##e,0x##f,0x##g,0x##h,0x##i,0x##j,0x##k,0x##l,0x##m,0x##n,0x##o,0x##p,0x##q,0x##r,0x##s,0x##t}
+
+#define injector_swarm SHA1BA(DF,54,48,F4,78,17,1B,51,63,4C,E1,EB,58,18,20,05,18,5D,8C,05)
+#define encrypted_injector_swarm SHA1BA(DC,1B,08,0B,E3,A1,F3,34,16,32,19,F0,F8,B4,17,16,23,92,D4,BB)
+
         dht_announce(n->dht, (const uint8_t *)injector_swarm);
         dht_announce(n->dht, (const uint8_t *)encrypted_injector_swarm);
+
+static_assert(20 >= crypto_generichash_BYTES_MIN, "dht hash must fit in generichash size");
+        uint8_t encrypted_injector_swarm_m1[20];
+        uint8_t encrypted_injector_swarm_p0[20];
+        uint8_t encrypted_injector_swarm_p1[20];
+
+        time_t t = time(NULL);
+        tm *tm = gmtime(&t);
+        char name[1024];
+
+        snprintf(name, sizeof(name), "injector %d-%d", tm->tm_year, (tm->tm_yday - 1));
+        crypto_generichash(encrypted_injector_swarm_m1, sizeof(encrypted_injector_swarm_m1), (uint8_t*)name, strlen(name), NULL, 0);
+        dht_announce(n->dht, (const uint8_t *)encrypted_injector_swarm_m1);
+        snprintf(name, sizeof(name), "injector %d-%d", tm->tm_year, (tm->tm_yday + 0));
+        crypto_generichash(encrypted_injector_swarm_p0, sizeof(encrypted_injector_swarm_p0), (uint8_t*)name, strlen(name), NULL, 0);
+        dht_announce(n->dht, (const uint8_t *)encrypted_injector_swarm_p0);
+        snprintf(name, sizeof(name), "injector %d-%d", tm->tm_year, (tm->tm_yday + 1));
+        crypto_generichash(encrypted_injector_swarm_p1, sizeof(encrypted_injector_swarm_p1), (uint8_t*)name, strlen(name), NULL, 0);
+        dht_announce(n->dht, (const uint8_t *)encrypted_injector_swarm_p1);
     };
     cb();
     timer_repeating(n, 25 * 60 * 1000, cb);

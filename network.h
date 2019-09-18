@@ -48,6 +48,7 @@ typedef struct evutil_addrinfo evutil_addrinfo;
 typedef struct bufferevent bufferevent;
 typedef struct timeval timeval;
 typedef struct timespec timespec;
+typedef struct tm tm;
 typedef struct addrinfo addrinfo;
 typedef struct rlimit rlimit;
 typedef struct in_addr in_addr;
