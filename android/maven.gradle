@@ -8,7 +8,7 @@ install.repositories.mavenInstaller.pom.project {
     artifactId 'newnode'
 
     name 'newnode'
-    description ''
+    description 'Decentralized Content Distribution Network'
     url 'https://github.com/clostra/newnode'
 
     licenses {
