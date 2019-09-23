@@ -1744,7 +1744,7 @@ void direct_submit_request(proxy_request *p)
     if (!evcon) {
         return;
     }
-    bufferevent *server = evhttp_connection_get_bufferevent(p->server_req->evcon);
+    bufferevent *server = p->server_req ? evhttp_connection_get_bufferevent(p->server_req->evcon) : NULL;
     bufferevent *bev = evhttp_connection_get_bufferevent(evcon);
     bufferevent_count_bytes(server, bev);
     debug("p:%p d:%p con:%p direct request submitted: %s %s\n", p, d, evcon, evhttp_method(p->http_method), p->uri);
