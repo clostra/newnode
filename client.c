@@ -1658,19 +1658,24 @@ void byte_count_cb(evbuffer *buf, const evbuffer_cb_info *info, void *userdata)
 
 void bufferevent_count_bytes(bufferevent *from, bufferevent *to)
 {
-    debug("%s from:%s to:%s\n", __func__,
-          bufferevent_is_local_browser(from) ? "browser" : (bufferevent_is_utp(from) ? "peer" : "???"),
-          bufferevent_is_utp(to) ? "peer" : "direct");
-    if (bufferevent_is_utp(from) && bufferevent_is_utp(to)) {
-        evbuffer_add_cb(bufferevent_get_input(from), byte_count_cb, &byte_count.from_p2p);
-        evbuffer_add_cb(bufferevent_get_output(from), byte_count_cb, &byte_count.to_p2p);
-        evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count.from_p2p);
-        evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &byte_count.to_p2p);
-        return;
-    }
-    if (bufferevent_is_local_browser(from)) {
-        evbuffer_add_cb(bufferevent_get_input(from), byte_count_cb, &byte_count.from_browser);
-        evbuffer_add_cb(bufferevent_get_output(from), byte_count_cb, &byte_count.to_browser);
+    if (from) {
+        debug("%s from:%s to:%s\n", __func__,
+              bufferevent_is_local_browser(from) ? "browser" : (bufferevent_is_utp(from) ? "peer" : "???"),
+              bufferevent_is_utp(to) ? "peer" : "direct");
+        if (bufferevent_is_utp(from) && bufferevent_is_utp(to)) {
+            evbuffer_add_cb(bufferevent_get_input(from), byte_count_cb, &byte_count.from_p2p);
+            evbuffer_add_cb(bufferevent_get_output(from), byte_count_cb, &byte_count.to_p2p);
+            evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count.from_p2p);
+            evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &byte_count.to_p2p);
+            return;
+        }
+        if (bufferevent_is_local_browser(from)) {
+            evbuffer_add_cb(bufferevent_get_input(from), byte_count_cb, &byte_count.from_browser);
+            evbuffer_add_cb(bufferevent_get_output(from), byte_count_cb, &byte_count.to_browser);
+        }
+    } else {
+        debug("%s from:null to:%s\n", __func__,
+              bufferevent_is_utp(to) ? "peer" : "direct");
     }
     if (bufferevent_is_utp(to)) {
         evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count.from_peer);
@@ -1803,7 +1808,7 @@ void peer_submit_request_on_con(peer_request *r, evhttp_connection *evcon)
 {
     proxy_request *p = r->p;
     debug("p:%p r:%p con:%p peer request submitted: %s %s\n", p, r, evcon, evhttp_method(p->http_method), p->uri);
-    bufferevent *server = evhttp_connection_get_bufferevent(p->server_req->evcon);
+    bufferevent *server = p->server_req ? evhttp_connection_get_bufferevent(p->server_req->evcon) : NULL;
     bufferevent *bev = evhttp_connection_get_bufferevent(evcon);
     bufferevent_count_bytes(server, bev);
     evhttp_make_request(evcon, r->req, p->http_method, p->uri);
