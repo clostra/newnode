@@ -143,6 +143,7 @@ struct proxy_request {
     bool chunked:1;
     bool merkle_tree_finished:1;
     bool dont_free:1;
+    bool localhost:1;
 };
 
 typedef struct {
@@ -727,7 +728,7 @@ bool addr_is_localhost(const sockaddr *sa, socklen_t salen)
     return false;
 }
 
-bool bufferevent_is_local_browser(bufferevent *bev)
+bool bufferevent_is_localhost(bufferevent *bev)
 {
     int fd = bufferevent_getfd(bev);
     sockaddr_storage ss;
@@ -740,9 +741,9 @@ bool bufferevent_is_local_browser(bufferevent *bev)
     return addr_is_localhost((sockaddr *)&ss, len);
 }
 
-bool evcon_is_local_browser(evhttp_connection *evcon)
+bool evcon_is_localhost(evhttp_connection *evcon)
 {
-    return bufferevent_is_local_browser(evhttp_connection_get_bufferevent(evcon));
+    return bufferevent_is_localhost(evhttp_connection_get_bufferevent(evcon));
 }
 
 void copy_response_headers(evhttp_request *from, evhttp_request *to)
@@ -752,7 +753,7 @@ void copy_response_headers(evhttp_request *from, evhttp_request *to)
         copy_header(from, to, response_header_whitelist[i]);
     }
     copy_header(from, to, "Content-Length");
-    if (!evcon_is_local_browser(to->evcon)) {
+    if (!evcon_is_localhost(to->evcon)) {
         copy_header(from, to, "Content-Location");
         copy_header(from, to, "X-MSign");
         copy_header(from, to, "X-Hashes");
@@ -1656,26 +1657,23 @@ void byte_count_cb(evbuffer *buf, const evbuffer_cb_info *info, void *userdata)
     *counter += info->n_deleted;
 }
 
-void bufferevent_count_bytes(bufferevent *from, bufferevent *to)
+void bufferevent_count_bytes(bool from_localhost, bufferevent *from, bufferevent *to)
 {
-    if (from) {
-        debug("%s from:%s to:%s\n", __func__,
-              bufferevent_is_local_browser(from) ? "browser" : (bufferevent_is_utp(from) ? "peer" : "???"),
-              bufferevent_is_utp(to) ? "peer" : "direct");
-        if (bufferevent_is_utp(from) && bufferevent_is_utp(to)) {
+    debug("%s from:%s to:%s\n", __func__,
+          from_localhost ? "browser" : "peer",
+          bufferevent_is_utp(to) ? "peer" : "direct");
+    if (from_localhost && bufferevent_is_utp(to)) {
+        if (from) {
             evbuffer_add_cb(bufferevent_get_input(from), byte_count_cb, &byte_count.from_p2p);
             evbuffer_add_cb(bufferevent_get_output(from), byte_count_cb, &byte_count.to_p2p);
-            evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count.from_p2p);
-            evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &byte_count.to_p2p);
-            return;
         }
-        if (bufferevent_is_local_browser(from)) {
-            evbuffer_add_cb(bufferevent_get_input(from), byte_count_cb, &byte_count.from_browser);
-            evbuffer_add_cb(bufferevent_get_output(from), byte_count_cb, &byte_count.to_browser);
-        }
-    } else {
-        debug("%s from:null to:%s\n", __func__,
-              bufferevent_is_utp(to) ? "peer" : "direct");
+        evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count.from_p2p);
+        evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &byte_count.to_p2p);
+        return;
+    }
+    if (from_localhost && from) {
+        evbuffer_add_cb(bufferevent_get_input(from), byte_count_cb, &byte_count.from_browser);
+        evbuffer_add_cb(bufferevent_get_output(from), byte_count_cb, &byte_count.to_browser);
     }
     if (bufferevent_is_utp(to)) {
         evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count.from_peer);
@@ -1746,7 +1744,7 @@ void direct_submit_request(proxy_request *p)
     }
     bufferevent *server = p->server_req ? evhttp_connection_get_bufferevent(p->server_req->evcon) : NULL;
     bufferevent *bev = evhttp_connection_get_bufferevent(evcon);
-    bufferevent_count_bytes(server, bev);
+    bufferevent_count_bytes(p->localhost, server, bev);
     debug("p:%p d:%p con:%p direct request submitted: %s %s\n", p, d, evcon, evhttp_method(p->http_method), p->uri);
     evhttp_make_request(evcon, d->req, p->http_method, request_uri);
 }
@@ -1810,7 +1808,7 @@ void peer_submit_request_on_con(peer_request *r, evhttp_connection *evcon)
     debug("p:%p r:%p con:%p peer request submitted: %s %s\n", p, r, evcon, evhttp_method(p->http_method), p->uri);
     bufferevent *server = p->server_req ? evhttp_connection_get_bufferevent(p->server_req->evcon) : NULL;
     bufferevent *bev = evhttp_connection_get_bufferevent(evcon);
-    bufferevent_count_bytes(server, bev);
+    bufferevent_count_bytes(p->localhost, server, bev);
     evhttp_make_request(evcon, r->req, p->http_method, p->uri);
 }
 
@@ -2004,6 +2002,7 @@ void submit_request(network *n, evhttp_request *server_req)
     p->range_start = range_start;
     p->range_end = range_end;
     p->server_req = server_req;
+    p->localhost = evcon_is_localhost(p->server_req->evcon);
     p->http_method = p->server_req->type;
     p->uri = strdup(evhttp_request_get_uri(p->server_req));
     p->m = alloc(merkle_tree);
@@ -2024,7 +2023,7 @@ void submit_request(network *n, evhttp_request *server_req)
 
     p->dont_free = true;
 
-    if (!NO_DIRECT && evcon_is_local_browser(server_req->evcon)) {
+    if (!NO_DIRECT && evcon_is_localhost(server_req->evcon)) {
         direct_submit_request(p);
     }
 
@@ -2346,7 +2345,7 @@ void connect_other_read_cb(bufferevent *bev, void *ctx)
     connect_direct_cancel(c);
     c->dont_free = false;
     connect_cleanup(c);
-    bufferevent_count_bytes(server, bev);
+    bufferevent_count_bytes(bufferevent_is_localhost(server), server, bev);
     bev_splice(server, bev);
     bufferevent_enable(server, EV_READ|EV_WRITE);
     bufferevent_enable(bev, EV_READ|EV_WRITE);
@@ -2481,7 +2480,7 @@ int connect_header_cb(evhttp_request *req, void *arg)
 
                 if (c->server_req) {
                     if (connect_exhausted(c)) {
-                        if (!evcon_is_local_browser(c->server_req->evcon)) {
+                        if (!evcon_is_localhost(c->server_req->evcon)) {
                             copy_header(req, c->server_req, "Content-Location");
                             copy_header(req, c->server_req, "X-MSign");
                         }
@@ -2698,7 +2697,7 @@ void http_request_cb(evhttp_request *req, void *arg)
     const char *scheme = evhttp_uri_get_scheme(uri);
     const char *host = evhttp_uri_get_host(uri);
     if (req->type == EVHTTP_REQ_GET && !host &&
-        evcon_is_local_browser(req->evcon) && streq(evhttp_request_get_uri(req), "/proxy.pac")) {
+        evcon_is_localhost(req->evcon) && streq(evhttp_request_get_uri(req), "/proxy.pac")) {
         evhttp_add_header(req->output_headers, "Content-Type", "application/x-ns-proxy-autoconfig");
         evbuffer *body = evbuffer_new();
         evbuffer_add_printf(body, "function FindProxyForURL(url, host) {return \""
