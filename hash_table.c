@@ -59,6 +59,17 @@ void* hash_remove(hash_table *h, const char *key)
     return r;
 }
 
+void hash_iter(hash_table *h, iter_fn iter)
+{
+    const char *k;
+    void *v;
+    kh_foreach(h, k, v, {
+        if (!iter(k, v)) {
+            break;
+        }
+    });
+}
+
 void hash_table_free(hash_table *h)
 {
     kh_destroy(hash_table_val, h);

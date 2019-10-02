@@ -27,7 +27,9 @@ uint16_t socks_port;
     NSString *cachesPath = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).lastObject;
     chdir(cachesPath.UTF8String);
 
-    newnode_init(&http_port, &socks_port);
+    NSString *appId = NSBundle.mainBundle.infoDictionary["CFBundleIdentifier"];
+
+    newnode_init(appId.UTF8String, &http_port, &socks_port);
     if (!http_port || !socks_port) {
         NSLog(@"Error: NewNode could not be initialized");
     }
