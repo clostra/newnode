@@ -214,11 +214,20 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env,
 
     bugsnag_client_setup(env);
 
+    o_debug = 1;
+
+    char app_id[64] = {0};
+    FILE *cmdline = fopen("/proc/self/cmdline", "r");
+    if (cmdline) {
+        fread(app_id, sizeof(app_id), 1, cmdline);
+        __android_log_print(ANDROID_LOG_DEBUG, "newnode", "application id %s\n", app_id);
+        fclose(cmdline);
+    }
     if (!use_ephemeral_port) {
         http_port = 8006;
         socks_port = 8007;
     }
-    newnode_init(&http_port, &socks_port);
+    newnode_init(app_id, &http_port, &socks_port);
 
     (*env)->ReleaseStringUTFChars(env, cacheDir, cCacheDir);
 }
