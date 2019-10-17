@@ -27,7 +27,7 @@ uint16_t socks_port;
     NSString *cachesPath = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).lastObject;
     chdir(cachesPath.UTF8String);
 
-    NSString *appId = NSBundle.mainBundle.infoDictionary["CFBundleIdentifier"];
+    NSString *appId = NSBundle.mainBundle.infoDictionary[@"CFBundleIdentifier"];
 
     newnode_init(appId.UTF8String, &http_port, &socks_port);
     if (!http_port || !socks_port) {
