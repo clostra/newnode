@@ -6,8 +6,8 @@
 #include "NewNode-iOS.h"
 #import <BugsnagStatic/Bugsnag.h>
 
-uint16_t http_port;
-uint16_t socks_port;
+port_t http_port;
+port_t socks_port;
 
 @implementation NewNode
 
@@ -27,9 +27,16 @@ uint16_t socks_port;
     NSString *cachesPath = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).lastObject;
     chdir(cachesPath.UTF8String);
 
-    NSString *appId = NSBundle.mainBundle.infoDictionary["CFBundleIdentifier"];
+    NSString *appName = NSBundle.mainBundle.infoDictionary[@"CFBundleDisplayName"];
+    NSString *appId = NSBundle.mainBundle.infoDictionary[@"CFBundleIdentifier"];
 
-    newnode_init(appId.UTF8String, &http_port, &socks_port);
+    newnode_init(appName.UTF8String, appId.UTF8String, &http_port, &socks_port, ^(const char *url, https_complete_callback cb) {
+        debug("https: %s\n", url);
+        [[NSURLSession.sharedSession downloadTaskWithURL:[NSURL URLWithString:@(url)]
+                                       completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
+            cb(!!error);
+        }] resume];
+    });
     if (!http_port || !socks_port) {
         NSLog(@"Error: NewNode could not be initialized");
     }

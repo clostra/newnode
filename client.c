@@ -30,6 +30,7 @@
 #include "obfoo.h"
 #include "base64.h"
 #include "network.h"
+#include "newnode.h"
 #include "constants.h"
 #include "bev_splice.h"
 #include "hash_table.h"
@@ -152,6 +153,23 @@ typedef struct {
     peer *peers[];
 } peer_array;
 
+typedef struct {
+    uint64_t from_browser;
+    uint64_t to_browser;
+    uint64_t from_peer;
+    uint64_t to_peer;
+    uint64_t from_direct;
+    uint64_t to_direct;
+    uint64_t from_p2p;
+    uint64_t to_p2p;
+} byte_counts;
+
+hash_table *byte_count_per_authority;
+timer *stats_report_timer;
+network *g_n;
+uint64_t g_cid;
+bool g_stats_changed;
+
 peer_array *injectors;
 peer_array *injector_proxies;
 peer_array *all_peers;
@@ -164,7 +182,9 @@ time_t last_request;
 timer *saving_peers;
 uint16_t g_http_port;
 uint16_t g_socks_port;
+const char *g_app_name;
 const char *g_app_id;
+https_callback g_https_cb;
 
 static_assert(20 >= crypto_generichash_BYTES_MIN, "dht hash must fit in generichash size");
 uint8_t encrypted_injector_swarm_m1[20];
@@ -1641,43 +1661,112 @@ void peer_request_done_cb(evhttp_request *req, void *arg)
     }
 }
 
-typedef struct {
-    uint64_t from_browser;
-    uint64_t to_browser;
-    uint64_t from_peer;
-    uint64_t to_peer;
-    uint64_t from_direct;
-    uint64_t to_direct;
-    uint64_t from_p2p;
-    uint64_t to_p2p;
-} byte_counts;
+void stats_changed()
+{
+    g_stats_changed = true;
+    if (o_debug > 1) {
+        hash_iter(byte_count_per_authority, ^bool (const char *authority, void *val) {
+            byte_counts *b = val;
+            debug("%s %s %"PRIu64"\n", g_app_id, authority,
+                  b->from_browser + b->to_browser +
+                  b->from_peer + b->to_peer +
+                  b->from_direct + b->to_direct +
+                  b->from_p2p + b->to_p2p);
+            return true;
+        });
+    }
+    if (stats_report_timer) {
+        return;
+    }
+    debug("starting stats timer\n");
+    stats_report_timer = timer_start(g_n, 1000, ^{
+        debug("reporting stats\n");
+        stats_report_timer = NULL;
+        g_stats_changed = false;
+        hash_table *byte_count_per_authority_copy = hash_table_create();
+        hash_iter(byte_count_per_authority, ^bool (const char *authority, void *val) {
+            if (streq("www.google-analytics.com", authority)) {
+                return true;
+            }
+            byte_counts *b = val;
+            if (!(b->from_browser || b->to_browser ||
+                  b->from_peer || b->to_peer ||
+                  b->from_direct || b->to_direct ||
+                  b->from_p2p || b->to_p2p)) {
+                return true;
+            }
 
-hash_table *byte_count_per_authority;
+            byte_counts *byte_count = alloc(byte_counts);
+            hash_set(byte_count_per_authority_copy, authority, byte_count);
+            *byte_count = *b;
+            bzero(b, sizeof(*b));
+
+            __auto_type report = ^(const char *type, uint64_t count, void (^cb)(void)) {
+                if (!count) {
+                    return;
+                }
+                char url[2048];
+                snprintf(url, sizeof(url), "https://www.google-analytics.com/collect?v=1" \
+                         "&tid=UA-149896478-1&t=event&ec=byte_counts" \
+                         "&ea=%s" \
+                         "&el=%s" \
+                         "&ev=%"PRIu64"" \
+                         "&an=%s" \
+                         "&aid=%s" \
+                         "&cid=%"PRIu64"",
+                         type,
+                         authority,
+                         count,
+                         g_app_name,
+                         g_app_id,
+                         g_cid);
+                g_https_cb(url, ^(bool success) {
+                    timer_start(g_n, 0, ^{
+                        if (!success) {
+                            cb();
+                        }
+                        if (g_stats_changed) {
+                            stats_changed();
+                        }
+                    });
+                });
+            };
+
+            report("peer", byte_count->from_peer + byte_count->to_peer, ^{
+                b->from_peer += byte_count->from_peer;
+                b->to_peer += byte_count->to_peer;
+            });
+            report("direct", byte_count->from_direct + byte_count->to_direct, ^{
+                b->from_direct += byte_count->from_direct;
+                b->to_direct += byte_count->to_direct;
+            });
+            report("p2p", byte_count->from_p2p + byte_count->to_p2p, ^{
+                b->from_p2p += byte_count->from_p2p;
+                b->to_p2p += byte_count->to_p2p;
+            });
+            return true;
+        });
+    });
+}
 
 void byte_count_cb(evbuffer *buf, const evbuffer_cb_info *info, void *userdata)
 {
     uint64_t *counter = (uint64_t*)userdata;
     //debug("%s counter:%p bytes:%zu\n", __func__, counter, info->n_deleted);
-    *counter += info->n_deleted;
-    /*
-    hash_iter(byte_count_per_authority, ^bool (const char *authority, void *val) {
-        byte_counts *b = val;
-        debug("%s %p %s %"PRIu64"\n", g_app_id, counter, authority,
-              b->from_browser + b->to_browser +
-              b->from_peer + b->to_peer +
-              b->from_direct + b->to_direct +
-              b->from_p2p + b->to_p2p);
-        return true;
-    });
-    */
+    if (info->n_deleted) {
+        *counter += info->n_deleted;
+        stats_changed();
+    }
 }
 
-void bufferevent_count_bytes(const char *authority, bool from_localhost, bufferevent *from, bufferevent *to)
+void bufferevent_count_bytes(network *n, const char *authority, bool from_localhost, bufferevent *from, bufferevent *to)
 {
     debug("%s from:%s to:%s %s\n", __func__,
           from_localhost ? "browser" : "peer",
           bufferevent_is_utp(to) ? "peer" : "direct",
           authority);
+
+    g_n = n;
 
     if (!byte_count_per_authority) {
         byte_count_per_authority = hash_table_create();
@@ -1685,6 +1774,14 @@ void bufferevent_count_bytes(const char *authority, bool from_localhost, buffere
     byte_counts *byte_count = hash_get_or_insert(byte_count_per_authority, strdup(authority), ^{
         return alloc(byte_counts);
     });
+
+    // prevent double-counting by removing all previous byte counters
+    if (from) {
+        evbuffer_remove_all_cb(bufferevent_get_input(from), byte_count_cb);
+        evbuffer_remove_all_cb(bufferevent_get_output(from), byte_count_cb);
+    }
+    evbuffer_remove_all_cb(bufferevent_get_input(to), byte_count_cb);
+    evbuffer_remove_all_cb(bufferevent_get_output(to), byte_count_cb);
 
     if (from_localhost && bufferevent_is_utp(to)) {
         if (from) {
@@ -1768,7 +1865,7 @@ void direct_submit_request(proxy_request *p)
     }
     bufferevent *server = p->server_req ? evhttp_connection_get_bufferevent(p->server_req->evcon) : NULL;
     bufferevent *bev = evhttp_connection_get_bufferevent(evcon);
-    bufferevent_count_bytes(p->authority, p->localhost, server, bev);
+    bufferevent_count_bytes(p->n, p->authority, p->localhost, server, bev);
     debug("p:%p d:%p con:%p direct request submitted: %s %s\n", p, d, evcon, evhttp_method(p->http_method), p->uri);
     evhttp_make_request(evcon, d->req, p->http_method, request_uri);
 }
@@ -1832,7 +1929,7 @@ void peer_submit_request_on_con(peer_request *r, evhttp_connection *evcon)
     debug("p:%p r:%p con:%p peer request submitted: %s %s\n", p, r, evcon, evhttp_method(p->http_method), p->uri);
     bufferevent *server = p->server_req ? evhttp_connection_get_bufferevent(p->server_req->evcon) : NULL;
     bufferevent *bev = evhttp_connection_get_bufferevent(evcon);
-    bufferevent_count_bytes(p->authority, p->localhost, server, bev);
+    bufferevent_count_bytes(p->n, p->authority, p->localhost, server, bev);
     evhttp_make_request(evcon, r->req, p->http_method, p->uri);
 }
 
@@ -2370,7 +2467,13 @@ void connect_other_read_cb(bufferevent *bev, void *ctx)
     c->dont_free = true;
     connect_proxy_cancel(c);
     connect_direct_cancel(c);
-    bufferevent_count_bytes(c->authority, bufferevent_is_localhost(server), server, bev);
+    char authority[128];
+    snprintf(authority, sizeof(authority), "%s", c->authority);
+    char *sep = strchr(authority, ':');
+    if (sep) {
+        *sep = '\0';
+    }
+    bufferevent_count_bytes(c->n, authority, bufferevent_is_localhost(server), server, bev);
     c->dont_free = false;
     connect_cleanup(c);
     bev_splice(server, bev);
@@ -3076,9 +3179,13 @@ void socks_error_cb(evconnlistener *lis, void *ptr)
     debug("%s %d (%s)\n", __func__, err, evutil_socket_error_to_string(err));
 }
 
-network* client_init(port_t *http_port, port_t *socks_port)
+network* client_init(const char *app_name, const char *app_id, port_t *http_port, port_t *socks_port, https_callback https_cb)
 {
     //o_debug = 1;
+
+    g_app_name = strdup(app_name);
+    g_app_id = strdup(app_id);
+    g_https_cb = Block_copy(https_cb);
 
     injectors = alloc(peer_array);
     injector_proxies = alloc(peer_array);
@@ -3106,6 +3213,19 @@ network* client_init(port_t *http_port, port_t *socks_port)
     if (f) {
         fwrite(&port_pref, sizeof(port_pref), 1, f);
         fclose(f);
+    }
+
+    f = fopen("cid.dat", "rb");
+    if (f) {
+        fread(&g_cid, sizeof(g_cid), 1, f);
+        fclose(f);
+    } else {
+        randombytes_buf(&g_cid, sizeof(g_cid));
+        f = fopen("cid.dat", "wb");
+        if (f) {
+            fwrite(&g_cid, sizeof(g_cid), 1, f);
+            fclose(f);
+        }
     }
 
     evhttp_set_allowed_methods(n->http,
@@ -3191,20 +3311,19 @@ void* client_thread(void *userdata)
     return NULL;
 }
 
-void client_thread_start(port_t *http_port, port_t *socks_port)
+void client_thread_start(const char *app_name, const char *app_id, port_t *http_port, port_t *socks_port, https_callback https_cb)
 {
-    network *n = client_init(http_port, socks_port);
+    network *n = client_init(app_name, app_id, http_port, socks_port, https_cb);
     pthread_t t;
     pthread_create(&t, NULL, client_thread, n);
 }
 
-void newnode_init(const char *app_id, port_t *http_port, port_t *socks_port)
+void newnode_init(const char *app_name, const char *app_id, port_t *http_port, port_t *socks_port, https_callback https_cb)
 {
     static bool started = false;
     if (started) {
         return;
     }
     started = true;
-    g_app_id = strdup(app_id);
-    client_thread_start(http_port, socks_port);
+    client_thread_start(app_name, app_id, http_port, socks_port, https_cb);
 }
