@@ -1707,16 +1707,18 @@ void stats_changed()
                 }
                 char url[2048];
                 snprintf(url, sizeof(url), "https://www.google-analytics.com/collect?v=1" \
-                         "&tid=UA-149896478-1&t=event&ec=byte_counts" \
+                         "&tid=UA-149896478-2&t=event&ec=byte_counts&ds=app&ni=1" \
                          "&ea=%s" \
                          "&el=%s" \
                          "&ev=%"PRIu64"" \
+                         "&dh=%s" \
                          "&an=%s" \
                          "&aid=%s" \
                          "&cid=%"PRIu64"",
                          type,
                          authority,
                          count,
+                         authority,
                          g_app_name,
                          g_app_id,
                          g_cid);
