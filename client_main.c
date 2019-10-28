@@ -1,10 +1,11 @@
 #include <stdlib.h>
 
+#include "newnode.h"
 #include "network.h"
 #include "log.h"
 
 
-network* client_init(port_t *http_port, port_t *socks_port);
+network* client_init(const char *app_name, const char *app_id, port_t *http_port, port_t *socks_port, https_callback https_cb);
 int client_run(network *n);
 
 int main(int argc, char *argv[])
@@ -30,7 +31,10 @@ int main(int argc, char *argv[])
 
     port_t http_port = atoi(port_s);
     port_t socks_port = http_port + 1;
-    network *n = client_init(&http_port, &socks_port);
+    network *n = client_init("client", "com.newnode.client", &http_port, &socks_port, ^(const char *url, https_complete_callback cb) {
+        debug("https: %s\n", url);
+        cb(true);
+    });
     if (!n) {
         return 1;
     }

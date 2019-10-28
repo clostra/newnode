@@ -28,6 +28,7 @@
 		3C4B39C321B2AB730031CCA2 /* libevent_pthreads.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C4B39C221B2AB730031CCA2 /* libevent_pthreads.a */; };
 		3C4B39C521B2AB820031CCA2 /* libsodium.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C4B39C421B2AB820031CCA2 /* libsodium.a */; };
 		3C4B39CA21B2AC610031CCA2 /* dht.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C4B39C921B2AC610031CCA2 /* dht.o */; };
+		3CFE42A4235E89A500231DEB /* thread.c in Sources */ = {isa = PBXBuildFile; fileRef = 3CFE42A3235E89A500231DEB /* thread.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -84,6 +85,8 @@
 		3C4B39C221B2AB730031CCA2 /* libevent_pthreads.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libevent_pthreads.a; path = Libevent/native/lib/libevent_pthreads.a; sourceTree = "<group>"; };
 		3C4B39C421B2AB820031CCA2 /* libsodium.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsodium.a; path = libsodium/native/lib/libsodium.a; sourceTree = "<group>"; };
 		3C4B39C921B2AC610031CCA2 /* dht.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = dht.o; path = dht/dht.o; sourceTree = "<group>"; };
+		3CFE42A2235E89A500231DEB /* thread.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = thread.h; sourceTree = "<group>"; };
+		3CFE42A3235E89A500231DEB /* thread.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = thread.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -153,6 +156,8 @@
 				3C3C08A0227BC79500232FDB /* obfoo.h */,
 				3C4B39AB21B2A4830031CCA2 /* sha1.c */,
 				3C3C08A7227BC79600232FDB /* sha1.h */,
+				3CFE42A3235E89A500231DEB /* thread.c */,
+				3CFE42A2235E89A500231DEB /* thread.h */,
 				3C4B399E21B2A4830031CCA2 /* timer.c */,
 				3C3C089D227BC79500232FDB /* timer.h */,
 				3C4B39A321B2A4830031CCA2 /* utp_bufferevent.c */,
@@ -244,6 +249,7 @@
 				3C4B39B821B2A4830031CCA2 /* client.c in Sources */,
 				3C4B39B921B2A4830031CCA2 /* hash_table.c in Sources */,
 				3C4B39AE21B2A4830031CCA2 /* timer.c in Sources */,
+				3CFE42A4235E89A500231DEB /* thread.c in Sources */,
 				3C4B39B521B2A4830031CCA2 /* http.c in Sources */,
 				3C4B39B721B2A4830031CCA2 /* obfoo.c in Sources */,
 			);
