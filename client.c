@@ -2127,7 +2127,7 @@ void submit_request(network *n, evhttp_request *server_req)
     p->server_req = server_req;
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(p->server_req);
     const char *host = evhttp_uri_get_host(uri);
-    p->authority = strdup(host);
+    p->authority = strdup(host ?: "");
     p->localhost = evcon_is_localhost(p->server_req->evcon);
     p->http_method = p->server_req->type;
     p->uri = strdup(evhttp_request_get_uri(p->server_req));
