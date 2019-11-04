@@ -2371,11 +2371,13 @@ void connect_send_error(connect_req *c, int error, const char *reason)
         return;
     }
     debug("c:%p %s req:%p reply:%d %s\n", c, __func__, c->server_req, error, reason);
-    if (c->server_req->evcon) {
-        evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
+    if (c->server_req) {
+        if (c->server_req->evcon) {
+            evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
+        }
+        evhttp_send_error(c->server_req, error, reason);
+        c->server_req = NULL;
     }
-    evhttp_send_error(c->server_req, error, reason);
-    c->server_req = NULL;
 }
 
 void connect_cleanup(connect_req *c)
