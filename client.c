@@ -1785,7 +1785,7 @@ void bufferevent_count_bytes(network *n, const char *authority, bool from_localh
     evbuffer_remove_all_cb(bufferevent_get_input(to), byte_count_cb);
     evbuffer_remove_all_cb(bufferevent_get_output(to), byte_count_cb);
 
-    if (from_localhost && bufferevent_is_utp(to)) {
+    if (!from_localhost && bufferevent_is_utp(to)) {
         if (from) {
             evbuffer_add_cb(bufferevent_get_input(from), byte_count_cb, &byte_count->from_p2p);
             evbuffer_add_cb(bufferevent_get_output(from), byte_count_cb, &byte_count->to_p2p);
