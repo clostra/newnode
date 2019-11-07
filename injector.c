@@ -440,6 +440,7 @@ void http_request_cb(evhttp_request *req, void *arg)
         snprintf(size, sizeof(size), "%zu", evbuffer_get_length(output));
         evhttp_add_header(req->output_headers, "Content-Length", size);
         evhttp_add_header(req->output_headers, "Content-Type", "message/http");
+        evhttp_add_header(req->output_headers, "Content-Location", evhttp_request_get_uri(req));
 
         // set the code early so we can hash it
         req->response_code = 200;

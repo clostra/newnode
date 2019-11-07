@@ -9,6 +9,7 @@
 #include "bugsnag/bugsnag_ndk.h"
 
 #include "network.h"
+#include "thread.h"
 #include "constants.h"
 #include "log.h"
 #include "newnode.h"
@@ -65,7 +66,7 @@ void start_stdio_thread()
 
 #define CALL_VOID_BOOL(class, obj, meth, arg) CALL_VOID(class, obj, meth, Z, arg)
 
-#define CATCH(code) if ((*env)->ExceptionOccurred(env)) { /*(*env)->ExceptionClear(env);*/ code; }
+#define CATCH(code) if ((*env)->ExceptionOccurred(env)) { (*env)->ExceptionDescribe(env); code; }
 
 enum notify_type {
     ALL = 1,
@@ -207,6 +208,56 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_useEphemeralPort(JNIEnv*
     use_ephemeral_port = true;
 }
 
+bool android_https(const char* url)
+{
+    JNIEnv *env;
+    int stat = (*g_jvm)->GetEnv(g_jvm, (void **)&env, JNI_VERSION_1_6);
+    if (stat == JNI_EDETACHED) {
+        if ((*g_jvm)->AttachCurrentThread(g_jvm, &env, NULL) != 0) {
+            fprintf(stderr, "%s Failed to get JNI environment\n", __func__);
+            return false;
+        }
+    }
+
+    // URL jUrl = new URL(url)
+    jstring jUrlStr = JSTR(url);
+
+    jclass jUrlClass = (*env)->FindClass(env, "java/net/URL");
+    jmethodID jUrlConstructorID = (*env)->GetMethodID(env, jUrlClass, "<init>", "(Ljava/lang/String;)V");
+    jobject jUrl = (*env)->NewObject(env, jUrlClass, jUrlConstructorID, jUrlStr);
+    CATCH(return false);
+    (*env)->DeleteLocalRef(env, jUrlStr);
+
+    // HttpURLConnection connection = (HttpURLConnection) jUrl.openConnection();
+    jmethodID jUrlOpenConnectionID = (*env)->GetMethodID(env, jUrlClass, "openConnection", "()Ljava/net/URLConnection;");
+    jobject jConnection = (*env)->CallObjectMethod(env, jUrl, jUrlOpenConnectionID);
+    CATCH(return false);
+
+    // connection.setRequestMethod("GET");
+    jstring jMethod = JSTR("GET");
+    jclass jConnectionClass = (*env)->FindClass(env, "java/net/HttpURLConnection");
+    jmethodID jConnectionSetMethodID = (*env)->GetMethodID(env, jConnectionClass, "setRequestMethod", "(Ljava/lang/String;)V");
+    (*env)->CallVoidMethod(env, jConnection, jConnectionSetMethodID, jMethod);
+    CATCH(return false);
+    (*env)->DeleteLocalRef(env, jMethod);
+
+    // connection.connect();
+    jmethodID jConnectionConnectID = (*env)->GetMethodID(env, jConnectionClass, "connect", "()V");
+    (*env)->CallVoidMethod(env, jConnection, jConnectionConnectID);
+    CATCH(return false);
+
+    // result.responseStatus = connection.getResponseCode();
+    jmethodID jConnectionGetResponseCodeID = (*env)->GetMethodID(env, jConnectionClass, "getResponseCode", "()I");
+    jint responseStatus = (*env)->CallIntMethod(env, jConnection, jConnectionGetResponseCodeID);
+    CATCH(return false);
+
+    if (stat == JNI_EDETACHED) {
+        (*g_jvm)->DetachCurrentThread(g_jvm);
+    }
+
+    return responseStatus == 200;
+}
+
 JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
 {
     const char* cCacheDir = (*env)->GetStringUTFChars(env, cacheDir, NULL);
@@ -227,7 +278,20 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env,
         http_port = 8006;
         socks_port = 8007;
     }
-    newnode_init(app_id, &http_port, &socks_port);
+    // XXX: TODO: use real app name
+    const char *app_name = app_id;
+    newnode_init(app_name, app_id, &http_port, &socks_port, ^void (const char *url, https_complete_callback cb) {
+        debug("https stuff: %s\n", url);
+        char *url2 = strdup(url);
+        cb = Block_copy(cb);
+        thread(^{
+            debug("https stuff2: %s\n", url2);
+            bool s = android_https(url2);
+            cb(s);
+            free(url2);
+            Block_release(cb);
+        });
+    });
 
     (*env)->ReleaseStringUTFChars(env, cacheDir, cCacheDir);
 }
