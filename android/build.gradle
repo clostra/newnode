@@ -37,6 +37,7 @@ android {
             }
         }
         versionCode versionName.replace(".", "").toInteger()
+        consumerProguardFiles 'lib-proguard-rules.txt'
     }
     buildTypes {
         release {

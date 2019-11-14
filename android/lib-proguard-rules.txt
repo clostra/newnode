@@ -1,0 +1,2 @@
+-keep class com.bugsnag.** { *; }
+-keep class com.clostra.** { *; }
