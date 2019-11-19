@@ -21,7 +21,7 @@ struct dht {
     network *n;
     time_t save_time;
     unsigned char save_hash[crypto_generichash_BYTES];
-    sockaddr_storage *peer_ss;
+    const sockaddr *peer_sa;
     bool filter_running:1;
 };
 
@@ -34,16 +34,16 @@ void dht_filter_event_callback(void *closure, int event, const unsigned char *in
 {
     network *n = (network*)closure;
     if (memeq(rand_hash, info_hash, sizeof(rand_hash))) {
-        if (n->dht->peer_ss) {
-            socklen_t ss_len = n->dht->peer_ss->ss_family == AF_INET6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in);
+        if (n->dht->peer_sa) {
+            socklen_t sa_len = n->dht->peer_sa->sa_family == AF_INET6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in);
             char host[NI_MAXHOST];
             char serv[NI_MAXSERV];
-            getnameinfo((sockaddr*)n->dht->peer_ss, ss_len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+            getnameinfo((sockaddr*)n->dht->peer_sa, sa_len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
             debug("dht banned %s:%s\n", host, serv);
             blacklist_len++;
             blacklist = realloc(blacklist, blacklist_len * sizeof(sockaddr_storage*));
-            blacklist[blacklist_len - 1] = memdup(n->dht->peer_ss, ss_len);
-            dht_blacklist_address((sockaddr*)n->dht->peer_ss, ss_len);
+            blacklist[blacklist_len - 1] = memdup(n->dht->peer_sa, sa_len);
+            dht_blacklist_address(n->dht->peer_sa, sa_len);
         }
         if (event == DHT_EVENT_SEARCH_DONE) {
             n->dht->filter_running = false;
@@ -55,7 +55,7 @@ void dht_filter_event_callback(void *closure, int event, const unsigned char *in
 
 void dht_add_bootstrap_cb(int result, evutil_addrinfo *ai, void *arg)
 {
-    dht *d = (dht*)arg;
+    //dht *d = (dht*)arg;
     if (!ai) {
         return;
     }
@@ -181,10 +181,10 @@ bool dht_process_udp(dht *d, const uint8_t *buffer, size_t len, const sockaddr *
     // XXX: ACK; dht require NULL terminate packet -- I just happen to know there's enough space in the buffer...
     ((uint8_t*)buffer)[len] = '\0';
 
-    d->peer_ss = (sockaddr_storage*)to;
+    d->peer_sa = to;
     int r = dht_periodic(buffer, len, to, tolen, tosleep, dht_filter_event_callback, d->n);
     dht_save(d);
-    d->peer_ss = NULL;
+    d->peer_sa = NULL;
     return r != -1;
 }
 
