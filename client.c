@@ -1706,7 +1706,6 @@ void stats_changed()
         debug("reporting stats\n");
         stats_report_timer = NULL;
         g_stats_changed = false;
-        hash_table *byte_count_per_authority_copy = hash_table_create();
         hash_iter(byte_count_per_authority, ^bool (const char *authority, void *val) {
             if (streq("www.google-analytics.com", authority)) {
                 return true;
@@ -1719,9 +1718,7 @@ void stats_changed()
                 return true;
             }
 
-            byte_counts *byte_count = alloc(byte_counts);
-            hash_set(byte_count_per_authority_copy, authority, byte_count);
-            *byte_count = *b;
+            byte_counts byte_count = *b;
             bzero(b, sizeof(*b));
 
             __auto_type report = ^(const char *type, uint64_t count, void (^cb)(void)) {
@@ -1745,11 +1742,13 @@ void stats_changed()
                          g_app_name,
                          g_app_id,
                          g_cid);
+                cb = Block_copy(cb);
                 g_https_cb(url, ^(bool success) {
                     timer_start(g_n, 0, ^{
                         if (!success) {
                             cb();
                         }
+                        Block_release(cb);
                         if (g_stats_changed) {
                             stats_changed();
                         }
@@ -1757,17 +1756,17 @@ void stats_changed()
                 });
             };
 
-            report("peer", byte_count->from_peer + byte_count->to_peer, ^{
-                b->from_peer += byte_count->from_peer;
-                b->to_peer += byte_count->to_peer;
+            report("peer", byte_count.from_peer + byte_count.to_peer, ^{
+                b->from_peer += byte_count.from_peer;
+                b->to_peer += byte_count.to_peer;
             });
-            report("direct", byte_count->from_direct + byte_count->to_direct, ^{
-                b->from_direct += byte_count->from_direct;
-                b->to_direct += byte_count->to_direct;
+            report("direct", byte_count.from_direct + byte_count.to_direct, ^{
+                b->from_direct += byte_count.from_direct;
+                b->to_direct += byte_count.to_direct;
             });
-            report("p2p", byte_count->from_p2p + byte_count->to_p2p, ^{
-                b->from_p2p += byte_count->from_p2p;
-                b->to_p2p += byte_count->to_p2p;
+            report("p2p", byte_count.from_p2p + byte_count.to_p2p, ^{
+                b->from_p2p += byte_count.from_p2p;
+                b->to_p2p += byte_count.to_p2p;
             });
             return true;
         });
