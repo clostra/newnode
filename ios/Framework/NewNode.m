@@ -21,8 +21,8 @@ port_t socks_port;
     NSURLSessionConfiguration *urlConfig = NSURLSessionConfiguration.defaultSessionConfiguration;
     urlConfig.connectionProxyDictionary = NewNode.connectionProxyDictionary;
     config.session = [NSURLSession sessionWithConfiguration:urlConfig];
-    [Bugsnag startBugsnagWithConfiguration:config];
     */
+    [Bugsnag startBugsnagWithConfiguration:config];
 
     NSString *cachesPath = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).lastObject;
     chdir(cachesPath.UTF8String);
