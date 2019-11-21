@@ -88,7 +88,6 @@ int get_port_for_scheme(const char *scheme)
     addrinfo hints = {
         .ai_family = PF_UNSPEC,
         .ai_socktype = SOCK_STREAM,
-        .ai_flags = AI_PASSIVE,
     };
     addrinfo *res;
     int error = getaddrinfo(NULL, scheme, &hints, &res);
@@ -194,6 +193,7 @@ evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
     }
     debug("connecting to %s:%d\n", host, port);
     // XXX: doesn't handle SSL
+    // TODO: if the request is from a peer, use LEDBAT: setsocketopt(sock, SOL_SOCKET, O_TRAFFIC_CLASS, SO_TC_BK, sizeof(int))
     evhttp_connection *evcon = evhttp_connection_base_new(n->evbase, n->evdns, host, (port_t)port);
     // XXX: disable IPv6, since evdns waits for *both* and the v6 request often times out
     evhttp_connection_set_family(evcon, AF_INET);
@@ -232,6 +232,9 @@ uint64 utp_on_accept(utp_callback_arguments *a)
     if (utp_getpeername(a->socket, (sockaddr *)&addr, &addrlen) == -1) {
         debug("utp_getpeername failed\n");
     }
+#ifdef __APPLE__
+    addr.ss_len = addrlen;
+#endif
     /*
     char host[NI_MAXHOST];
     char serv[NI_MAXSERV];
