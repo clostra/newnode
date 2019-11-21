@@ -82,15 +82,17 @@ uint64 utp_callback_sendto(utp_callback_arguments *a)
     const sockaddr *sa = (sockaddr*)a->address;
     socklen_t salen = a->address_len;
 
-    sockaddr_storage ss = {0};
+    sockaddr_in6 sin6 = {0};
     if (a->address->sa_family == AF_INET) {
         const sockaddr_in *sin = (const sockaddr_in *)a->address;
-        sockaddr_in6 *sin6 = (sockaddr_in6 *)&ss;
-        sin6->sin6_family = AF_INET6;
-        sin6->sin6_port = sin->sin_port;
-        map4to6(&sin->sin_addr, &sin6->sin6_addr);
-        sa = (sockaddr*)&ss;
-        salen = sizeof(sockaddr_in6);
+        sin6.sin6_family = AF_INET6;
+        sin6.sin6_port = sin->sin_port;
+#ifdef __APPLE__
+        sin6.sin6_len = sizeof(sin6);
+#endif
+        map4to6(&sin->sin_addr, &sin6.sin6_addr);
+        sa = (sockaddr*)&sin6;
+        salen = sizeof(sin6);
     }
 
     if (sendto(n->fd, a->buf, a->len, 0, sa, salen) < 0) {
@@ -243,9 +245,12 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
             if (IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr)) {
                 sin.sin_family = AF_INET;
                 sin.sin_port = sin6->sin6_port;
+#ifdef __APPLE__
+                sin.sin_len = sizeof(sin);
+#endif
                 map6to4(&sin6->sin6_addr, &sin.sin_addr);
                 sa = (const sockaddr *)&sin;
-                salen = sizeof(sockaddr_in);
+                salen = sizeof(sin);
             }
         }
 

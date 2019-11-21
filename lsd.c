@@ -49,7 +49,10 @@ void lsd_send(network *n, bool reply)
         sockaddr_in addr = {
             .sin_family = AF_INET,
             .sin_addr.s_addr = inet_addr("239.192.0.0"),
-            .sin_port = htons(9190)
+            .sin_port = htons(9190),
+#ifdef __APPLE__
+            .sin_len = sizeof(addr)
+#endif
         };
         if (sendto(lsd_fd, buf, len, 0, (sockaddr *)&addr, sizeof(addr)) == -1) {
             if (errno == ENETDOWN || errno == ENETUNREACH) {
@@ -138,7 +141,10 @@ void lsd_setup(network *n)
     sockaddr_in addr = {
         .sin_family = AF_INET,
         .sin_addr.s_addr = INADDR_ANY,
-        .sin_port = htons(9190)
+        .sin_port = htons(9190),
+#ifdef __APPLE__
+        .sin_len = sizeof(addr)
+#endif
     };
     if (bind(lsd_fd, (sockaddr*)&addr, sizeof(addr))) {
         fprintf(stderr, "lsd bind %d %s\n", errno, strerror(errno));

@@ -85,10 +85,7 @@ const char* evhttp_request_error_str(evhttp_request_error error)
 
 int get_port_for_scheme(const char *scheme)
 {
-    addrinfo hints = {
-        .ai_family = PF_UNSPEC,
-        .ai_socktype = SOCK_STREAM,
-    };
+    addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM};
     addrinfo *res;
     int error = getaddrinfo(NULL, scheme, &hints, &res);
     if (error) {
