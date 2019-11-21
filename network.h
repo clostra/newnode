@@ -36,6 +36,12 @@ typedef struct network network;
 #define	IN_LOOPBACK(a) ((((long int) (a)) & 0xff000000) == 0x7f000000)
 #endif
 
+#ifdef __APPLE__
+#ifndef SO_RECV_ANYIF
+#define SO_RECV_ANYIF 0x1104    /* unrestricted inbound processing */
+#endif
+#endif
+
 typedef struct event_base event_base;
 typedef struct evdns_base evdns_base;
 typedef struct event event;
@@ -86,8 +92,11 @@ bool evbuffer_write_to_file(evbuffer *buf, int fd);
 void bufferevent_free_checked(bufferevent *bev);
 int bufferevent_get_error(bufferevent *bev);
 const char* bev_events_to_str(short events);
+
+socklen_t sockaddr_get_length(const sockaddr* sa);
 port_t sockaddr_get_port(const sockaddr* sa);
 void sockaddr_set_port(sockaddr* sa, port_t port);
+const char* sockaddr_str(const sockaddr *ss);
 
 network* network_setup(char *address, port_t port);
 int network_loop(network *n);

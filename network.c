@@ -40,19 +40,62 @@ uint64 utp_on_firewall(utp_callback_arguments *a)
     return 0;
 }
 
+const in6_addr v4_anyaddr = {.s6_addr = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00 }};
+const in6_addr v4_noaddr = {.s6_addr = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }};
+
+void map4to6(const in_addr *in, in6_addr *out)
+{
+    if (in->s_addr == 0x00000000) {
+        *out = v4_anyaddr;
+    } else if (in->s_addr == 0xFFFFFFFF) {
+        *out = v4_noaddr;
+    } else {
+        *out = v4_anyaddr;
+        out->s6_addr[12] = ((uint8_t *)&in->s_addr)[0];
+        out->s6_addr[13] = ((uint8_t *)&in->s_addr)[1];
+        out->s6_addr[14] = ((uint8_t *)&in->s_addr)[2];
+        out->s6_addr[15] = ((uint8_t *)&in->s_addr)[3];
+    }
+}
+
+void map6to4(const in6_addr *in, in_addr *out)
+{
+    bzero(out, sizeof(in_addr));
+    ((uint8_t *)&out->s_addr)[0] = in->s6_addr[12];
+    ((uint8_t *)&out->s_addr)[1] = in->s6_addr[13];
+    ((uint8_t *)&out->s_addr)[2] = in->s6_addr[14];
+    ((uint8_t *)&out->s_addr)[3] = in->s6_addr[15];
+}
+
 uint64 utp_callback_sendto(utp_callback_arguments *a)
 {
     network *n = (network*)utp_context_get_userdata(a->context);
 
-    //sockaddr_in *sin = (sockaddr_in *)a->address;
-    //debug("sendto: %zd byte packet to %s:%d%s\n", a->len, inet_ntoa(sin->sin_addr), ntohs(sin->sin_port),
-    //      (a->flags & UTP_UDP_DONTFRAG) ? "  (DF bit requested, but not yet implemented)" : "");
+    if (o_debug >= 2) {
+        debug("sendto(%zd, %s)\n", a->len, sockaddr_str(a->address));
+    }
 
     if (o_debug >= 3) {
         hexdump(a->buf, a->len);
     }
 
-    sendto(n->fd, a->buf, a->len, 0, a->address, a->address_len);
+    const sockaddr *sa = (sockaddr*)a->address;
+    socklen_t salen = a->address_len;
+
+    sockaddr_storage ss = {0};
+    if (a->address->sa_family == AF_INET) {
+        const sockaddr_in *sin = (const sockaddr_in *)a->address;
+        sockaddr_in6 *sin6 = (sockaddr_in6 *)&ss;
+        sin6->sin6_family = AF_INET6;
+        sin6->sin6_port = sin->sin_port;
+        map4to6(&sin->sin_addr, &sin6->sin6_addr);
+        sa = (sockaddr*)&ss;
+        salen = sizeof(sockaddr_in6);
+    }
+
+    if (sendto(n->fd, a->buf, a->len, 0, sa, salen) < 0) {
+        debug("sendto failed %d %s\n", errno, strerror(errno));
+    }
     return 0;
 }
 
@@ -77,11 +120,12 @@ void udp_read(evutil_socket_t fd, short events, void *arg);
 
 bool network_make_socket(network *n)
 {
-    addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_DGRAM;
-    hints.ai_protocol = IPPROTO_UDP;
+    addrinfo hints = {
+        .ai_family = PF_UNSPEC,
+        .ai_socktype = SOCK_DGRAM,
+        .ai_protocol = IPPROTO_UDP,
+        .ai_flags = AI_PASSIVE
+    };
 
     addrinfo *res;
     char port_s[6];
@@ -91,7 +135,7 @@ bool network_make_socket(network *n)
         die("getaddrinfo: %s\n", gai_strerror(error));
     }
 
-    n->fd = socket(((sockaddr*)res->ai_addr)->sa_family, SOCK_DGRAM, IPPROTO_UDP);
+    n->fd = socket(res->ai_addr->sa_family, SOCK_DGRAM, IPPROTO_UDP);
     if (n->fd < 0) {
         pdie("socket");
     }
@@ -101,6 +145,11 @@ bool network_make_socket(network *n)
     if (setsockopt(n->fd, SOL_IP, IP_RECVERR, &on, sizeof(on)) != 0) {
         pdie("setsockopt");
     }
+#endif
+
+#ifdef SO_RECV_ANYIF
+    int optval = 1;
+    setsockopt(n->fd, SOL_SOCKET, SO_RECV_ANYIF, &optval, sizeof(optval));
 #endif
 
     port_t port = n->port;
@@ -126,19 +175,6 @@ bool network_make_socket(network *n)
     evutil_make_socket_closeonexec(n->fd);
     evutil_make_socket_nonblocking(n->fd);
 
-    sockaddr_storage sin;
-    socklen_t len = sizeof(sin);
-    if (getsockname(n->fd, (sockaddr *)&sin, &len) != 0) {
-        pdie("getsockname");
-    }
-
-    char host[NI_MAXHOST];
-    char serv[NI_MAXSERV];
-    error = getnameinfo((sockaddr *)&sin, len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-    if (error) {
-        die("getnameinfo: %s\n", gai_strerror(error));
-    }
-
     event_assign(&n->udp_event, n->evbase, n->fd, EV_READ|EV_PERSIST, udp_read, n);
     if (event_add(&n->udp_event, NULL) < 0) {
         fprintf(stderr, "event_add udp_read failed\n");
@@ -152,7 +188,12 @@ bool network_make_socket(network *n)
     }
     n->dht = dht_setup(n);
 
-    printf("listening on UDP:%s:%s\n", host, serv);
+    sockaddr_storage ss;
+    socklen_t ss_len = sizeof(ss);
+    if (getsockname(n->fd, (sockaddr *)&ss, &ss_len) != 0) {
+        pdie("getsockname");
+    }
+    printf("listening on UDP: %s\n", sockaddr_str((const sockaddr*)&ss));
 
     return true;
 }
@@ -189,22 +230,34 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
             break;
         }
 
-        if (o_debug) {
-            char host[NI_MAXHOST];
-            char serv[NI_MAXSERV];
-            getnameinfo((sockaddr *)&src_addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-            //debug("Received %zd byte UDP packet from %s:%s\n", len, host, serv);
+        if (o_debug >= 2) {
+            debug("Received %zd byte UDP packet from %s\n", len, sockaddr_str((sockaddr *)&src_addr));
+        }
+
+        const sockaddr *sa = (const sockaddr *)&src_addr;
+        socklen_t salen = sockaddr_get_length(sa);
+
+        sockaddr_in sin = {0};
+        if (src_addr.ss_family == AF_INET6) {
+            const sockaddr_in6 *sin6 = (const sockaddr_in6 *)&src_addr;
+            if (IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr)) {
+                sin.sin_family = AF_INET;
+                sin.sin_port = sin6->sin6_port;
+                map6to4(&sin6->sin6_addr, &sin.sin_addr);
+                sa = (const sockaddr *)&sin;
+                salen = sizeof(sockaddr_in);
+            }
         }
 
         if (o_debug >= 3) {
             hexdump(buf, len);
         }
 
-        if (utp_process_udp(n->utp, buf, len, (sockaddr *)&src_addr, addrlen)) {
+        if (utp_process_udp(n->utp, buf, len, sa, salen)) {
             continue;
         }
         time_t tosleep;
-        bool r = dht_process_udp(n->dht, buf, len, (sockaddr *)&src_addr, addrlen, &tosleep);
+        bool r = dht_process_udp(n->dht, buf, len, sa, salen, &tosleep);
         dht_schedule(n, tosleep);
         if (r) {
             continue;
@@ -319,6 +372,21 @@ const char* bev_events_to_str(short events)
     return s;
 }
 
+socklen_t sockaddr_get_length(const sockaddr* sa)
+{
+    socklen_t sa_len = 0;
+    switch (sa->sa_family) {
+    default:
+    case AF_INET:
+        sa_len = sizeof(sockaddr_in);
+        break;
+    case AF_INET6:
+        sa_len = sizeof(sockaddr_in6);
+        break;
+    }
+    return sa_len;
+}
+
 port_t sockaddr_get_port(const sockaddr* sa)
 {
     switch (sa->sa_family) {
@@ -336,11 +404,27 @@ void sockaddr_set_port(sockaddr* sa, port_t port)
     case AF_INET:
         ((sockaddr_in*)sa)->sin_port = htons(port);
         return;
-    case AF_INET6: {
+    case AF_INET6:
         ((sockaddr_in6*)sa)->sin6_port = htons(port);
         return;
     }
+}
+
+const char* sockaddr_str(const sockaddr *sa)
+{
+    char host[NI_MAXHOST];
+    char serv[NI_MAXSERV];
+    getnameinfo(sa, sockaddr_get_length(sa), host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+    static char buf[1 + NI_MAXHOST + 2 + NI_MAXSERV + 1];
+    switch (sa->sa_family) {
+    case AF_INET:
+        snprintf(buf, sizeof(buf), "%s:%s", host, serv);
+        break;
+    case AF_INET6:
+        snprintf(buf, sizeof(buf), "[%s]:%s", host, serv);
+        break;
     }
+    return buf;
 }
 
 void set_max_nofile()

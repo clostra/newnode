@@ -73,6 +73,11 @@ for file in client.c client_main.c injector.c dht.c bev_splice.c base64.c http.c
             merkle_tree.c network.c obfoo.c sha1.c timer.c thread.c utp_bufferevent.c; do
     clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
 done
+
+if uname|grep -i Darwin >/dev/null; then
+    clang -fobjc-arc -fobjc-weak -fmodules -I. $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c ios/NetService.m
+fi
+
 mv client.o client.o.tmp
 mv client_main.o client_main.o.tmp
 clang $CFLAGS -o injector *.o $LRT $LM $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -lpthread
