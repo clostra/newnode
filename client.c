@@ -426,6 +426,9 @@ void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, size_t num
         sin->sin_family = AF_INET;
         sin->sin_addr.s_addr = a->ip;
         sin->sin_port = a->port;
+#ifdef __APPLE__
+        sin->sin_len = sizeof(sockaddr_in);
+#endif
 
         add_address(n, pa, (const sockaddr*)&addr, sockaddr_get_length((const sockaddr*)&addr));
     }
@@ -758,9 +761,15 @@ bool write_header_to_file(int headers_file, int code, const char *code_line, evk
 
 bool addr_is_localhost(const sockaddr *sa, socklen_t salen)
 {
-    if (sa->sa_family == AF_INET) {
+    switch(sa->sa_family) {
+    case AF_INET: {
         const sockaddr_in *sin = (sockaddr_in *)sa;
         return IN_LOOPBACK(ntohl(sin->sin_addr.s_addr));
+    }
+    case AF_INET6: {
+        const sockaddr_in6 *sin6 = (sockaddr_in6 *)sa;
+        return IN6_IS_ADDR_LOOPBACK(&sin6->sin6_addr);
+    }
     }
     return false;
 }
@@ -3121,7 +3130,10 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
         sockaddr_in sin = {
             .sin_family = AF_INET,
             .sin_addr.s_addr = *(in_addr_t*)&p[4],
-            .sin_port = *(port_t*)&p[4 + sizeof(in_addr_t)]
+            .sin_port = *(port_t*)&p[4 + sizeof(in_addr_t)],
+#ifdef __APPLE__
+            .sin_len = sizeof(sin)
+#endif
         };
         evbuffer_drain(input, 4 + sizeof(in_addr_t) + sizeof(port_t));
         bufferevent_setcb(bev, NULL, NULL, socks_event_cb, ctx);
@@ -3170,6 +3182,9 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
         sockaddr_in6 sin6 = {
             .sin6_family = AF_INET6,
             .sin6_port = *(port_t*)&p[4 + sizeof(in6_addr)],
+#ifdef __APPLE__
+            .sin6_len = sizeof(sin6)
+#endif
         };
         memcpy(&sin6.sin6_addr, &p[4], sizeof(sin6.sin6_addr));
         evbuffer_drain(input, 4 + sizeof(in6_addr) + sizeof(port_t));
@@ -3266,7 +3281,14 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
     getsockname(fd, (sockaddr *)&ss, &sslen);
     *http_port = sockaddr_get_port((sockaddr *)&ss);
 
-    sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = inet_addr("127.0.0.1"), .sin_port = htons(*socks_port)};
+    sockaddr_in sin = {
+        .sin_family = AF_INET,
+        .sin_addr.s_addr = inet_addr("127.0.0.1"),
+        .sin_port = htons(*socks_port),
+#ifdef __APPLE__
+        .sin_len = sizeof(sin)
+#endif
+    };
     evconnlistener *listener = evconnlistener_new_bind(n->evbase, socks_accept_cb, n,
         LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_CLOSE_ON_FREE, 128,
         (sockaddr *)&sin, sizeof(sin));
@@ -3295,7 +3317,14 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
     add_sockaddr(n, (sockaddr *)&sin, sizeof(sin));
     */
 
-    sockaddr_in iin = {.sin_family = AF_INET, .sin_addr.s_addr = inet_addr("52.88.7.21"), .sin_port = htons(9000)};
+    sockaddr_in iin = {
+        .sin_family = AF_INET,
+        .sin_addr.s_addr = inet_addr("52.88.7.21"),
+        .sin_port = htons(9000),
+#ifdef __APPLE__
+        .sin_len = sizeof(sin)
+#endif
+    };
     add_sockaddr(n, (sockaddr *)&iin, sizeof(iin));
 
     timer_callback cb = ^{

@@ -65,11 +65,7 @@ void dht_add_bootstrap_cb(int result, evutil_addrinfo *ai, void *arg)
 void dht_add_bootstrap(dht *d, const char *host, port_t port)
 {
     char portbuf[7];
-    evutil_addrinfo hint = {
-        .ai_family = AF_INET,
-        .ai_protocol = IPPROTO_UDP,
-        .ai_socktype = SOCK_DGRAM
-    };
+    evutil_addrinfo hint = {.ai_family = PF_UNSPEC, .ai_protocol = IPPROTO_UDP, .ai_socktype = SOCK_DGRAM};
     snprintf(portbuf, sizeof(portbuf), "%u", port);
     evdns_getaddrinfo(d->n->evdns, host, portbuf, &hint, dht_add_bootstrap_cb, d);
 }
