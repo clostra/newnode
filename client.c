@@ -24,6 +24,7 @@
 
 #include "log.h"
 #include "lsd.h"
+#include "d2d.h"
 #include "utp.h"
 #include "http.h"
 #include "timer.h"
@@ -47,15 +48,22 @@
 typedef struct {
     in_addr_t ip;
     port_t port;
-} PACKED address;
+} PACKED packed_ipv4;
+static_assert(sizeof(packed_ipv4) == 6, "packed_ipv4 should be 6 bytes");
 
 typedef struct {
-    address addr;
+    in6_addr ip;
+    port_t port;
+} PACKED packed_ipv6;
+static_assert(sizeof(packed_ipv4) == 6, "packed_ipv6 should be 18 bytes");
+
+typedef struct {
+    sockaddr_storage addr;
     time_t last_verified;
     time_t last_connect;
     time_t last_connect_attempt;
     char via;
-} PACKED peer;
+} peer;
 
 typedef struct {
     network *n;
@@ -266,16 +274,15 @@ bool bufferevent_is_utp(bufferevent *bev)
 
 void on_utp_connect(network *n, peer_connection *pc)
 {
-    address *a = &pc->peer->addr;
-    sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
+    const sockaddr *ss = (const sockaddr *)&pc->peer->addr;
     char host[NI_MAXHOST];
     char serv[NI_MAXSERV];
-    getnameinfo((sockaddr*)&sin, sizeof(sin), host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+    getnameinfo(ss, sockaddr_get_length(ss), host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
     bufferevent_disable(pc->bev, EV_READ|EV_WRITE);
     assert(pc->bev);
     assert(bufferevent_getfd(pc->bev) != -1);
     pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, pc->bev, host, atoi(serv));
-    debug("on_utp_connect %s:%s bev:%p con:%p\n", host, serv, pc->bev, pc->evcon);
+    debug("on_utp_connect %s bev:%p con:%p\n", sockaddr_str((const sockaddr*)ss), pc->bev, pc->evcon);
     pc->bev = NULL;
 
     // handle waiting requests first
@@ -333,36 +340,31 @@ void bev_event_cb(bufferevent *bufev, short events, void *arg)
     }
 }
 
-const char* peer_addr_str(peer *p)
+const char* peer_addr_str(const peer *p)
 {
-    static char buf[64];
-    address *a = &p->addr;
-    snprintf(buf, sizeof(buf), "%s:%d", inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port));
-    return buf;
+    return sockaddr_str((const sockaddr *)&p->addr);
 }
 
 peer_connection* evhttp_utp_connect(network *n, peer *p)
 {
     utp_socket *s = utp_create_socket(n->utp);
-    address *a = &p->addr;
     debug("evhttp_utp_connect %s\n", peer_addr_str(p));
-    sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
     p->last_connect_attempt = time(NULL);
     peer_connection *pc = alloc(peer_connection);
     pc->n = n;
     pc->peer = p;
     pc->bev = utp_socket_create_bev(n->evbase, s);
-    utp_connect(s, (sockaddr*)&sin, sizeof(sin));
+    utp_connect(s, (const sockaddr*)&p->addr, sockaddr_get_length((const sockaddr*)&p->addr));
     bufferevent_setcb(pc->bev, NULL, NULL, bev_event_cb, pc);
     bufferevent_enable(pc->bev, EV_READ);
     return pc;
 }
 
-peer* get_peer(peer_array *pa, address *a)
+peer* get_peer(peer_array *pa, const sockaddr *a, socklen_t alen)
 {
     for (uint i = 0; i < pa->length; i++) {
         peer *p = pa->peers[i];
-        if (memeq(a, (const uint8_t *)&p->addr, sizeof(address))) {
+        if (a->sa_family == p->addr.ss_family && memeq(a, (const uint8_t *)&p->addr, alen)) {
             return p;
         }
     }
@@ -375,52 +377,63 @@ void add_peer(peer_array **pa, peer *p)
     *pa = realloc(*pa, sizeof(peer_array) + (*pa)->length * sizeof(peer*));
     (*pa)->peers[(*pa)->length - 1] = p;
 
-    sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = p->addr.ip, .sin_port = p->addr.port};
-    dht_ping_node((const sockaddr *)&sin, sizeof(sin));
+    dht_ping_node((const sockaddr *)&p->addr, sockaddr_get_length((const sockaddr *)&p->addr));
+}
+
+void add_address(network *n, peer_array **pa, const sockaddr *addr, socklen_t addrlen)
+{
+    // paper over a bug in some DHT implementation that winds up with 1 for the port
+    if (sockaddr_get_port(addr) == 1) {
+        return;
+    }
+
+    peer *p = get_peer(*pa, addr, addrlen);
+    if (p) {
+        return;
+    }
+    p = alloc(peer);
+    memcpy(&p->addr, addr, addrlen);
+    add_peer(pa, p);
+
+    const char *label = "peer";
+    if (*pa == injectors) {
+        label = "injector";
+    } else if (*pa == injector_proxies) {
+        label = "injector proxy";
+    }
+    debug("new %s %s\n", label, peer_addr_str(p));
+
+    if (!TAILQ_EMPTY(&pending_requests)) {
+        for (uint k = 0; k < lenof(peer_connections); k++) {
+            if (peer_connections[k]) {
+                continue;
+            }
+            peer_connections[k] = evhttp_utp_connect(n, p);
+            break;
+        }
+    }
+
+    save_peers(n);
 }
 
 void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, size_t num_addrs)
 {
     for (uint i = 0; i < num_addrs; i++) {
-        address *a = (address *)&addrs[sizeof(address) * i];
-        peer *p = get_peer(*pa, a);
-        if (p) {
-            return;
-        }
-        // paper over a bug in some DHT implementation that winds up with 1 for the port
-        if (ntohs(a->port) == 1) {
-            continue;
-        }
-        p = alloc(peer);
-        p->addr = *a;
-        add_peer(pa, p);
+        sockaddr_storage addr = {0};
 
-        const char *label = "peer";
-        if (*pa == injectors) {
-            label = "injector";
-        } else if (*pa == injector_proxies) {
-            label = "injector proxy";
-        }
-        debug("new %s %s\n", label, peer_addr_str(p));
+        packed_ipv4 *a = (packed_ipv4 *)&addrs[sizeof(packed_ipv4) * i];
+        sockaddr_in *sin = (sockaddr_in*)&addr;
+        sin->sin_family = AF_INET;
+        sin->sin_addr.s_addr = a->ip;
+        sin->sin_port = a->port;
 
-        if (!TAILQ_EMPTY(&pending_requests)) {
-            for (uint k = 0; k < lenof(peer_connections); k++) {
-                if (peer_connections[k]) {
-                    continue;
-                }
-                peer_connections[k] = evhttp_utp_connect(n, p);
-                break;
-            }
-        }
-
-        save_peers(n);
+        add_address(n, pa, (const sockaddr*)&addr, sockaddr_get_length((const sockaddr*)&addr));
     }
 }
 
 void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
 {
-    address a = {.ip = ((sockaddr_in*)addr)->sin_addr.s_addr, .port = ((sockaddr_in*)addr)->sin_port};
-    add_addresses(n, &all_peers, (const byte*)&a, 1);
+    add_address(n, &all_peers, addr, addrlen);
 }
 
 void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
@@ -429,10 +442,12 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
     debug("dht_event_callback event:%d\n", event);
     // TODO: DHT_EVENT_VALUES6
     if (event != DHT_EVENT_VALUES) {
+        size_t num_peers = data_len / sizeof(packed_ipv6);
+        debug("dht_event_callback v6 num_peers:%zu\n", num_peers);
         return;
     }
     const uint8_t* peers = data;
-    size_t num_peers = data_len / 6;
+    size_t num_peers = data_len / sizeof(packed_ipv4);
     debug("dht_event_callback num_peers:%zu\n", num_peers);
     if (memeq(info_hash, encrypted_injector_swarm_m1, sizeof(encrypted_injector_swarm_m1)) ||
         memeq(info_hash, encrypted_injector_swarm_p0, sizeof(encrypted_injector_swarm_p0)) ||
@@ -446,23 +461,22 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
         add_addresses(n, &all_peers, peers, num_peers);
     }
     if (o_debug >= 2) {
-        printf("Received %d values.\n", (int)(data_len / 6));
+        size_t num_values = data_len / sizeof(packed_ipv4);
+        printf("Received %zu values.\n", num_values);
         printf("{\"");
         for (int j = 0; j < 20; j++) {
             printf("%02x", info_hash[j]);
         }
         printf("\": [");
-        for (uint i = 0; i < data_len / 6; i++) {
-            address *a = (address *)&data[i * 6];
+        packed_ipv4 *ipdata = (packed_ipv4 *)data;
+        for (uint i = 0; i < num_values; i++) {
+            packed_ipv4 *a = &ipdata[i];
             printf("\"%s:%d\"", inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port));
-            if (i + 1 != data_len / 6) {
+            if (i + 1 != num_values) {
                 printf(", ");
             }
         }
         printf("]}\n");
-        if (data_len / 6 == 7) {
-            dht_dump_tables(stdout);
-        }
     }
 }
 
@@ -1953,8 +1967,6 @@ peer* select_peer(peer_array *pa)
         c.salt = randombytes_uniform(0xFF);
         c.peer = p;
         /*
-        address *a = &p->addr;
-        sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = a->ip, .sin_port = a->port};
         debug("peer %s failed:%d verified_ago:%d last_connect:%d never_connected:%d salt:%d p:%p\n",
             peer_addr_str(p),
             c.failed, c.time_since_verified, c.last_connect_attempt, c.never_connected, c.salt, c.peer);
@@ -2783,6 +2795,7 @@ void connect_request(network *n, evhttp_request *req)
     connect_peer(c, false);
 
 #if !NO_DIRECT
+    // TODO: if the request is from a peer, use LEDBAT: setsocketopt(sock, SOL_SOCKET, O_TRAFFIC_CLASS, SO_TC_BK, sizeof(int))
     bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port);
     evhttp_uri_free(uri);
 #endif
@@ -2802,8 +2815,13 @@ void http_request_cb(evhttp_request *req, void *arg)
 
     connect_more_injectors(n, false);
 
-    address a = {.ip = inet_addr(e_host), .port = htons(e_port)};
-    peer *peer = get_peer(all_peers, &a);
+    addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_TCP};
+    addrinfo *res;
+    char port_s[6];
+    snprintf(port_s, sizeof(port_s), "%u", e_port);
+    getaddrinfo(e_host, port_s, &hints, &res);
+    peer *peer = get_peer(all_peers, res->ai_addr, res->ai_addrlen);
+    freeaddrinfo(res);
 
     const char *via = evhttp_find_header(req->input_headers, "Via");
     if (via) {
@@ -3138,6 +3156,7 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
         bufferevent *b = socks_connect_request(n, bev, host, port);
         if (b) {
             // XXX: disable IPv6, since evdns waits for *both* and the v6 request often times out
+            // TODO: if the request is from a peer, use LEDBAT: setsocketopt(sock, SOL_SOCKET, O_TRAFFIC_CLASS, SO_TC_BK, sizeof(int))
             bufferevent_socket_connect_hostname(b, n->evdns, AF_INET, host, port);
         }
         break;
@@ -3206,8 +3225,7 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
         fread(&port_pref, sizeof(port_pref), 1, f);
         fclose(f);
     }
-
-    network *n = network_setup("0.0.0.0", port_pref);
+    network *n = network_setup("::", port_pref);
 
     sockaddr_storage ss;
     socklen_t sslen = sizeof(ss);
@@ -3267,7 +3285,7 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
 
     g_http_port = *http_port;
     g_socks_port = *socks_port;
-    printf("listening on TCP:%s:%d,%d\n", "127.0.0.1", *http_port, *socks_port);
+    printf("listening on TCP: %s:%d,%d\n", "127.0.0.1", *http_port, *socks_port);
 
     load_peers(n);
 
@@ -3300,6 +3318,8 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
     };
     cb();
     timer_repeating(n, 25 * 60 * 1000, cb);
+
+    d2d_init(n);
 
     return n;
 }

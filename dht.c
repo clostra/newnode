@@ -35,12 +35,9 @@ void dht_filter_event_callback(void *closure, int event, const unsigned char *in
     network *n = (network*)closure;
     if (memeq(rand_hash, info_hash, sizeof(rand_hash))) {
         if (n->dht->peer_sa) {
-            socklen_t sa_len = n->dht->peer_sa->sa_family == AF_INET6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in);
-            char host[NI_MAXHOST];
-            char serv[NI_MAXSERV];
-            getnameinfo((sockaddr*)n->dht->peer_sa, sa_len, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-            debug("dht banned %s:%s\n", host, serv);
+            debug("dht banned %s\n", sockaddr_str(n->dht->peer_sa));
             blacklist_len++;
+            socklen_t sa_len = sockaddr_get_length(n->dht->peer_sa);
             blacklist = realloc(blacklist, blacklist_len * sizeof(sockaddr_storage*));
             blacklist[blacklist_len - 1] = memdup(n->dht->peer_sa, sa_len);
             dht_blacklist_address(n->dht->peer_sa, sa_len);
@@ -86,7 +83,7 @@ dht* dht_setup(network *n)
     d->n = n;
     uint8_t myid[20];
     randombytes_buf(myid, sizeof(myid));
-    dht_init(d->n->fd, 0, myid, NULL);
+    dht_init(d->n->fd, d->n->fd, myid, NULL);
 
     FILE *f = fopen("dht.dat", "rb");
     if (f) {
@@ -246,8 +243,7 @@ int dht_blacklisted(const sockaddr *sa, int salen)
         if (sa->sa_family != blacklist[i]->ss_family) {
             continue;
         }
-        socklen_t ss_len = blacklist[i]->ss_family == AF_INET6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in);
-        if (memeq(sa, blacklist[i], ss_len)) {
+        if (memeq(sa, blacklist[i], sockaddr_get_length((const sockaddr *)blacklist[i]))) {
             //debug("dht ignoring blacklisted node\n");
             return 1;
         }
