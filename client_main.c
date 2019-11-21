@@ -2,7 +2,12 @@
 
 #include "newnode.h"
 #include "network.h"
+#include "thread.h"
 #include "log.h"
+
+#ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#endif
 
 
 network* client_init(const char *app_name, const char *app_id, port_t *http_port, port_t *socks_port, https_callback https_cb);
@@ -38,5 +43,14 @@ int main(int argc, char *argv[])
     if (!n) {
         return 1;
     }
+
+#ifdef __APPLE__
+    thread(^{
+        client_run(n);
+    });
+    CFRunLoopRun();
+    return 0;
+#else
     return client_run(n);
+#endif
 }
