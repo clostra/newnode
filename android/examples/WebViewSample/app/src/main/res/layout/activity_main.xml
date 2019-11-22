@@ -27,6 +27,8 @@
         android:layout_centerVertical="true"
         app:layout_constraintTop_toBottomOf="@+id/editText"
         app:layout_constraintBottom_toTopOf="@+id/webView"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
         />
 
     <WebView
