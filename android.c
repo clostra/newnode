@@ -340,6 +340,11 @@ JNIEXPORT void JNICALL Java_com_clostra_dcdn_Dcdn_setCacheDir(JNIEnv* env, jobje
     Java_com_clostra_newnode_NewNode_setCacheDir(env, thiz, cacheDir);
 }
 
+void d2d_init(network *n)
+{
+    // TODO
+}
+
 jint JNI_OnLoad(JavaVM *vm, void *reserved)
 {
     g_jvm = vm;
