@@ -9,11 +9,6 @@ task sourcesJar(type: Jar) {
 
 task javadoc(type: Javadoc) {
     source = android.sourceSets.main.java.srcDirs
-    android.libraryVariants.all { variant ->
-        if (variant.name == 'release') {
-            owner.classpath += variant.javaCompiler.classpath
-        }
-    }
     classpath += project.files(android.getBootClasspath().join(File.pathSeparator))
 }
 
