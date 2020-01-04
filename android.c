@@ -80,7 +80,7 @@ enum notify_type {
     META = 9
 };
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_updateBugsnagDetails(JNIEnv* env, jobject thiz, int notifyType)
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_updateBugsnagDetails(JNIEnv* env, jobject thiz, int notifyType)
 {
     static bool bugsnag_setup = false;
     if (!bugsnag_setup) {
@@ -178,20 +178,36 @@ void bugsnag_client_setup(JNIEnv* env)
     (*env)->SetStaticObjectField(env, cNativeInterface, fclient, client);
 
     // client.addObserver(new BugsnagObserver());
-    IMPORT_INNER(com/clostra/newnode/NewNode, BugsnagObserver);
-    if (!cBugsnagObserver) {
-        (*env)->ExceptionClear(env);
-    } else {
-        jmethodID mObvInit = (*env)->GetMethodID(env, cBugsnagObserver, "<init>", "()V");
-        CATCH(return);
-        jobject observer = (*env)->NewObject(env, cBugsnagObserver, mObvInit);
-        CATCH(return);
-        CALL_VOID(cClient, client, addObserver, Ljava/util/Observer;, observer);
-        CATCH(return);
+    // XXX: temp try old class name
+    {
+        IMPORT_INNER(com/clostra/newnode/NewNode, BugsnagObserver);
+        if (!cBugsnagObserver) {
+            (*env)->ExceptionClear(env);
+        } else {
+            jmethodID mObvInit = (*env)->GetMethodID(env, cBugsnagObserver, "<init>", "()V");
+            CATCH(return);
+            jobject observer = (*env)->NewObject(env, cBugsnagObserver, mObvInit);
+            CATCH(return);
+            CALL_VOID(cClient, client, addObserver, Ljava/util/Observer;, observer);
+            CATCH(return);
+        }
+    }
+    {
+        IMPORT_INNER(com/clostra/newnode/internal/NewNode, BugsnagObserver);
+        if (!cBugsnagObserver) {
+            (*env)->ExceptionClear(env);
+        } else {
+            jmethodID mObvInit = (*env)->GetMethodID(env, cBugsnagObserver, "<init>", "()V");
+            CATCH(return);
+            jobject observer = (*env)->NewObject(env, cBugsnagObserver, mObvInit);
+            CATCH(return);
+            CALL_VOID(cClient, client, addObserver, Ljava/util/Observer;, observer);
+            CATCH(return);
+        }
     }
 
     // client.notifyBugsnagObservers(NotifyType.ALL);
-    Java_com_clostra_newnode_NewNode_updateBugsnagDetails(env, NULL, ALL);
+    Java_com_clostra_newnode_internal_NewNode_updateBugsnagDetails(env, NULL, ALL);
 
     debug("bugsnag started\n");
 }
@@ -203,7 +219,7 @@ void bugsnag_leave_breadcrumb_log(const char *buf)
     bugsnag_add_breadcrumb(crumb);
 }
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_useEphemeralPort(JNIEnv* env, jobject thiz)
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_useEphemeralPort(JNIEnv* env, jobject thiz)
 {
     use_ephemeral_port = true;
 }
@@ -258,7 +274,7 @@ bool android_https(const char* url)
     return responseStatus == 200;
 }
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
 {
     const char* cCacheDir = (*env)->GetStringUTFChars(env, cacheDir, NULL);
     chdir(cCacheDir);
@@ -296,7 +312,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env,
     (*env)->ReleaseStringUTFChars(env, cacheDir, cCacheDir);
 }
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_registerProxy(JNIEnv* env, jobject thiz)
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_registerProxy(JNIEnv* env, jobject thiz)
 {
     if (!http_port || !socks_port) {
         return;
@@ -317,7 +333,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_registerProxy(JNIEnv* en
     (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("proxyPort"), JSTR(port));
 }
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_unregisterProxy(JNIEnv* env, jobject thiz)
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_unregisterProxy(JNIEnv* env, jobject thiz)
 {
     IMPORT(java/lang, System);
     CATCH(return);
@@ -329,15 +345,52 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_unregisterProxy(JNIEnv* 
     (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("proxyPort"));
 }
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
 {
     o_debug = level;
+}
+
+
+// XXX: compat
+JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_updateBugsnagDetails(JNIEnv* env, jobject thiz, int notifyType)
+{
+    Java_com_clostra_newnode_internal_NewNode_updateBugsnagDetails(env, thiz, notifyType);
+}
+
+// XXX: compat
+JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_useEphemeralPort(JNIEnv* env, jobject thiz)
+{
+    Java_com_clostra_newnode_internal_NewNode_useEphemeralPort(env, thiz);
+}
+
+// XXX: compat
+JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
+{
+    Java_com_clostra_newnode_internal_NewNode_setCacheDir(env, thiz, cacheDir);
+}
+
+// XXX: compat
+JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_registerProxy(JNIEnv* env, jobject thiz)
+{
+    Java_com_clostra_newnode_internal_NewNode_registerProxy(env, thiz);
+}
+
+// XXX: compat
+JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_unregisterProxy(JNIEnv* env, jobject thiz)
+{
+    Java_com_clostra_newnode_internal_NewNode_unregisterProxy(env, thiz);
+}
+
+// XXX: compat
+JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
+{
+    Java_com_clostra_newnode_internal_NewNode_setLogLevel(env, thiz, level);
 }
 
 // XXX: compat
 JNIEXPORT void JNICALL Java_com_clostra_dcdn_Dcdn_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
 {
-    Java_com_clostra_newnode_NewNode_setCacheDir(env, thiz, cacheDir);
+    Java_com_clostra_newnode_internal_NewNode_setCacheDir(env, thiz, cacheDir);
 }
 
 void d2d_init(network *n)

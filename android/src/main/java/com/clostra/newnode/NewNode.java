@@ -4,6 +4,8 @@ import android.app.Application;
 import android.os.Build;
 import android.util.Log;
 
+import dalvik.system.PathClassLoader;
+
 import com.bugsnag.android.NotifyType;
 
 import org.json.JSONArray;
@@ -25,41 +27,44 @@ import java.util.zip.GZIPInputStream;
 
 
 public class NewNode {
-    static String VERSION = BuildConfig.VERSION_NAME;
+    public static String VERSION = BuildConfig.VERSION_NAME;
+
+    public interface NewNodeInternal {
+        void init();
+        void shutdown();
+        void setLogLevel(int level);
+    }
+    static NewNodeInternal newNode;
 
     static {
         Application app = app();
+
         File[] files = app.getFilesDir().listFiles();
         Arrays.sort(files);
         for (int i = files.length - 1; i >= 0; i--) {
             File f = files[i];
-            String name = f.getName();
-            Pattern p = Pattern.compile("^libnewnode.v?([\\.0-9]*).so$");
-            Matcher m = p.matcher(name);
-            if (!m.find()) {
-                continue;
-            }
-            String v2 = m.group(1);
-            if (VERSION.compareTo(v2) >= 0) {
-                break;
-            }
             try {
-                System.load(f.getAbsolutePath());
-                VERSION = v2;
-                break;
-            } catch (UnsatisfiedLinkError e) {
+                String v2 = Pattern.compile("^newnode.v?([\\.0-9]*).dex$").matcher(f.getName()).group(1);
+                if (VERSION.compareTo(v2) < 0) {
+                    PathClassLoader classLoader = new PathClassLoader(f.getAbsolutePath(), NewNode.class.getClassLoader().getParent());
+                    newNode = (NewNodeInternal)classLoader.loadClass("com.clostra.newnode.internal.NewNode").newInstance();
+                    VERSION = v2;
+                    break;
+                }
+            } catch (Exception e) {
+                Log.e("newnode", "", e);
             }
         }
-        if (VERSION.equals(BuildConfig.VERSION_NAME)) {
+        if (newNode == null) {
             try {
-                System.loadLibrary("newnode");
-            } catch (UnsatisfiedLinkError e) {
+                newNode = (NewNodeInternal)NewNode.class.getClassLoader().loadClass("com.clostra.newnode.internal.NewNode").newInstance();
+            } catch (Exception e) {
                 Log.e("newnode", "", e);
             }
         }
     }
 
-    private static Application app() {
+    static Application app() {
         try {
             return (Application) Class.forName("android.app.ActivityThread")
                     .getMethod("currentApplication").invoke(null, (Object[]) null);
@@ -68,122 +73,15 @@ public class NewNode {
         return null;
     }
 
-    private static void update() throws Exception {
-        Application app = app();
-        URL url = new URL("https://api.github.com/repos/clostra/newnode/releases/latest");
-        URLConnection urlConnection = url.openConnection();
-        InputStream in = urlConnection.getInputStream();
-        BufferedReader r = new BufferedReader(new InputStreamReader(in, "UTF-8"));
-        String line;
-        StringBuilder b = new StringBuilder(in.available());
-        while ((line = r.readLine()) != null) {
-            b.append(line);
-        }
-        in.close();
-        JSONObject release = new JSONObject(b.toString());
-        String version = release.getString("name").replaceAll("^v", "");
-        if (VERSION.compareTo(version) >= 0) {
-            return;
-        }
-        JSONArray assets = release.getJSONArray("assets");
-        String[] abis = {Build.CPU_ABI, Build.CPU_ABI2};
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            abis = Build.SUPPORTED_ABIS;
-        }
-        for (String abi : abis) {
-            for (int i = 0; i < assets.length(); i++) {
-                try {
-                    JSONObject asset = assets.getJSONObject(i);
-                    String name = asset.getString("name");
-                    String releaseAbi = name.split("\\.")[1];
-                    if (!releaseAbi.equals(abi)) {
-                        continue;
-                    }
-                    String downloadUrl = asset.getString("browser_download_url");
-                    InputStream ins = new URL(downloadUrl).openConnection().getInputStream();
-                    GZIPInputStream gis = new GZIPInputStream(ins);
-                    File tmp = File.createTempFile("libnewnode", null, app.getFilesDir());
-                    FileOutputStream fos = new FileOutputStream(tmp);
-                    byte[] buffer = new byte[4096];
-                    int len;
-                    while ((len = gis.read(buffer)) != -1) {
-                        fos.write(buffer, 0, len);
-                    }
-                    fos.close();
-                    gis.close();
-                    File updated = new File(app.getFilesDir(), "libnewnode." + version + ".so");
-                    if (tmp.renameTo(updated)) {
-                        Log.e("newnode", "Updated to " + version + ", will take effect on restart");
-                        return;
-                    }
-                } catch (Exception e) {
-                    Log.e("newnode", "", e);
-                }
-            }
-        }
-    }
-
-    private static Thread updateThread;
-    private static boolean started = false;
-
     public static void init() {
-        if (!started) {
-            try {
-                useEphemeralPort();
-                setCacheDir(app().getCacheDir().getAbsolutePath());
-                Log.e("newnode", "version " + VERSION + " started");
-                started = true;
-            } catch (UnsatisfiedLinkError e) {
-                Log.e("newnode", "", e);
-            }
-        }
-
-        if (started) {
-            registerProxy();
-        }
-
-        if (updateThread == null) {
-            updateThread = new Thread() { public void run() {
-                while (!Thread.interrupted()) {
-                    try {
-                        update();
-                    } catch(Exception e) {
-                        Log.e("newnode", "", e);
-                    }
-                    try {
-                        sleep((long) (1 + Math.random() * (24 * 60 * 60 * 1000)));
-                    } catch(InterruptedException e) {
-                    }
-                }
-            }};
-            updateThread.start();
-        }
+        newNode.init();
     }
 
     public static void shutdown() {
-        unregisterProxy();
-
-        if (updateThread != null) {
-            updateThread.interrupt();
-            updateThread = null;
-        }
+        newNode.shutdown();
     }
 
-    static class BugsnagObserver implements Observer {
-        @Override
-        public void update(Observable observable, Object arg) {
-            if (arg instanceof Integer) {
-                NewNode.updateBugsnagDetails((Integer)arg);
-            } else {
-                NewNode.updateBugsnagDetails(NotifyType.ALL.getValue());
-            }
-        }
+    public static void setLogLevel(int level) {
+        newNode.setLogLevel(level);
     }
-
-    public static native void setCacheDir(String cacheDir);
-    public static native void useEphemeralPort();
-    public static native void registerProxy();
-    public static native void unregisterProxy();
-    public static native void setLogLevel(int level);
-    public static native void updateBugsnagDetails(int notifyType);
 }
