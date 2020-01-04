@@ -60,3 +60,12 @@ See [`ios/examples/CustomHTTPProtocol`](https://github.com/clostra/newnode/tree/
 ```
 `client` (and `injector`) are the resulting binaries.
 
+
+## docker
+
+Building and running on `docker` is straightforward:
+
+```bash
+docker build --tag newnode ./
+docker run newnode
+```
