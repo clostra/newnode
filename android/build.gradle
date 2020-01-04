@@ -24,11 +24,11 @@ allprojects {
 apply plugin: 'com.android.library'
 
 android {
-    compileSdkVersion = 27
+    compileSdkVersion = 29
 
     defaultConfig {
         minSdkVersion 16
-        targetSdkVersion 27
+        targetSdkVersion 29
         new File('../constants.h').eachLine { line ->
             def matcher = line =~ /VERSION "(.*)"/
             if (matcher) {
