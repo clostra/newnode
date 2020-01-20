@@ -195,6 +195,7 @@ bool network_make_socket(network *n)
     if (getsockname(n->fd, (sockaddr *)&ss, &ss_len) != 0) {
         pdie("getsockname");
     }
+    n->port = sockaddr_get_port((sockaddr *)&ss);
     printf("listening on UDP: %s\n", sockaddr_str((const sockaddr*)&ss));
 
     return true;
