@@ -30,7 +30,7 @@ function build_android {
     LIBEVENT_CFLAGS=-ILibevent/$TRIPLE/include
     LIBEVENT="Libevent/$TRIPLE/lib/libevent.a Libevent/$TRIPLE/lib/libevent_pthreads.a"
 
-
+    export ANDROID_NDK_HOME=$NDK
     cd libsodium
     test -f configure || ./autogen.sh
     test -f libsodium-android-$CPU_ARCH/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
