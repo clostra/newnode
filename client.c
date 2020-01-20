@@ -419,7 +419,7 @@ void add_address(network *n, peer_array **pa, const sockaddr *addr, socklen_t ad
 void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, size_t num_addrs)
 {
     for (uint i = 0; i < num_addrs; i++) {
-        sockaddr_storage addr = {0};
+        sockaddr_storage addr;
 
         packed_ipv4 *a = (packed_ipv4 *)&addrs[sizeof(packed_ipv4) * i];
         sockaddr_in *sin = (sockaddr_in*)&addr;
