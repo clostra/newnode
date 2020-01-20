@@ -15,12 +15,13 @@
 #include "newnode.h"
 
 
-int pfd[2];
+static int pfd[2];
 static JavaVM *g_jvm;
 static jobject bugsnagClient;
-port_t http_port;
-port_t socks_port;
-bool use_ephemeral_port;
+static port_t http_port;
+static port_t socks_port;
+static bool use_ephemeral_port;
+static network *g_n;
 
 void* stdio_thread(void *useradata)
 {
@@ -281,8 +282,6 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setCacheDir(JNI
 
     bugsnag_client_setup(env);
 
-    o_debug = 1;
-
     char app_id[64] = {0};
     FILE *cmdline = fopen("/proc/self/cmdline", "r");
     if (cmdline) {
@@ -345,6 +344,11 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_unregisterProxy
     (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("proxyPort"));
 }
 
+JNIEXPORT jint JNICALL Java_com_clostra_newnode_internal_NewNode_getPort(JNIEnv* env, jobject thiz)
+{
+    return g_n->port;
+}
+
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
 {
     o_debug = level;
@@ -396,6 +400,7 @@ JNIEXPORT void JNICALL Java_com_clostra_dcdn_Dcdn_setCacheDir(JNIEnv* env, jobje
 void d2d_init(network *n)
 {
     // TODO
+    g_n = n;
 }
 
 jint JNI_OnLoad(JavaVM *vm, void *reserved)

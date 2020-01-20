@@ -3241,10 +3241,7 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
     }
     network *n = network_setup("::", port_pref);
 
-    sockaddr_storage ss;
-    socklen_t sslen = sizeof(ss);
-    getsockname(n->fd, (sockaddr *)&ss, &sslen);
-    port_pref = sockaddr_get_port((sockaddr *)&ss);
+    port_pref = n->port;
     f = fopen("port.dat", "wb");
     if (f) {
         fwrite(&port_pref, sizeof(port_pref), 1, f);
@@ -3276,7 +3273,8 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
         return NULL;
     }
     evutil_socket_t fd = evhttp_bound_socket_get_fd(bound);
-    sslen = sizeof(ss);
+    sockaddr_storage ss;
+    socklen_t sslen = sizeof(ss);
     getsockname(fd, (sockaddr *)&ss, &sslen);
     *http_port = sockaddr_get_port((sockaddr *)&ss);
 
