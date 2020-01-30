@@ -92,10 +92,12 @@ void lsd_read_cb(evutil_socket_t fd, short events, void *arg)
             char *e = strstr(p, "\r\n");
             *e = '\0';
             sockaddr_set_port((sockaddr*)&addr, (port_t)atoi(p));
-            char host[NI_MAXHOST];
-            char serv[NI_MAXSERV];
-            getnameinfo((sockaddr *)&addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-            //debug("lsd peer %s:%s\n", host, serv);
+            if (o_debug) {
+                char host[NI_MAXHOST];
+                char serv[NI_MAXSERV];
+                getnameinfo((sockaddr *)&addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+                debug("lsd peer %s:%s\n", host, serv);
+            }
             add_sockaddr(n, (sockaddr *)&addr, addrlen);
         }
     }
