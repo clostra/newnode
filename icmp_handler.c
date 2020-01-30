@@ -54,7 +54,7 @@ void icmp_handler(network *n)
         dht_process_icmp(n->dht, (const byte*)&msg, sizeof(msg), (const sockaddr *)&remote, remote_len, &tosleep);
 
         for (cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
-            if (cmsg->cmsg_level != SOL_IP) {
+            if (cmsg->cmsg_level != SOL_IP && cmsg->cmsg_level != SOL_IPV6) {
                 debug("Unhandled errqueue level: %d\n", cmsg->cmsg_level);
                 continue;
             }
