@@ -56,11 +56,11 @@ function build_ios {
     rm *.o || true
     clang $CFLAGS -c dht/dht.c -o dht_dht.o
     for file in bev_splice.c base64.c client.c dht.c http.c log.c lsd.c \
-                icmp_handler.c ios/Framework/NewNode.m hash_table.c merkle_tree.c network.c \
+                icmp_handler.c hash_table.c merkle_tree.c network.c \
                 obfoo.c sha1.c timer.c thread.c utp_bufferevent.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBBUGSNAG_CFLAGS -c $file
     done
-    clang -fobjc-arc -fobjc-weak -fmodules $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBBUGSNAG_CFLAGS -c ios/NetService.m
+    clang -fobjc-arc -fobjc-weak -fmodules $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBBUGSNAG_CFLAGS -I ios -c ios/NetService.m ios/Framework/NewNode.m
     mkdir -p $TRIPLE/objects
     mv *.o $TRIPLE/objects
 
