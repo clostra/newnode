@@ -3345,8 +3345,6 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
     cb();
     timer_repeating(n, 25 * 60 * 1000, cb);
 
-    d2d_init(n);
-
     return n;
 }
 
