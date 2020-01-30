@@ -517,7 +517,7 @@ void usage(char *name)
 
 int main(int argc, char *argv[])
 {
-    char *address = "0.0.0.0";
+    char *address = "::";
     char *port_s = NULL;
 
     o_debug = 0;
