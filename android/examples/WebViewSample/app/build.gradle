@@ -1,12 +1,12 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 27
+    compileSdkVersion 29
 
     defaultConfig {
         applicationId "com.example.webviewsample"
         minSdkVersion 21
-        targetSdkVersion 27
+        targetSdkVersion 29
         versionCode 1
         versionName "1.0"
     }
@@ -26,6 +26,7 @@ dependencies {
     // include AAR directly (must include dependencies)
     implementation project(':newnode')
     implementation 'com.bugsnag:bugsnag-android:4.5.0'
+    implementation 'com.google.android.gms:play-services-nearby:17.+'
 
     // use jcenter
     //implementation 'com.clostra.newnode:newnode:+'

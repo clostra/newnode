@@ -29,6 +29,7 @@
 #include "http.h"
 #include "timer.h"
 #include "obfoo.h"
+#include "thread.h"
 #include "base64.h"
 #include "network.h"
 #include "newnode.h"
@@ -74,8 +75,8 @@ typedef struct {
 
 typedef struct {
     bool failed:1;
-    time_t time_since_verified;
-    time_t last_connect_attempt;
+    int64_t last_connect_attempt;
+    int64_t time_since_verified;
     bool never_connected:1;
     uint8_t salt;
     peer *peer;
@@ -400,8 +401,10 @@ void add_address(network *n, peer_array **pa, const sockaddr *addr, socklen_t ad
         label = "injector";
     } else if (*pa == injector_proxies) {
         label = "injector proxy";
+    } else {
+        assert(*pa == all_peers);
     }
-    debug("new %s %s\n", label, peer_addr_str(p));
+    debug("new %s:%p %s\n", label, *pa, peer_addr_str(p));
 
     if (!TAILQ_EMPTY(&pending_requests)) {
         for (uint k = 0; k < lenof(peer_connections); k++) {
@@ -1506,6 +1509,7 @@ bool peer_request_process_chunks(peer_request *r, evhttp_request *req)
 
         evbuffer_remove_buffer(input, r->range.chunk_buffer, this_chunk_len - header_prefix - evbuffer_get_length(r->range.chunk_buffer));
 
+        //debug("chunk_index:%"PRIu64" %"PRIu64"/%"PRIu64"\n", r->range.chunk_index, header_prefix + evbuffer_get_length(r->range.chunk_buffer), this_chunk_len);
         if (header_prefix + evbuffer_get_length(r->range.chunk_buffer) < this_chunk_len) {
             return true;
         }
@@ -1597,9 +1601,16 @@ bool peer_request_process_chunks(peer_request *r, evhttp_request *req)
                 }
                 evhttp_send_reply_end(p->server_req);
                 p->server_req = NULL;
-                peer_reuse(p->n, r->pc);
-                r->pc = NULL;
-                proxy_peer_requests_cancel(p);
+                // we cannot reuse the connection until we know the reqeust has finished the reply
+                for (size_t i = 0; i < lenof(p->requests); i++) {
+                    peer_request *pr = &p->requests[i];
+                    // give them a tiny grace period
+                    if (pr->req && (pr->range.chunk_index * LEAF_CHUNK_SIZE) + 1024 > pr->range.end) {
+                        evhttp_request_set_chunked_cb(pr->req, NULL);
+                        continue;
+                    }
+                    peer_request_cancel(pr);
+                }
             }
 
             //join_url_swarm(p->n, uri);
@@ -1677,11 +1688,7 @@ void peer_request_done_cb(evhttp_request *req, void *arg)
 
     peer_reuse(p->n, r->pc);
     r->pc = NULL;
-    if (proxy_is_complete(r->p)) {
-        proxy_peer_requests_cancel(p);
-    } else {
-        peer_request_cleanup(r);
-    }
+    peer_request_cleanup(r);
 }
 
 void stats_changed()
@@ -1962,23 +1969,31 @@ int peer_sort_cmp(const peer_sort *pa, const peer_sort *pb)
     return memcmp(pa, pb, sizeof(peer_sort));
 }
 
+
+#define htonll(x) ((((uint64_t)htonl(x)) << 32) + htonl((x) >> 32))
+#define ntohll htonll
+
 peer* select_peer(peer_array *pa)
 {
     peer_sort best = {.peer = NULL};
+    //debug("select_peer peers:%p length:%u\n", pa, pa->length);
     for (uint i = 0; i < pa->length; i++) {
         peer *p = pa->peers[i];
         peer_sort c;
         c.failed = p->last_connect < p->last_connect_attempt;
-        c.time_since_verified = time(NULL) - p->last_verified;
-        c.last_connect_attempt = p->last_connect_attempt;
+        int64_t time_since_verified = time(NULL) - p->last_verified;
+        c.time_since_verified = ntohll(time_since_verified);
+        int64_t last_connect_attempt = p->last_connect_attempt;
+        c.last_connect_attempt = ntohll(last_connect_attempt);
         c.never_connected = !p->last_connect;
         c.salt = randombytes_uniform(0xFF);
         c.peer = p;
-        /*
-        debug("peer %s failed:%d verified_ago:%d last_connect:%d never_connected:%d salt:%d p:%p\n",
-            peer_addr_str(p),
-            c.failed, c.time_since_verified, c.last_connect_attempt, c.never_connected, c.salt, c.peer);
-        */
+        if (0) {
+            debug("peer %s failed:%d time_since_verified:%"PRIu64" last_connect_attempt:%"PRIu64" never_connected:%d salt:%d p:%p\n",
+                  peer_addr_str(p),
+                  c.failed, htonll(c.time_since_verified), htonll(c.last_connect_attempt), c.never_connected, c.salt, c.peer);
+            debug("peer_sort_cmp:%d\n", peer_sort_cmp(&c, &best));
+        }
         if (!i || peer_sort_cmp(&c, &best) < 0) {
             //debug("better p:%p\n", p);
             best = c;
@@ -1991,8 +2006,10 @@ peer_connection* start_peer_connection(network *n, peer_array *peers)
 {
     peer *p = select_peer(peers);
     if (!p) {
+        //debug("no peer selected from peers:%p\n", peers);
         return NULL;
     }
+    //debug("peer selected: %s\n", peer_addr_str(p));
     return evhttp_utp_connect(n, p);
 }
 
@@ -2041,7 +2058,7 @@ void queue_request(network *n, pending_request *r, const char *via, peer_connect
         for (uint i = 0; i < lenof(peer_connections); i++) {
             peer_connection *pc = peer_connections[i];
             if (pc && pc->evcon && via_contains(via, pc->peer->via)) {
-                debug("discarding pc:%p due to via loop saturation\n", pc);
+                debug("discarding pc:%p due to via loop saturation '%s' '%c'\n", pc, via, pc->peer->via);
                 peer_disconnect(pc);
                 peer_connections[i] = NULL;
                 disconnected++;
@@ -2064,7 +2081,7 @@ void queue_request(network *n, pending_request *r, const char *via, peer_connect
 void connect_more_injectors(network *n, bool injector_preference)
 {
     debug("%s injector_pref:%d\n", __func__, injector_preference);
-    for (uint i = 0; i < lenof(peer_connections); i++) {
+    for (uint i = 0; i < lenof(peer_connections) / 2; i++) {
         if (peer_connections[i]) {
             continue;
         }
@@ -3306,72 +3323,64 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
     g_socks_port = *socks_port;
     printf("listening on TCP: %s:%d,%d\n", "127.0.0.1", *http_port, *socks_port);
 
-    load_peers(n);
+    timer_start(n, 0, ^{
+        load_peers(n);
 
-    // for local debugging
-    /*
-    sin.sin_port = htons(8004);
-    add_sockaddr(n, (sockaddr *)&sin, sizeof(sin));
-    */
+        // for local debugging
+        /*
+        sin.sin_port = htons(8004);
+        add_sockaddr(n, (sockaddr *)&sin, sizeof(sin));
+        */
 
-    sockaddr_in iin = {
-        .sin_family = AF_INET,
-        .sin_addr.s_addr = inet_addr("52.88.7.21"),
-        .sin_port = htons(9000),
+        sockaddr_in iin = {
+            .sin_family = AF_INET,
+            .sin_addr.s_addr = inet_addr("52.88.7.21"),
+            .sin_port = htons(9000),
 #ifdef __APPLE__
-        .sin_len = sizeof(sin)
+            .sin_len = sizeof(sin)
 #endif
-    };
-    add_sockaddr(n, (sockaddr *)&iin, sizeof(iin));
+        };
+        add_sockaddr(n, (sockaddr *)&iin, sizeof(iin));
 
-    timer_callback cb = ^{
-        time_t t = time(NULL);
-        tm *tm = gmtime(&t);
-        char name[1024];
+        timer_callback cb = ^{
+            time_t t = time(NULL);
+            tm *tm = gmtime(&t);
+            char name[1024];
 
-        snprintf(name, sizeof(name), "injector %d-%d", tm->tm_year, (tm->tm_yday - 1));
-        crypto_generichash(encrypted_injector_swarm_m1, sizeof(encrypted_injector_swarm_m1), (uint8_t*)name, strlen(name), NULL, 0);
-        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm_m1);
-        snprintf(name, sizeof(name), "injector %d-%d", tm->tm_year, (tm->tm_yday + 0));
-        crypto_generichash(encrypted_injector_swarm_p0, sizeof(encrypted_injector_swarm_p0), (uint8_t*)name, strlen(name), NULL, 0);
-        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm_p0);
-        snprintf(name, sizeof(name), "injector %d-%d", tm->tm_year, (tm->tm_yday + 1));
-        crypto_generichash(encrypted_injector_swarm_p1, sizeof(encrypted_injector_swarm_p1), (uint8_t*)name, strlen(name), NULL, 0);
-        dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm_p1);
+            snprintf(name, sizeof(name), "injector %d-%d", tm->tm_year, (tm->tm_yday - 1));
+            crypto_generichash(encrypted_injector_swarm_m1, sizeof(encrypted_injector_swarm_m1), (uint8_t*)name, strlen(name), NULL, 0);
+            dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm_m1);
+            snprintf(name, sizeof(name), "injector %d-%d", tm->tm_year, (tm->tm_yday + 0));
+            crypto_generichash(encrypted_injector_swarm_p0, sizeof(encrypted_injector_swarm_p0), (uint8_t*)name, strlen(name), NULL, 0);
+            dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm_p0);
+            snprintf(name, sizeof(name), "injector %d-%d", tm->tm_year, (tm->tm_yday + 1));
+            crypto_generichash(encrypted_injector_swarm_p1, sizeof(encrypted_injector_swarm_p1), (uint8_t*)name, strlen(name), NULL, 0);
+            dht_get_peers(n->dht, (const uint8_t *)encrypted_injector_swarm_p1);
 
-        submit_trace_request(n);
-        update_injector_proxy_swarm(n);
-    };
-    cb();
-    timer_repeating(n, 25 * 60 * 1000, cb);
+            submit_trace_request(n);
+            update_injector_proxy_swarm(n);
+        };
+        cb();
+        timer_repeating(n, 25 * 60 * 1000, cb);
+    });
 
     return n;
 }
 
-int client_run(network *n)
+network* newnode_init(const char *app_name, const char *app_id, port_t *http_port, port_t *socks_port, https_callback https_cb)
 {
+    return client_init(app_name, app_id, http_port, socks_port, https_cb);
+}
+
+int newnode_run(network *n)
+{
+    debug("%s:%d\n", __FILE__, __LINE__);
     return network_loop(n);
 }
 
-void* client_thread(void *userdata)
+void newnode_thread(network *n)
 {
-    client_run((network*)userdata);
-    return NULL;
-}
-
-void client_thread_start(const char *app_name, const char *app_id, port_t *http_port, port_t *socks_port, https_callback https_cb)
-{
-    network *n = client_init(app_name, app_id, http_port, socks_port, https_cb);
-    pthread_t t;
-    pthread_create(&t, NULL, client_thread, n);
-}
-
-void newnode_init(const char *app_name, const char *app_id, port_t *http_port, port_t *socks_port, https_callback https_cb)
-{
-    static bool started = false;
-    if (started) {
-        return;
-    }
-    started = true;
-    client_thread_start(app_name, app_id, http_port, socks_port, https_cb);
+    thread(^{
+        newnode_run(n);
+    });
 }

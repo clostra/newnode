@@ -3,11 +3,13 @@
 #include "log.h"
 #define BSG_KSLogger_Level TRACE
 #define BSG_LOG_LEVEL BSG_LOGLEVEL_DEBUG
-#include "NewNode-iOS.h"
+#import "NetService.h"
+#import "NewNode-iOS.h"
 #import <BugsnagStatic/Bugsnag.h>
 
 port_t http_port;
 port_t socks_port;
+NetService *ns = nil;
 
 @implementation NewNode
 
@@ -30,7 +32,7 @@ port_t socks_port;
     NSString *appName = NSBundle.mainBundle.infoDictionary[@"CFBundleDisplayName"];
     NSString *appId = NSBundle.mainBundle.infoDictionary[@"CFBundleIdentifier"];
 
-    newnode_init(appName.UTF8String, appId.UTF8String, &http_port, &socks_port, ^(const char *url, https_complete_callback cb) {
+    network *n = newnode_init(appName.UTF8String, appId.UTF8String, &http_port, &socks_port, ^(const char *url, https_complete_callback cb) {
         debug("https: %s\n", url);
         [[NSURLSession.sharedSession downloadTaskWithURL:[NSURL URLWithString:@(url)]
                                        completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
@@ -40,6 +42,8 @@ port_t socks_port;
     if (!http_port || !socks_port) {
         NSLog(@"Error: NewNode could not be initialized");
     }
+    ns = [NetService.alloc initWithNetwork:n];
+    newnode_thread(n);
 }
 
 + (NSDictionary*)connectionProxyDictionary

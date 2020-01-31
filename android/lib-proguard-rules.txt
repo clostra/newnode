@@ -1,2 +1,3 @@
 -keep class com.bugsnag.** { *; }
 -keep class com.clostra.** { *; }
+-keep class com.google.android.** { *; }
