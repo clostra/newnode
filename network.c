@@ -28,6 +28,7 @@
 
 #include "log.h"
 #include "lsd.h"
+#include "d2d.h"
 #include "http.h"
 #include "timer.h"
 #include "network.h"
@@ -93,6 +94,13 @@ uint64 utp_callback_sendto(utp_callback_arguments *a)
         map4to6(&sin->sin_addr, &sin6.sin6_addr);
         sa = (sockaddr*)&sin6;
         salen = sizeof(sin6);
+    }
+
+    if (sa->sa_family == AF_INET6) {
+        const sockaddr_in6 *s6 = (const sockaddr_in6 *)sa;
+        if (d2d_sendto(a->buf, a->len, s6)) {
+            return 0;
+        }
     }
 
     if (sendto(n->fd, a->buf, a->len, 0, sa, salen) < 0) {
@@ -201,6 +209,17 @@ bool network_make_socket(network *n)
     return true;
 }
 
+bool udp_received(network *n, uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
+{
+    if (utp_process_udp(n->utp, buf, len, sa, salen)) {
+        return true;
+    }
+    time_t tosleep;
+    bool r = dht_process_udp(n->dht, buf, len, sa, salen, &tosleep);
+    dht_schedule(n, tosleep);
+    return r;
+}
+
 void udp_read(evutil_socket_t fd, short events, void *arg)
 {
     network *n = (network*)arg;
@@ -214,7 +233,7 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
     for (;;) {
         sockaddr_storage src_addr;
         socklen_t addrlen = sizeof(src_addr);
-        unsigned char buf[64 * 1024 + 1];
+        uint8_t buf[64 * 1024 + 1];
         ssize_t len = recvfrom(n->fd, buf, sizeof(buf), 0, (sockaddr *)&src_addr, &addrlen);
         if (len < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNREFUSED ||
@@ -259,15 +278,7 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
             hexdump(buf, len);
         }
 
-        if (utp_process_udp(n->utp, buf, len, sa, salen)) {
-            continue;
-        }
-        time_t tosleep;
-        bool r = dht_process_udp(n->dht, buf, len, sa, salen, &tosleep);
-        dht_schedule(n, tosleep);
-        if (r) {
-            continue;
-        }
+        udp_received(n, buf, len, sa, salen);
     }
 }
 

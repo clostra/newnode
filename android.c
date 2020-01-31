@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <assert.h>
 #include <pthread.h>
 
 #include <jni.h>
@@ -18,9 +19,9 @@
 static int pfd[2];
 static JavaVM *g_jvm;
 static jobject bugsnagClient;
+static jobject newNode;
 static port_t http_port;
 static port_t socks_port;
-static bool use_ephemeral_port;
 static network *g_n;
 
 void* stdio_thread(void *useradata)
@@ -220,13 +221,17 @@ void bugsnag_leave_breadcrumb_log(const char *buf)
     bugsnag_add_breadcrumb(crumb);
 }
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_useEphemeralPort(JNIEnv* env, jobject thiz)
+JNIEnv* get_env()
 {
-    use_ephemeral_port = true;
+    JNIEnv *env;
+    int stat = (*g_jvm)->GetEnv(g_jvm, (void **)&env, JNI_VERSION_1_6);
+    assert(stat == JNI_OK);
+    return env;
 }
 
 bool android_https(const char* url)
 {
+    // XXX: thread on the java side, use get_env()
     JNIEnv *env;
     int stat = (*g_jvm)->GetEnv(g_jvm, (void **)&env, JNI_VERSION_1_6);
     if (stat == JNI_EDETACHED) {
@@ -275,10 +280,11 @@ bool android_https(const char* url)
     return responseStatus == 200;
 }
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNIEnv* env, jobject thiz, jobject newNodeObj)
 {
-    const char* cCacheDir = (*env)->GetStringUTFChars(env, cacheDir, NULL);
-    chdir(cCacheDir);
+    newNode = (*env)->NewGlobalRef(env, newNodeObj);
+
+    o_debug = 1;
 
     bugsnag_client_setup(env);
 
@@ -289,25 +295,24 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setCacheDir(JNI
         __android_log_print(ANDROID_LOG_DEBUG, "newnode", "application id %s\n", app_id);
         fclose(cmdline);
     }
-    if (!use_ephemeral_port) {
-        http_port = 8006;
-        socks_port = 8007;
-    }
     // XXX: TODO: use real app name
     const char *app_name = app_id;
-    newnode_init(app_name, app_id, &http_port, &socks_port, ^void (const char *url, https_complete_callback cb) {
-        debug("https stuff: %s\n", url);
+    g_n = newnode_init(app_name, app_id, &http_port, &socks_port, ^void (const char *url, https_complete_callback cb) {
         char *url2 = strdup(url);
         cb = Block_copy(cb);
         thread(^{
-            debug("https stuff2: %s\n", url2);
             bool s = android_https(url2);
             cb(s);
             free(url2);
             Block_release(cb);
         });
     });
+}
 
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
+{
+    const char* cCacheDir = (*env)->GetStringUTFChars(env, cacheDir, NULL);
+    chdir(cCacheDir);
     (*env)->ReleaseStringUTFChars(env, cacheDir, cCacheDir);
 }
 
@@ -344,9 +349,79 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_unregisterProxy
     (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("proxyPort"));
 }
 
-JNIEXPORT jint JNICALL Java_com_clostra_newnode_internal_NewNode_getPort(JNIEnv* env, jobject thiz)
+void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen);
+
+sockaddr_in6 endpoint_to_addr(JNIEnv* env, jstring endpoint)
 {
-    return g_n->port;
+    const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
+    size_t clen = strlen(cEndpoint);
+    sockaddr_in6 sin6 = {.sin6_family = AF_INET6};
+    // link-local unicast
+    sin6.sin6_addr.s6_addr[0] = 0xfe;
+    sin6.sin6_addr.s6_addr[1] = 0x80;
+    memcpy(&sin6.sin6_addr.s6_addr[2], cEndpoint, MIN(clen, 14));
+    if (clen > 14) {
+        memcpy(&sin6.sin6_port, &cEndpoint[14], MIN(clen - 14, 2));
+        assert(clen <= 16);
+    }
+    (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
+    return sin6;
+}
+
+jstring addr_to_endpoint(JNIEnv* env, const sockaddr_in6 *sin6)
+{
+    char s[17] = {0};
+    size_t addrlen = sizeof(sin6->sin6_addr.s6_addr);
+    memcpy(s, &sin6->sin6_addr.s6_addr[2], addrlen - 2);
+    memcpy(&s[addrlen - 2], &sin6->sin6_port, sizeof(sin6->sin6_port));
+    return JSTR(s);
+}
+
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_addEndpoint(JNIEnv* env, jobject thiz, jstring endpoint)
+{
+    sockaddr_in6 sin6 = endpoint_to_addr(env, endpoint);
+    timer_start(g_n, 0, ^{
+        add_sockaddr(g_n, (const sockaddr *)&sin6, sizeof(sin6));
+    });
+}
+
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(JNIEnv* env, jobject thiz, jbyteArray array, jstring endpoint)
+{
+    jobject arrayref = (*env)->NewGlobalRef(env, array);
+    sockaddr_in6 sin6 = endpoint_to_addr(env, endpoint);
+    timer_start(g_n, 0, ^{
+        JNIEnv *env2 = get_env();
+        jbyte *buf = (*env2)->GetByteArrayElements(env2, arrayref, NULL);
+        jsize len = (*env2)->GetArrayLength(env2, arrayref);
+        udp_received(g_n, (uint8_t*)buf, len, (const sockaddr *)&sin6, sizeof(sin6));
+        (*env2)->ReleaseByteArrayElements(env2, arrayref, buf, JNI_ABORT);
+        (*env2)->DeleteGlobalRef(env2, arrayref);
+
+        // XXX: this should be called when the read buffer is drained
+        utp_issue_deferred_acks(g_n->utp);
+    });
+}
+
+bool d2d_sendto(const uint8* buf, size_t len, const sockaddr_in6 *sin6)
+{
+    if (sin6->sin6_addr.s6_addr[0] != 0xfe || sin6->sin6_addr.s6_addr[1] != 0x80) {
+        return false;
+    }
+    JNIEnv *env = get_env();
+    if (!newNode) {
+        return true;
+    }
+    jclass cNewNode = (*env)->GetObjectClass(env, newNode);
+    CATCH(return true);
+    jstring endpoint = addr_to_endpoint(env, sin6);
+    CATCH(return true);
+    jbyteArray array = (*env)->NewByteArray(env, len);
+    CATCH(return true);
+    (*env)->SetByteArrayRegion(env, array, 0, len, (const jbyte *)buf);
+    CATCH(return true);
+    CALL_VOID(cNewNode, newNode, sendPacket, [BLjava/lang/String;, array, endpoint);
+    CATCH(return true);
+    return true;
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
@@ -354,8 +429,13 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setLogLevel(JNI
     o_debug = level;
 }
 
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeRun(JNIEnv* env, jobject thiz)
+{
+    newnode_run(g_n);
+}
 
-// XXX: compat
+
+// XXX: compat. can be removed when we have a NewNode.aar loader here in JNI
 JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_updateBugsnagDetails(JNIEnv* env, jobject thiz, int notifyType)
 {
     Java_com_clostra_newnode_internal_NewNode_updateBugsnagDetails(env, thiz, notifyType);
@@ -364,7 +444,6 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_updateBugsnagDetails(JNI
 // XXX: compat
 JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_useEphemeralPort(JNIEnv* env, jobject thiz)
 {
-    Java_com_clostra_newnode_internal_NewNode_useEphemeralPort(env, thiz);
 }
 
 // XXX: compat
@@ -395,12 +474,6 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setLogLevel(JNIEnv* env,
 JNIEXPORT void JNICALL Java_com_clostra_dcdn_Dcdn_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
 {
     Java_com_clostra_newnode_internal_NewNode_setCacheDir(env, thiz, cacheDir);
-}
-
-void d2d_init(network *n)
-{
-    // TODO
-    g_n = n;
 }
 
 jint JNI_OnLoad(JavaVM *vm, void *reserved)

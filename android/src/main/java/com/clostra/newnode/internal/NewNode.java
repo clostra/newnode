@@ -34,11 +34,12 @@ import java.util.zip.GZIPInputStream;
 
 
 
-public class NewNode implements NewNodeInternal {
+public class NewNode implements NewNodeInternal, Runnable {
     public static String VERSION = BuildConfig.VERSION_NAME;
 
+    static Thread t;
     static Thread updateThread;
-    static boolean started = false;
+    static NearbyHelper nearbyHelper;
 
     static {
         Application app = app();
@@ -113,6 +114,14 @@ public class NewNode implements NewNodeInternal {
         return false;
     }
 
+    @SuppressWarnings("deprecation")
+    static String[] abis() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            return Build.SUPPORTED_ABIS;
+        }
+        return new String[] {Build.CPU_ABI, Build.CPU_ABI2};
+    }
+
     static void update() throws Exception {
         Application app = app();
         URL url = new URL("https://api.github.com/repos/clostra/newnode/releases/latest");
@@ -143,11 +152,7 @@ public class NewNode implements NewNodeInternal {
                 Log.e("newnode", "", e);
             }
         }
-        String[] abis = {Build.CPU_ABI, Build.CPU_ABI2};
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            abis = Build.SUPPORTED_ABIS;
-        }
-        for (String abi : abis) {
+        for (String abi : abis()) {
             for (int i = 0; i < assets.length(); i++) {
                 try {
                     JSONObject asset = assets.getJSONObject(i);
@@ -166,25 +171,31 @@ public class NewNode implements NewNodeInternal {
         }
     }
 
+    public void run() {
+        newnodeRun();
+    }
+
     public void init() {
-        if (!started) {
-            try {
-                useEphemeralPort();
-                setCacheDir(app().getCacheDir().getAbsolutePath());
-                Log.e("newnode", "version " + VERSION + " started");
-                started = true;
-            } catch (UnsatisfiedLinkError e) {
-                Log.e("newnode", "", e);
-            }
+        if (t == null) {
+            setCacheDir(app().getCacheDir().getAbsolutePath());
+            newnodeInit(this);
+            t = new Thread(this, "newnode");
+            t.start();
+            Log.e("newnode", "version " + VERSION + " started");
+            nearbyHelper = new NearbyHelper(app());
         }
 
-        if (started) {
-            registerProxy();
-        }
+        registerProxy();
     }
 
     public void shutdown() {
         unregisterProxy();
+    }
+
+    void sendPacket(byte[] packet, String endpoint) {
+        if (nearbyHelper != null) {
+            nearbyHelper.sendPacket(packet, endpoint);
+        }
     }
 
     static class BugsnagObserver implements Observer {
@@ -199,7 +210,10 @@ public class NewNode implements NewNodeInternal {
     }
 
     static native void setCacheDir(String cacheDir);
-    static native void useEphemeralPort();
+    static native void addEndpoint(String endpoint);
+    static native void packetReceived(byte[] packet, String endpoint);
+    static native void newnodeInit(NewNode newNode);
+    static native void newnodeRun();
     static native void registerProxy();
     static native void unregisterProxy();
     static native void updateBugsnagDetails(int notifyType);

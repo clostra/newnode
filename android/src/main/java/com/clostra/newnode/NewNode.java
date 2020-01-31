@@ -46,6 +46,7 @@ public class NewNode {
             try {
                 String v2 = Pattern.compile("^newnode.v?([\\.0-9]*).dex$").matcher(f.getName()).group(1);
                 if (VERSION.compareTo(v2) < 0) {
+                    Log.d("newnode", "Loading " + f.getAbsolutePath());
                     PathClassLoader classLoader = new PathClassLoader(f.getAbsolutePath(), NewNode.class.getClassLoader().getParent());
                     newNode = (NewNodeInternal)classLoader.loadClass("com.clostra.newnode.internal.NewNode").newInstance();
                     VERSION = v2;
@@ -57,6 +58,7 @@ public class NewNode {
         }
         if (newNode == null) {
             try {
+                Log.d("newnode", "Loading built-in NewNodeInternal");
                 newNode = (NewNodeInternal)NewNode.class.getClassLoader().loadClass("com.clostra.newnode.internal.NewNode").newInstance();
             } catch (Exception e) {
                 Log.e("newnode", "", e);
