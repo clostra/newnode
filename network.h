@@ -96,6 +96,8 @@ const char* bev_events_to_str(short events);
 socklen_t sockaddr_get_length(const sockaddr* sa);
 port_t sockaddr_get_port(const sockaddr* sa);
 void sockaddr_set_port(sockaddr* sa, port_t port);
+int sockaddr_cmp(const struct sockaddr * sa, const struct sockaddr * sb);
+bool sockaddr_eq(const struct sockaddr * sa, const struct sockaddr * sb);
 const char* sockaddr_str(const sockaddr *ss);
 
 bool udp_received(network *n, uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
