@@ -85,6 +85,7 @@ typedef struct {
 #define CACHE_PATH "./cache/"
 #define CACHE_NAME CACHE_PATH "cache.XXXXXXXX"
 
+typedef bool (^peer_filter)(peer *p);
 typedef void (^peer_connected)(peer_connection *p);
 typedef struct pending_request {
     char *via;
@@ -1969,16 +1970,20 @@ int peer_sort_cmp(const peer_sort *pa, const peer_sort *pb)
     return memcmp(pa, pb, sizeof(peer_sort));
 }
 
-
+#ifndef htonll
 #define htonll(x) ((((uint64_t)htonl(x)) << 32) + htonl((x) >> 32))
 #define ntohll htonll
+#endif
 
-peer* select_peer(peer_array *pa)
+peer* select_peer(peer_array *pa, peer_filter filter)
 {
     peer_sort best = {.peer = NULL};
     //debug("select_peer peers:%p length:%u\n", pa, pa->length);
     for (uint i = 0; i < pa->length; i++) {
         peer *p = pa->peers[i];
+        if (filter && filter(p)) {
+            continue;
+        }
         peer_sort c;
         c.failed = p->last_connect < p->last_connect_attempt;
         int64_t time_since_verified = time(NULL) - p->last_verified;
@@ -2002,9 +2007,9 @@ peer* select_peer(peer_array *pa)
     return best.peer;
 }
 
-peer_connection* start_peer_connection(network *n, peer_array *peers)
+peer_connection* start_peer_connection(network *n, peer_array *peers, peer_filter filter)
 {
-    peer *p = select_peer(peers);
+    peer *p = select_peer(peers, filter);
     if (!p) {
         //debug("no peer selected from peers:%p\n", peers);
         return NULL;
@@ -2013,7 +2018,7 @@ peer_connection* start_peer_connection(network *n, peer_array *peers)
     return evhttp_utp_connect(n, p);
 }
 
-void queue_request(network *n, pending_request *r, const char *via, peer_connected on_connect)
+void queue_request(network *n, pending_request *r, peer_filter filter, peer_connected on_connect)
 {
     debug("%s r:%p pending:%zu first:%p\n", __func__, r, pending_requests_len, TAILQ_FIRST(&pending_requests));
     bool any_connected = false;
@@ -2024,7 +2029,7 @@ void queue_request(network *n, pending_request *r, const char *via, peer_connect
             }
             continue;
         }
-        peer_connections[i] = start_peer_connection(n, all_peers);
+        peer_connections[i] = start_peer_connection(n, all_peers, filter);
         if (!peer_connections[i]) {
             break;
         }
@@ -2036,29 +2041,29 @@ void queue_request(network *n, pending_request *r, const char *via, peer_connect
         lsd_send(n, false);
     }
 
-    uint via_excluded = 0;
+    uint filtered = 0;
     for (uint i = 0; i < lenof(peer_connections); i++) {
         peer_connection *pc = peer_connections[i];
         if (!pc || !pc->evcon) {
             continue;
         }
-        if (via_contains(via, pc->peer->via)) {
-            via_excluded++;
+        if (filter && filter(pc->peer)) {
+            filtered++;
             continue;
         }
         peer_connections[i] = NULL;
-        debug("using pc:%p evcon:%p via:%c (%s) for request:%p\n", pc, pc->evcon, pc->peer->via, via, r);
+        debug("using pc:%p evcon:%p via:%c for request:%p\n", pc, pc->evcon, pc->peer->via, r);
         on_connect(pc);
         return;
     }
 
-    // if none of the peer_connections were applicable (due to via loops), disconnect some
-    if (via_excluded > lenof(peer_connections) / 2) {
+    // if none of the peer_connections were applicable, disconnect some
+    if (filtered >= lenof(peer_connections) / 2) {
         uint disconnected = 0;
         for (uint i = 0; i < lenof(peer_connections); i++) {
             peer_connection *pc = peer_connections[i];
-            if (pc && pc->evcon && via_contains(via, pc->peer->via)) {
-                debug("discarding pc:%p due to via loop saturation '%s' '%c'\n", pc, via, pc->peer->via);
+            if (pc && pc->evcon && filter && filter(pc->peer)) {
+                debug("discarding pc:%p due to filtering '%c'\n", pc, pc->peer->via);
                 peer_disconnect(pc);
                 peer_connections[i] = NULL;
                 disconnected++;
@@ -2069,7 +2074,6 @@ void queue_request(network *n, pending_request *r, const char *via, peer_connect
         }
     }
 
-    r->via = via?strdup(via):NULL;
     assert(!r->on_connect);
     r->on_connect = Block_copy(on_connect);
     TAILQ_INSERT_TAIL(&pending_requests, r, next);
@@ -2090,9 +2094,9 @@ void connect_more_injectors(network *n, bool injector_preference)
             o[0] = injector_proxies;
             o[1] = injectors;
         }
-        peer_connections[i] = start_peer_connection(n, o[0]);
+        peer_connections[i] = start_peer_connection(n, o[0], NULL);
         if (!peer_connections[i]) {
-            peer_connections[i] = start_peer_connection(n, o[1]);
+            peer_connections[i] = start_peer_connection(n, o[1], NULL);
         }
     }
 }
@@ -2120,7 +2124,18 @@ void proxy_submit_request(proxy_request *p)
     }
 
     const char *via = evhttp_find_header(r->req->input_headers, "Via");
-    queue_request(p->n, &r->r, via, ^(peer_connection *pc) {
+    r->r.via = via?strdup(via):NULL;
+
+    sockaddr_storage ss;
+    if (p->server_req) {
+        int fd = bufferevent_getfd(evhttp_connection_get_bufferevent(p->server_req->evcon));
+        socklen_t len = sizeof(ss);
+        getsockname(fd, (sockaddr *)&ss, &len);
+    }
+
+    queue_request(p->n, &r->r, ^bool(peer *peer) {
+        return !sockaddr_eq((const sockaddr*)&r->pc->peer->addr, (const sockaddr*)&peer->addr) && !via_contains(via, peer->via);
+    }, ^(peer_connection *pc) {
         r->pc = pc;
         peer_submit_request_on_con(r, r->pc->evcon);
     });
@@ -2767,10 +2782,14 @@ void connect_peer(connect_req *c, bool injector_preference)
     assert(!c->r.on_connect);
     assert(!c->proxy_req);
     const char *via = c->server_req ? evhttp_find_header(c->server_req->input_headers, "Via") : NULL;
-    queue_request(c->n, &c->r, via, ^(peer_connection *pc) {
+    c->r.via = via?strdup(via):NULL;
+    queue_request(c->n, &c->r, ^bool(peer *peer) {
+        return !sockaddr_eq((const sockaddr*)&c->pc->peer->addr, (const sockaddr*)&peer->addr) && !via_contains(via, peer->via);
+    }, ^(peer_connection *pc) {
         debug("c:%p %s on_connect\n", c, __func__);
         assert(!c->pc);
         assert(!c->r.on_connect);
+
         c->pc = pc;
         assert(!c->proxy_req);
         c->proxy_req = evhttp_request_new(connect_done_cb, c);
