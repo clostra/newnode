@@ -407,11 +407,13 @@ socklen_t sockaddr_get_length(const sockaddr* sa)
 port_t sockaddr_get_port(const sockaddr* sa)
 {
     switch (sa->sa_family) {
-    default:
     case AF_INET:
         return ntohs(((sockaddr_in*)sa)->sin_port);
     case AF_INET6:
         return ntohs(((sockaddr_in6*)sa)->sin6_port);
+    default:
+    case 0:
+        assert(false);
     }
 }
 
@@ -425,6 +427,38 @@ void sockaddr_set_port(sockaddr* sa, port_t port)
         ((sockaddr_in6*)sa)->sin6_port = htons(port);
         return;
     }
+}
+
+int sockaddr_cmp(const struct sockaddr * sa, const struct sockaddr * sb)
+{
+    if (sa->sa_family != sb->sa_family) {
+        return sa->sa_family - sb->sa_family;
+    }
+    port_t pa = sockaddr_get_port(sa);
+    port_t pb = sockaddr_get_port(sb);
+    if (pa != pb) {
+        return pa - pb;
+    }
+    switch (sa->sa_family) {
+    case AF_INET: {
+        const sockaddr_in *sina = (const sockaddr_in*)sa;
+        const sockaddr_in *sinb = (const sockaddr_in*)sa;
+        return sina->sin_addr.s_addr - sinb->sin_addr.s_addr;
+    }
+    case AF_INET6: {
+        const sockaddr_in6 *sin6a = (const sockaddr_in6*)sa;
+        const sockaddr_in6 *sin6b = (const sockaddr_in6*)sa;
+        return memcmp(&sin6a->sin6_addr, &sin6b->sin6_addr, sizeof(sin6a->sin6_addr));
+    }
+    default:
+    case 0:
+        assert(false);
+    }
+}
+
+bool sockaddr_eq(const struct sockaddr * sa, const struct sockaddr * sb)
+{
+    return sockaddr_cmp(sa, sb) == 0;
 }
 
 const char* sockaddr_str(const sockaddr *sa)
