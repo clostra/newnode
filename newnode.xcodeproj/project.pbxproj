@@ -27,7 +27,7 @@
 		3C4B39C121B2AB5B0031CCA2 /* libevent.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C4B39C021B2AB5B0031CCA2 /* libevent.a */; };
 		3C4B39C321B2AB730031CCA2 /* libevent_pthreads.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C4B39C221B2AB730031CCA2 /* libevent_pthreads.a */; };
 		3C4B39C521B2AB820031CCA2 /* libsodium.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C4B39C421B2AB820031CCA2 /* libsodium.a */; };
-		3C4B39CA21B2AC610031CCA2 /* dht.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C4B39C921B2AC610031CCA2 /* dht.o */; };
+		3CE5D4D323E9C9D200E39BCA /* dht_dht.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 3CE5D4D223E9C9D200E39BCA /* dht_dht.o */; };
 		3CFE42A4235E89A500231DEB /* thread.c in Sources */ = {isa = PBXBuildFile; fileRef = 3CFE42A3235E89A500231DEB /* thread.c */; };
 /* End PBXBuildFile section */
 
@@ -84,7 +84,7 @@
 		3C4B39C021B2AB5B0031CCA2 /* libevent.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libevent.a; path = Libevent/native/lib/libevent.a; sourceTree = "<group>"; };
 		3C4B39C221B2AB730031CCA2 /* libevent_pthreads.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libevent_pthreads.a; path = Libevent/native/lib/libevent_pthreads.a; sourceTree = "<group>"; };
 		3C4B39C421B2AB820031CCA2 /* libsodium.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsodium.a; path = libsodium/native/lib/libsodium.a; sourceTree = "<group>"; };
-		3C4B39C921B2AC610031CCA2 /* dht.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = dht.o; path = dht/dht.o; sourceTree = "<group>"; };
+		3CE5D4D223E9C9D200E39BCA /* dht_dht.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; path = dht_dht.o; sourceTree = "<group>"; };
 		3CFE42A2235E89A500231DEB /* thread.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = thread.h; sourceTree = "<group>"; };
 		3CFE42A3235E89A500231DEB /* thread.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = thread.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -94,9 +94,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3C4B39CA21B2AC610031CCA2 /* dht.o in Frameworks */,
 				3C4B39C521B2AB820031CCA2 /* libsodium.a in Frameworks */,
 				3C4B39C321B2AB730031CCA2 /* libevent_pthreads.a in Frameworks */,
+				3CE5D4D323E9C9D200E39BCA /* dht_dht.o in Frameworks */,
 				3C4B39C121B2AB5B0031CCA2 /* libevent.a in Frameworks */,
 				3C4B39BF21B2AB330031CCA2 /* libutp.a in Frameworks */,
 			);
@@ -169,7 +169,7 @@
 		3C4B39BD21B2AB320031CCA2 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				3C4B39C921B2AC610031CCA2 /* dht.o */,
+				3CE5D4D223E9C9D200E39BCA /* dht_dht.o */,
 				3C4B39C421B2AB820031CCA2 /* libsodium.a */,
 				3C4B39C221B2AB730031CCA2 /* libevent_pthreads.a */,
 				3C4B39C021B2AB5B0031CCA2 /* libevent.a */,
