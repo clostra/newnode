@@ -2134,7 +2134,7 @@ void proxy_submit_request(proxy_request *p)
         int fd = bufferevent_getfd(evhttp_connection_get_bufferevent(p->server_req->evcon));
         socklen_t len = sizeof(ss);
         getsockname(fd, (sockaddr *)&ss, &len);
-        return !sockaddr_eq((const sockaddr*)&ss, (const sockaddr*)&peer->addr) && !via_contains(via, peer->via);
+        return sockaddr_eq((const sockaddr*)&ss, (const sockaddr*)&peer->addr) || via_contains(via, peer->via);
     }, ^(peer_connection *pc) {
         r->pc = pc;
         peer_submit_request_on_con(r, r->pc->evcon);
@@ -2791,7 +2791,7 @@ void connect_peer(connect_req *c, bool injector_preference)
         int fd = bufferevent_getfd(evhttp_connection_get_bufferevent(c->server_req->evcon));
         socklen_t len = sizeof(ss);
         getsockname(fd, (sockaddr *)&ss, &len);
-        return !sockaddr_eq((const sockaddr*)&ss, (const sockaddr*)&peer->addr) && !via_contains(via, peer->via);
+        return sockaddr_eq((const sockaddr*)&ss, (const sockaddr*)&peer->addr) || via_contains(via, peer->via);
     }, ^(peer_connection *pc) {
         debug("c:%p %s on_connect\n", c, __func__);
         assert(!c->pc);
