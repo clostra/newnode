@@ -68,24 +68,19 @@ void map6to4(const in6_addr *in, in_addr *out)
     ((uint8_t *)&out->s_addr)[3] = in->s6_addr[15];
 }
 
-uint64 utp_callback_sendto(utp_callback_arguments *a)
+int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
 {
-    network *n = (network*)utp_context_get_userdata(a->context);
-
     if (o_debug >= 2) {
-        debug("sendto(%zd, %s)\n", a->len, sockaddr_str(a->address));
+        debug("sendto(%zd, %s)\n", len, sockaddr_str(sa));
     }
 
     if (o_debug >= 3) {
-        hexdump(a->buf, a->len);
+        hexdump(buf, len);
     }
 
-    const sockaddr *sa = (sockaddr*)a->address;
-    socklen_t salen = a->address_len;
-
     sockaddr_in6 sin6 = {0};
-    if (a->address->sa_family == AF_INET) {
-        const sockaddr_in *sin = (const sockaddr_in *)a->address;
+    if (sa->sa_family == AF_INET) {
+        const sockaddr_in *sin = (const sockaddr_in *)sa;
         sin6.sin6_family = AF_INET6;
         sin6.sin6_port = sin->sin_port;
 #ifdef __APPLE__
@@ -98,15 +93,21 @@ uint64 utp_callback_sendto(utp_callback_arguments *a)
 
     if (sa->sa_family == AF_INET6) {
         const sockaddr_in6 *s6 = (const sockaddr_in6 *)sa;
-        if (d2d_sendto(a->buf, a->len, s6)) {
+        if (d2d_sendto(buf, len, s6)) {
             return 0;
         }
     }
 
-    if (sendto(n->fd, a->buf, a->len, 0, sa, salen) < 0) {
+    if (sendto(fd, buf, len, 0, sa, salen) < 0) {
         debug("sendto failed %d %s\n", errno, strerror(errno));
     }
     return 0;
+}
+
+uint64 utp_callback_sendto(utp_callback_arguments *a)
+{
+    network *n = (network*)utp_context_get_userdata(a->context);
+    return udp_sendto(n->fd, a->buf, a->len, a->address, a->address_len);
 }
 
 uint64 utp_callback_log(utp_callback_arguments *a)

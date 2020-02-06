@@ -100,6 +100,7 @@ int sockaddr_cmp(const struct sockaddr * sa, const struct sockaddr * sb);
 bool sockaddr_eq(const struct sockaddr * sa, const struct sockaddr * sb);
 const char* sockaddr_str(const sockaddr *ss);
 
+int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
 bool udp_received(network *n, uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
 network* network_setup(char *address, port_t port);
 int network_loop(network *n);

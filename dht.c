@@ -230,7 +230,7 @@ void dht_destroy(dht *d)
 int dht_sendto(int sockfd, const void *buf, int len, int flags,
                const sockaddr *to, int tolen)
 {
-    return (int)sendto(sockfd, buf, len, flags, to, tolen);
+    return (int)udp_sendto(sockfd, buf, len, to, tolen);
 }
 
 int dht_blacklisted(const sockaddr *sa, int salen)
