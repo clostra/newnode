@@ -63,20 +63,19 @@ else
 fi
 
 CFLAGS="$FLAGS -std=gnu11"
+if uname|grep -i Darwin >/dev/null; then
+    CFLAGS="$CFLAGS -fobjc-arc -fmodules"
+fi
 
 echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
 
 rm *.o || true
 clang $CFLAGS -c dht/dht.c -o dht_dht.o
-for file in client.c client_main.c injector.c dht.c bev_splice.c base64.c http.c log.c lsd.c icmp_handler.c hash_table.c \
+for file in client.c client_main.c d2d.c injector.c dht.c bev_splice.c base64.c http.c log.c lsd.c icmp_handler.c hash_table.c \
             merkle_tree.c network.c obfoo.c sha1.c timer.c thread.c utp_bufferevent.c; do
     clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c $file
 done
-
-if uname|grep -i Darwin >/dev/null; then
-    clang -fobjc-arc -fobjc-weak -fmodules -I. $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c ios/NetService.m
-fi
 
 mv client.o client.o.tmp
 mv client_main.o client_main.o.tmp
