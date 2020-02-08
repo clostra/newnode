@@ -93,15 +93,17 @@ int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, sockl
 
     if (sa->sa_family == AF_INET6) {
         const sockaddr_in6 *s6 = (const sockaddr_in6 *)sa;
-        if (d2d_sendto(buf, len, s6)) {
-            return 0;
+        ssize_t r = d2d_sendto(buf, len, s6);
+        if (r > 0) {
+            return r;
         }
     }
 
-    if (sendto(fd, buf, len, 0, sa, salen) < 0) {
+    ssize_t r = sendto(fd, buf, len, 0, sa, salen);
+    if (r < 0) {
         debug("sendto failed %d %s\n", errno, strerror(errno));
     }
-    return 0;
+    return r;
 }
 
 uint64 utp_callback_sendto(utp_callback_arguments *a)

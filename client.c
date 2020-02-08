@@ -420,7 +420,7 @@ void add_address(network *n, peer_array **pa, const sockaddr *addr, socklen_t ad
     save_peers(n);
 }
 
-void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, size_t num_addrs)
+void add_v4_addresses(network *n, peer_array **pa, const uint8_t *addrs, size_t num_addrs)
 {
     for (uint i = 0; i < num_addrs; i++) {
         sockaddr_storage addr;
@@ -438,6 +438,24 @@ void add_addresses(network *n, peer_array **pa, const uint8_t *addrs, size_t num
     }
 }
 
+void add_v6_addresses(network *n, peer_array **pa, const uint8_t *addrs, size_t num_addrs)
+{
+    for (uint i = 0; i < num_addrs; i++) {
+        sockaddr_storage addr;
+
+        packed_ipv6 *a = (packed_ipv6 *)&addrs[sizeof(packed_ipv6) * i];
+        sockaddr_in6 *sin6 = (sockaddr_in6*)&addr;
+        sin6->sin6_family = AF_INET6;
+        memcpy(&sin6->sin6_addr, &a->ip, sizeof(a->ip));
+        sin6->sin6_port = a->port;
+#ifdef __APPLE__
+        sin6->sin6_len = sizeof(sockaddr_in6);
+#endif
+
+        add_address(n, pa, (const sockaddr*)&addr, sockaddr_get_length((const sockaddr*)&addr));
+    }
+}
+
 void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
 {
     add_address(n, &all_peers, addr, addrlen);
@@ -447,43 +465,51 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
 {
     network *n = (network*)closure;
     debug("dht_event_callback event:%d\n", event);
+
+    peer_array **peer_list = NULL;
+
+    if (memeq(info_hash, encrypted_injector_swarm_m1, sizeof(encrypted_injector_swarm_m1)) ||
+        memeq(info_hash, encrypted_injector_swarm_p0, sizeof(encrypted_injector_swarm_p0)) ||
+        memeq(info_hash, encrypted_injector_swarm_p1, sizeof(encrypted_injector_swarm_p1))) {
+        peer_list = &injectors;
+    } else if (memeq(info_hash, encrypted_injector_proxy_swarm_m1, sizeof(encrypted_injector_proxy_swarm_m1)) ||
+               memeq(info_hash, encrypted_injector_proxy_swarm_p0, sizeof(encrypted_injector_proxy_swarm_p0)) ||
+               memeq(info_hash, encrypted_injector_proxy_swarm_p1, sizeof(encrypted_injector_proxy_swarm_p1))) {
+        peer_list = &injector_proxies;
+    } else {
+        peer_list = &all_peers;
+    }
+
+    const uint8_t* peers = data;
+
     // TODO: DHT_EVENT_VALUES6
     if (event != DHT_EVENT_VALUES) {
         size_t num_peers = data_len / sizeof(packed_ipv6);
         debug("dht_event_callback v6 num_peers:%zu\n", num_peers);
+        add_v6_addresses(n, peer_list, peers, num_peers);
         return;
-    }
-    const uint8_t* peers = data;
-    size_t num_peers = data_len / sizeof(packed_ipv4);
-    debug("dht_event_callback num_peers:%zu\n", num_peers);
-    if (memeq(info_hash, encrypted_injector_swarm_m1, sizeof(encrypted_injector_swarm_m1)) ||
-        memeq(info_hash, encrypted_injector_swarm_p0, sizeof(encrypted_injector_swarm_p0)) ||
-        memeq(info_hash, encrypted_injector_swarm_p1, sizeof(encrypted_injector_swarm_p1))) {
-        add_addresses(n, &injectors, peers, num_peers);
-    } else if (memeq(info_hash, encrypted_injector_proxy_swarm_m1, sizeof(encrypted_injector_proxy_swarm_m1)) ||
-               memeq(info_hash, encrypted_injector_proxy_swarm_p0, sizeof(encrypted_injector_proxy_swarm_p0)) ||
-               memeq(info_hash, encrypted_injector_proxy_swarm_p1, sizeof(encrypted_injector_proxy_swarm_p1))) {
-        add_addresses(n, &injector_proxies, peers, num_peers);
     } else {
-        add_addresses(n, &all_peers, peers, num_peers);
-    }
-    if (o_debug >= 2) {
-        size_t num_values = data_len / sizeof(packed_ipv4);
-        printf("Received %zu values.\n", num_values);
-        printf("{\"");
-        for (int j = 0; j < 20; j++) {
-            printf("%02x", info_hash[j]);
-        }
-        printf("\": [");
-        packed_ipv4 *ipdata = (packed_ipv4 *)data;
-        for (uint i = 0; i < num_values; i++) {
-            packed_ipv4 *a = &ipdata[i];
-            printf("\"%s:%d\"", inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port));
-            if (i + 1 != num_values) {
-                printf(", ");
+        size_t num_peers = data_len / sizeof(packed_ipv4);
+        debug("dht_event_callback num_peers:%zu\n", num_peers);
+        add_v4_addresses(n, peer_list, peers, num_peers);
+        if (o_debug >= 2) {
+            size_t num_values = data_len / sizeof(packed_ipv4);
+            printf("Received %zu values.\n", num_values);
+            printf("{\"");
+            for (int j = 0; j < 20; j++) {
+                printf("%02x", info_hash[j]);
             }
+            printf("\": [");
+            packed_ipv4 *ipdata = (packed_ipv4 *)data;
+            for (uint i = 0; i < num_values; i++) {
+                packed_ipv4 *a = &ipdata[i];
+                printf("\"%s:%d\"", inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port));
+                if (i + 1 != num_values) {
+                    printf(", ");
+                }
+            }
+            printf("]}\n");
         }
-        printf("]}\n");
     }
 }
 
