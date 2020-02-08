@@ -402,26 +402,26 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(
     });
 }
 
-bool d2d_sendto(const uint8* buf, size_t len, const sockaddr_in6 *sin6)
+ssize_t d2d_sendto(const uint8* buf, size_t len, const sockaddr_in6 *sin6)
 {
     if (sin6->sin6_addr.s6_addr[0] != 0xfe || sin6->sin6_addr.s6_addr[1] != 0x80) {
-        return false;
+        return -1;
     }
     JNIEnv *env = get_env();
     if (!newNode) {
-        return true;
+        return -1;
     }
     jclass cNewNode = (*env)->GetObjectClass(env, newNode);
-    CATCH(return true);
+    CATCH(return -1);
     jstring endpoint = addr_to_endpoint(env, sin6);
-    CATCH(return true);
+    CATCH(return -1);
     jbyteArray array = (*env)->NewByteArray(env, len);
-    CATCH(return true);
+    CATCH(return -1);
     (*env)->SetByteArrayRegion(env, array, 0, len, (const jbyte *)buf);
-    CATCH(return true);
+    CATCH(return -1);
     CALL_VOID(cNewNode, newNode, sendPacket, [BLjava/lang/String;, array, endpoint);
-    CATCH(return true);
-    return true;
+    CATCH(return -1);
+    return len;
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
