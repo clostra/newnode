@@ -151,6 +151,9 @@ bool network_make_socket(network *n)
         pdie("socket");
     }
 
+    int udp_sndbuf = 1048576;
+    setsockopt(n->fd, SOL_SOCKET, SO_SNDBUF, (void *)&udp_sndbuf, sizeof(udp_sndbuf));
+
 #ifdef __linux__
     int on = 1;
     if (setsockopt(n->fd, SOL_IP, IP_RECVERR, &on, sizeof(on)) != 0) {
