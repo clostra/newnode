@@ -206,19 +206,15 @@ void dht_announce(dht *d, const uint8_t *info_hash)
         return;
     }
     dht_filter(d);
-    dht_search(info_hash, sockaddr_get_port((sockaddr*)&sa), sa.ss_family, dht_filter_event_callback, d->n);
+    dht_search(info_hash, sockaddr_get_port((sockaddr*)&sa), AF_INET, dht_filter_event_callback, d->n);
+    dht_search(info_hash, sockaddr_get_port((sockaddr*)&sa), AF_INET6, dht_filter_event_callback, d->n);
 }
 
 void dht_get_peers(dht *d, const uint8_t *info_hash)
 {
-    sockaddr_storage sa;
-    socklen_t salen = sizeof(sa);
-    if (getsockname(d->n->fd, (sockaddr *)&sa, &salen) == -1) {
-        fprintf(stderr, "dht getsockname failed %d (%s)\n", errno, strerror(errno));
-        return;
-    }
     dht_filter(d);
-    dht_search(info_hash, 0, sa.ss_family, dht_filter_event_callback, d->n);
+    dht_search(info_hash, 0, AF_INET, dht_filter_event_callback, d->n);
+    dht_search(info_hash, 0, AF_INET6, dht_filter_event_callback, d->n);
 }
 
 void dht_destroy(dht *d)
