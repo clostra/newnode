@@ -70,9 +70,7 @@ void map6to4(const in6_addr *in, in_addr *out)
 
 int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
 {
-    if (o_debug >= 2) {
-        debug("sendto(%zd, %s)\n", len, sockaddr_str(sa));
-    }
+    ddebug("sendto(%zd, %s)\n", len, sockaddr_str(sa));
 
     if (o_debug >= 3) {
         hexdump(buf, len);
@@ -206,7 +204,7 @@ bool network_make_socket(network *n)
     if (getsockname(n->fd, (sockaddr *)&ss, &ss_len) != 0) {
         pdie("getsockname");
     }
-    n->port = sockaddr_get_port((sockaddr *)&ss);
+    n->port = sockaddr_get_port((const sockaddr *)&ss);
     printf("listening on UDP: %s\n", sockaddr_str((const sockaddr*)&ss));
 
     return true;
@@ -214,6 +212,7 @@ bool network_make_socket(network *n)
 
 bool udp_received(network *n, uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
 {
+    ddebug("udp_received(%zu, %s)\n", len, sockaddr_str(sa));
     if (utp_process_udp(n->utp, buf, len, sa, salen)) {
         return true;
     }
@@ -255,9 +254,7 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
             break;
         }
 
-        if (o_debug >= 2) {
-            debug("Received %zd byte UDP packet from %s\n", len, sockaddr_str((sockaddr *)&src_addr));
-        }
+        ddebug("recvfrom(%zu, %s)\n", len, sockaddr_str((const sockaddr *)&src_addr));
 
         const sockaddr *sa = (const sockaddr *)&src_addr;
         socklen_t salen = sockaddr_get_length(sa);
@@ -354,14 +351,14 @@ int bufferevent_get_error(bufferevent *bev)
 
 void libevent_log_cb(int severity, const char *msg)
 {
-    if (severity > EVENT_LOG_DEBUG || o_debug > 1) {
+    if (o_debug >= EVENT_LOG_ERR - severity) {
         debug("[libevent] %d %s\n", severity, msg);
     }
 }
 
 void evdns_log_cb(int severity, const char *msg)
 {
-    if (severity > EVENT_LOG_DEBUG || o_debug > 1) {
+    if (o_debug >= EVENT_LOG_ERR - severity) {
         debug("[evdns] %d %s\n", severity, msg);
     }
 }

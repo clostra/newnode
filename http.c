@@ -232,12 +232,7 @@ uint64 utp_on_accept(utp_callback_arguments *a)
 #ifdef __APPLE__
     addr.ss_len = addrlen;
 #endif
-    if (o_debug) {
-        char host[NI_MAXHOST];
-        char serv[NI_MAXSERV];
-        getnameinfo((sockaddr *)&addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-        debug("utp_on_accept %p %s:%s\n", a->socket, host, serv);
-    }
+    ddebug("utp_on_accept %p %s\n", a->socket, sockaddr_str((const sockaddr*)&addr));
     add_sockaddr(n, (sockaddr *)&addr, addrlen);
     int fd = utp_socket_create_fd(n->evbase, a->socket);
     evutil_make_socket_closeonexec(fd);
