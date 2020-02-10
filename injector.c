@@ -49,7 +49,7 @@ unsigned char sk[crypto_sign_SECRETKEYBYTES];
 
 void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
 {
-    debug("dht_event_callback event:%d ", event);
+    debug("dht_event_callback event:%d data_len:%zu ", event, data_len);
     for (uint i = 0; i < 20; i++) {
         debug("%02X", info_hash[i]);
     }
