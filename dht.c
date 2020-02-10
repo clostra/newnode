@@ -230,6 +230,7 @@ void dht_destroy(dht *d)
 int dht_sendto(int sockfd, const void *buf, int len, int flags,
                const sockaddr *to, int tolen)
 {
+    ddebug("dht_sendto(%d, %s)\n", len, sockaddr_str(to));
     return (int)udp_sendto(sockfd, buf, len, to, tolen);
 }
 

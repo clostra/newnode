@@ -278,13 +278,12 @@ void on_utp_connect(network *n, peer_connection *pc)
 {
     const sockaddr *ss = (const sockaddr *)&pc->peer->addr;
     char host[NI_MAXHOST];
-    char serv[NI_MAXSERV];
-    getnameinfo(ss, sockaddr_get_length(ss), host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+    getnameinfo(ss, sockaddr_get_length(ss), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
     bufferevent_disable(pc->bev, EV_READ|EV_WRITE);
     assert(pc->bev);
     assert(bufferevent_getfd(pc->bev) != -1);
-    pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, pc->bev, host, atoi(serv));
-    debug("on_utp_connect %s bev:%p con:%p\n", sockaddr_str((const sockaddr*)ss), pc->bev, pc->evcon);
+    pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, pc->bev, host, sockaddr_get_port(ss));
+    debug("on_utp_connect %s bev:%p con:%p\n", sockaddr_str(ss), pc->bev, pc->evcon);
     pc->bev = NULL;
 
     // handle waiting requests first
@@ -435,6 +434,12 @@ void add_v4_addresses(network *n, peer_array **pa, const uint8_t *addrs, size_t 
 #endif
 
         add_address(n, pa, (const sockaddr*)&addr, sockaddr_get_length((const sockaddr*)&addr));
+
+        if (o_debug >= 2) {
+            if (i + 1 != num_addrs) {
+                printf(", ");
+            }
+        }
     }
 }
 
@@ -453,6 +458,12 @@ void add_v6_addresses(network *n, peer_array **pa, const uint8_t *addrs, size_t 
 #endif
 
         add_address(n, pa, (const sockaddr*)&addr, sockaddr_get_length((const sockaddr*)&addr));
+
+        if (o_debug >= 2) {
+            if (i + 1 != num_addrs) {
+                printf(", ");
+            }
+        }
     }
 }
 
@@ -481,35 +492,26 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
     }
 
     const uint8_t* peers = data;
+    size_t num_peers = data_len / (event == DHT_EVENT_VALUES ? sizeof(packed_ipv4) : sizeof(packed_ipv6));
 
-    // TODO: DHT_EVENT_VALUES6
-    if (event != DHT_EVENT_VALUES) {
-        size_t num_peers = data_len / sizeof(packed_ipv6);
-        debug("dht_event_callback v6 num_peers:%zu\n", num_peers);
-        add_v6_addresses(n, peer_list, peers, num_peers);
-        return;
-    } else {
-        size_t num_peers = data_len / sizeof(packed_ipv4);
+    if (o_debug >= 2) {
+        printf("{\"");
+        for (int j = 0; j < 20; j++) {
+            printf("%02x", info_hash[j]);
+        }
+        printf("\": [");
+    }
+
+    if (event == DHT_EVENT_VALUES) {
         debug("dht_event_callback num_peers:%zu\n", num_peers);
         add_v4_addresses(n, peer_list, peers, num_peers);
-        if (o_debug >= 2) {
-            size_t num_values = data_len / sizeof(packed_ipv4);
-            printf("Received %zu values.\n", num_values);
-            printf("{\"");
-            for (int j = 0; j < 20; j++) {
-                printf("%02x", info_hash[j]);
-            }
-            printf("\": [");
-            packed_ipv4 *ipdata = (packed_ipv4 *)data;
-            for (uint i = 0; i < num_values; i++) {
-                packed_ipv4 *a = &ipdata[i];
-                printf("\"%s:%d\"", inet_ntoa((in_addr){.s_addr = a->ip}), ntohs(a->port));
-                if (i + 1 != num_values) {
-                    printf(", ");
-                }
-            }
-            printf("]}\n");
-        }
+    } else if (event == DHT_EVENT_VALUES6) {
+        debug("dht_event_callback v6 num_peers:%zu\n", num_peers);
+        add_v6_addresses(n, peer_list, peers, num_peers);
+    }
+
+    if (o_debug >= 2) {
+        printf("]}\n");
     }
 }
 
@@ -1409,7 +1411,7 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
 {
     peer_request *r = (peer_request*)arg;
     proxy_request *p = r->p;
-    debug("p:%p r:%p (%.2fms) peer_request_header_cb %d %s\n", p, r, pdelta(p), req->response_code, req->response_code_line);
+    debug("p:%p r:%p (%.2fms) %s %d %s\n", p, r, pdelta(p), __func__, req->response_code, req->response_code_line);
 
     int klass = req->response_code / 100;
     switch (klass) {
@@ -1419,6 +1421,13 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
         break;
     case 4:
     case 5:
+        // XXX: TODO
+        /*
+        if (req->response_code == 508) {
+            r->pc->peer->loop++;
+            proxy_make_request(p);
+        }
+        */
         proxy_send_error(p, req->response_code, req->response_code_line);
     default:
         return -1;
@@ -3426,7 +3435,6 @@ network* newnode_init(const char *app_name, const char *app_id, port_t *http_por
 
 int newnode_run(network *n)
 {
-    debug("%s:%d\n", __FILE__, __LINE__);
     return network_loop(n);
 }
 
