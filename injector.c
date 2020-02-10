@@ -598,7 +598,7 @@ static_assert(20 >= crypto_generichash_BYTES_MIN, "dht hash must fit in generich
     evhttp_set_allowed_methods(n->http, EVHTTP_REQ_GET | EVHTTP_REQ_CONNECT | EVHTTP_REQ_TRACE | EVHTTP_REQ_OPTIONS);
     evhttp_set_gencb(n->http, http_request_cb, n);
     evhttp_bind_socket_with_handle(n->http, "127.0.0.1", port);
-    printf("listening on TCP:%s:%d\n", "127.0.0.1", port);
+    printf("listening on TCP: %s:%d\n", "127.0.0.1", port);
 
     return network_loop(n);
 }
