@@ -347,7 +347,7 @@ void connected(connect_req *c, bufferevent *other)
 void connect_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p connect_event_cb events:0x%x bev:%p req:%s\n", c, events, bev, evhttp_request_get_uri(c->server_req));
+    debug("c:%p connect_event_cb bev:%p req:%s events:0x%x %s\n", c, bev, evhttp_request_get_uri(c->server_req), events, bev_events_to_str(events));
 
     if (events & BEV_EVENT_TIMEOUT) {
         connect_cleanup(c, ETIMEDOUT);
