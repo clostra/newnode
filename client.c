@@ -64,6 +64,7 @@ typedef struct {
     time_t last_connect;
     time_t last_connect_attempt;
     char via;
+    uint8_t loop;
 } peer;
 
 typedef struct {
@@ -78,6 +79,7 @@ typedef struct {
     int64_t last_connect_attempt;
     int64_t time_since_verified;
     bool never_connected:1;
+    uint8_t loop;
     uint8_t salt;
     peer *peer;
 } PACKED peer_sort;
@@ -609,7 +611,7 @@ double pdelta(proxy_request *p)
 
 void proxy_send_error(proxy_request *p, int error, const char *reason)
 {
-    if (proxy_request_any_direct(p)) {
+    if (proxy_request_any_direct(p) || proxy_request_any_peers(p)) {
         return;
     }
     if (p->server_req) {
@@ -856,7 +858,6 @@ uint64_t chunk_length(const proxy_request *p, uint64_t chunk_index)
 
 void direct_submit_request(proxy_request *p);
 void direct_chunked_cb(evhttp_request *req, void *arg);
-peer_request* proxy_make_request(proxy_request *p);
 void proxy_submit_request(proxy_request *p);
 
 int proxy_setup_range(proxy_request *p, evhttp_request *req, chunked_range *range)
@@ -1421,13 +1422,10 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
         break;
     case 4:
     case 5:
-        // XXX: TODO
-        /*
         if (req->response_code == 508) {
             r->pc->peer->loop++;
-            proxy_make_request(p);
+            proxy_submit_request(p);
         }
-        */
         proxy_send_error(p, req->response_code, req->response_code_line);
     default:
         return -1;
@@ -1949,47 +1947,6 @@ void append_via(evhttp_request *from, evkeyvalq *to)
     overwrite_kv_header(to, "Via", viab);
 }
 
-peer_request* proxy_make_request(proxy_request *p)
-{
-    peer_request *r = NULL;
-
-    for (size_t i = 0; i < lenof(p->requests); i++) {
-        if (!p->requests[i].req) {
-            r = &p->requests[i];
-            break;
-        }
-    }
-    if (!r) {
-        return NULL;
-    }
-
-    r->p = p;
-    r->req = evhttp_request_new(peer_request_done_cb, r);
-
-    evkeyval *header;
-    TAILQ_FOREACH(header, &p->output_headers, next) {
-        evhttp_add_header(r->req->output_headers, header->key, header->value);
-    }
-
-    uint64_t range_start = proxy_new_range_start(p);
-    char range[1024];
-    snprintf(range, sizeof(range), "bytes=%"PRIu64"-", range_start);
-    evhttp_add_header(r->req->output_headers, "Range", range);
-    debug("%s: %s\n", "Range", range);
-    // XXX: TODO: if we have a complete merkle tree already, add If-Match so we get "416 Range Not Satisfiable" if the other peer has a different copy.
-
-    if (!p->merkle_tree_finished) {
-        // TODO: kick off a separate HEAD request for hashes which blocks until hashes are available.
-        // then we can use them immediately, before the download is finished.
-        evhttp_add_header(r->req->output_headers, "X-HashRequest", "1");
-    }
-
-    evhttp_request_set_header_cb(r->req, peer_request_header_cb);
-    evhttp_request_set_error_cb(r->req, peer_request_error_cb);
-
-    return r;
-}
-
 void peer_submit_request_on_con(peer_request *r, evhttp_connection *evcon)
 {
     proxy_request *p = r->p;
@@ -2026,6 +1983,7 @@ peer* select_peer(peer_array *pa, peer_filter filter)
         int64_t last_connect_attempt = p->last_connect_attempt;
         c.last_connect_attempt = ntohll(last_connect_attempt);
         c.never_connected = !p->last_connect;
+        c.loop = p->loop;
         c.salt = randombytes_uniform(0xFF);
         c.peer = p;
         if (0) {
@@ -2136,21 +2094,49 @@ void connect_more_injectors(network *n, bool injector_preference)
     }
 }
 
+peer_request* proxy_make_request(proxy_request *p)
+{
+    peer_request *r = NULL;
+
+    for (size_t i = 0; i < lenof(p->requests); i++) {
+        if (!p->requests[i].req) {
+            r = &p->requests[i];
+            break;
+        }
+    }
+    if (!r) {
+        return NULL;
+    }
+
+    r->p = p;
+    r->req = evhttp_request_new(peer_request_done_cb, r);
+
+    evkeyval *header;
+    TAILQ_FOREACH(header, &p->output_headers, next) {
+        evhttp_add_header(r->req->output_headers, header->key, header->value);
+    }
+
+    uint64_t range_start = proxy_new_range_start(p);
+    char range[1024];
+    snprintf(range, sizeof(range), "bytes=%"PRIu64"-", range_start);
+    evhttp_add_header(r->req->output_headers, "Range", range);
+    debug("%s: %s\n", "Range", range);
+    // XXX: TODO: if we have a complete merkle tree already, add If-Match so we get "416 Range Not Satisfiable" if the other peer has a different copy.
+
+    if (!p->merkle_tree_finished) {
+        // TODO: kick off a separate HEAD request for hashes which blocks until hashes are available.
+        // then we can use them immediately, before the download is finished.
+        evhttp_add_header(r->req->output_headers, "X-HashRequest", "1");
+    }
+
+    evhttp_request_set_header_cb(r->req, peer_request_header_cb);
+    evhttp_request_set_error_cb(r->req, peer_request_error_cb);
+
+    return r;
+}
+
 void proxy_submit_request(proxy_request *p)
 {
-    /*
-    if (!dht_num_searches()) {
-        fetch_url_swarm(p->n, p->uri);
-    }
-    */
-
-    evhttp_uri *uri = evhttp_uri_parse_with_flags(p->uri, EVHTTP_URI_NONCONFORMANT);
-    const char *host = evhttp_uri_get_host(uri);
-    if (host) {
-        fetch_url_swarm(p->n, host);
-    }
-    evhttp_uri_free(uri);
-
     // TODO: kick off a separate HEAD request for hashes which blocks until hashes are available.
     // then we can use them immediately, before the download is finished.
     peer_request *r = proxy_make_request(p);
@@ -2233,6 +2219,13 @@ void submit_request(network *n, evhttp_request *server_req)
         }
     }
     append_via(p->server_req, &p->output_headers);
+
+    /*
+    if (!dht_num_searches()) {
+        fetch_url_swarm(p->n, p->uri);
+    }
+    */
+    fetch_url_swarm(p->n, p->authority);
 
     p->dont_free = true;
 
@@ -2682,6 +2675,10 @@ int connect_header_cb(evhttp_request *req, void *arg)
     if (req->response_code != 200) {
         debug("%s req->response_code:%d\n", __func__, req->response_code);
 
+        if (req->response_code == 508) {
+            c->pc->peer->loop++;
+        }
+
         const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
         if (msign) {
             debug("c:%p verifying sig for %s %s\n", c, evhttp_request_get_uri(req), msign);
@@ -2920,7 +2917,9 @@ void http_request_cb(evhttp_request *req, void *arg)
         }
         if (strstr(via, via_tag)) {
             debug("Via Loop: %s (contains %s)\n", via, via_tag);
-            // XXX: block that peer temporarily?
+            if (peer) {
+                peer->loop++;
+            }
             evhttp_send_error(req, 508, "Via Loop");
             return;
         }
