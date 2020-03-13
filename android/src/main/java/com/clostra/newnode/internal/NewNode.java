@@ -3,7 +3,6 @@ package com.clostra.newnode.internal;
 import android.app.Application;
 import android.content.res.AssetManager;
 import android.os.Build;
-import android.os.FileUtils;
 import android.util.Log;
 
 import dalvik.system.PathClassLoader;
