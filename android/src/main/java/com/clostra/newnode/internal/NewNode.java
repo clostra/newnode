@@ -7,6 +7,9 @@ import android.util.Log;
 
 import dalvik.system.PathClassLoader;
 
+import com.bugsnag.android.Client;
+import com.bugsnag.android.Configuration;
+import com.bugsnag.android.NativeInterface;
 import com.bugsnag.android.NotifyType;
 
 import com.clostra.newnode.BuildConfig;
@@ -22,6 +25,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.ClassLoader;
 import java.lang.reflect.Method;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Arrays;
@@ -39,6 +43,7 @@ public class NewNode implements NewNodeInternal, Runnable {
     static Thread t;
     static Thread updateThread;
     static NearbyHelper nearbyHelper;
+    static Client bugsnagClient;
 
     static {
         Application app = app();
@@ -177,6 +182,7 @@ public class NewNode implements NewNodeInternal, Runnable {
     public void init() {
         if (t == null) {
             setCacheDir(app().getCacheDir().getAbsolutePath());
+            bugsnagClientInit();
             newnodeInit(this);
             t = new Thread(this, "newnode");
             t.start();
@@ -195,6 +201,39 @@ public class NewNode implements NewNodeInternal, Runnable {
         if (nearbyHelper != null) {
             nearbyHelper.sendPacket(packet, endpoint);
         }
+    }
+
+    void bugsnagClientInit() {
+        Configuration config = new Configuration("141ea25aa72c276c49d3a154b82f2b1f");
+        config.setAppVersion(VERSION);
+        config.setBuildUUID(VERSION);
+        config.setSendThreads(true);
+        config.setPersistUserBetweenSessions(true);
+        config.setAutoCaptureSessions(true);
+        config.setEnableExceptionHandler(true);
+
+        bugsnagClient = new Client(app(), config);
+        bugsnagClient.setProjectPackages("com.clostra.newnode");
+        //bugsnagClient.setLoggingEnabled(true);
+        NativeInterface.setClient(bugsnagClient);
+
+        bugsnagClient.addObserver(new BugsnagObserver());
+        updateBugsnagDetails(NotifyType.ALL.getValue());
+    }
+
+    void http(final String url, final long callblock) {
+        new Thread(){public void run() {
+            try {
+                URL jUrl = new URL(url);
+                HttpURLConnection connection = (HttpURLConnection)jUrl.openConnection();
+                connection.setRequestMethod("GET");
+                connection.connect();
+                callback(callblock, connection.getResponseCode());
+            } catch (Exception e) {
+                Log.e("newnode", "", e);
+                callback(callblock, 0);
+            }
+        }}.start();
     }
 
     static class BugsnagObserver implements Observer {
@@ -216,5 +255,6 @@ public class NewNode implements NewNodeInternal, Runnable {
     static native void registerProxy();
     static native void unregisterProxy();
     static native void updateBugsnagDetails(int notifyType);
+    public native void callback(long callblock, int value);
     public native void setLogLevel(int level);
 }
