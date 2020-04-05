@@ -68,7 +68,11 @@ void start_stdio_thread()
 
 #define CALL_VOID_BOOL(class, obj, meth, arg) CALL_VOID(class, obj, meth, Z, arg)
 
-#define CATCH(code) if ((*env)->ExceptionOccurred(env)) { (*env)->ExceptionDescribe(env); code; }
+#define CATCH(code) if ((*env)->ExceptionOccurred(env)) { \
+  (*env)->ExceptionDescribe(env); \
+  (*env)->ExceptionClear(env); \
+  code; \
+}
 
 enum notify_type {
     ALL = 1,
@@ -104,116 +108,6 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_updateBugsnagDe
     }
 }
 
-jobject app(JNIEnv* env)
-{
-    IMPORT(com/clostra/newnode, NewNode);
-    CATCH(return NULL);
-    jmethodID mapp = (*env)->GetStaticMethodID(env, cNewNode, "app", "()Landroid/app/Application;");
-    CATCH(return NULL);
-    return (*env)->CallStaticObjectMethod(env, cNewNode, mapp);
-}
-
-void bugsnag_client_setup(JNIEnv* env)
-{
-    // Configuration config = new Configuration(BuildConfig.BUGSNAG_API_KEY);
-    IMPORT(com/bugsnag/android, Configuration);
-    CATCH(return);
-    jmethodID mConfInit = (*env)->GetMethodID(env, cConfiguration, "<init>", "(Ljava/lang/String;)V");
-    CATCH(return);
-    jobject config = (*env)->NewObject(env, cConfiguration, mConfInit, JSTR(BUGSNAG_API_KEY));
-    CATCH(return);
-
-    // config.setAppVersion(VERSION);
-    CALL_VOID(cConfiguration, config, setAppVersion, Ljava/lang/String;, JSTR(VERSION));
-    CATCH(return);
-
-    // config.setBuildUUID(data.getString(MF_BUILD_UUID));
-    CALL_VOID(cConfiguration, config, setBuildUUID, Ljava/lang/String;, JSTR(VERSION));
-    CATCH(return);
-
-    //config.setReleaseStage(data.getString(MF_RELEASE_STAGE));
-
-    // config.setSendThreads(true);
-    CALL_VOID_BOOL(cConfiguration, config, setSendThreads, true);
-    CATCH(return);
-
-    // config.setPersistUserBetweenSessions(false);
-    CALL_VOID_BOOL(cConfiguration, config, setPersistUserBetweenSessions, true);
-    CATCH(return);
-
-    // config.setAutoCaptureSessions(false);
-    CALL_VOID_BOOL(cConfiguration, config, setAutoCaptureSessions, true);
-    CATCH(return);
-
-    // config.setEnableExceptionHandler(true);
-    CALL_VOID_BOOL(cConfiguration, config, setEnableExceptionHandler, true);
-    CATCH(return);
-
-    // client = new Client(app(), config);
-    IMPORT(com/bugsnag/android, Client);
-    CATCH(return);
-    jmethodID mClientInit = (*env)->GetMethodID(env, cClient, "<init>", "(Landroid/content/Context;Lcom/bugsnag/android/Configuration;)V");
-    CATCH(return);
-    jobject oapp = app(env);
-    CATCH(return);
-    jobject client = (*env)->NewObject(env, cClient, mClientInit, oapp, config);
-    CATCH(return);
-    bugsnagClient = (*env)->NewGlobalRef(env, client);
-    CATCH(return);
-
-    // client.setProjectPackages("com.clostra.newnode");
-    jobjectArray packages = (*env)->NewObjectArray(env, 1, (*env)->FindClass(env, "java/lang/String"), JSTR("com.clostra.newnode"));
-    CALL_VOID(cClient, client, setProjectPackages, [Ljava/lang/String;, packages);
-    CATCH(return);
-
-    // client.setLoggingEnabled(true);
-    /*
-    CALL_VOID_BOOL(cClient, client, setLoggingEnabled, true);
-    CATCH(return);
-    */
-
-    // NativeInterface.client = client;
-    IMPORT(com/bugsnag/android, NativeInterface);
-    CATCH(return);
-    jfieldID fclient = (*env)->GetStaticFieldID(env, cNativeInterface, "client", "Lcom/bugsnag/android/Client;");
-    CATCH(return);
-    (*env)->SetStaticObjectField(env, cNativeInterface, fclient, client);
-
-    // client.addObserver(new BugsnagObserver());
-    // XXX: temp try old class name
-    {
-        IMPORT_INNER(com/clostra/newnode/NewNode, BugsnagObserver);
-        if (!cBugsnagObserver) {
-            (*env)->ExceptionClear(env);
-        } else {
-            jmethodID mObvInit = (*env)->GetMethodID(env, cBugsnagObserver, "<init>", "()V");
-            CATCH(return);
-            jobject observer = (*env)->NewObject(env, cBugsnagObserver, mObvInit);
-            CATCH(return);
-            CALL_VOID(cClient, client, addObserver, Ljava/util/Observer;, observer);
-            CATCH(return);
-        }
-    }
-    {
-        IMPORT_INNER(com/clostra/newnode/internal/NewNode, BugsnagObserver);
-        if (!cBugsnagObserver) {
-            (*env)->ExceptionClear(env);
-        } else {
-            jmethodID mObvInit = (*env)->GetMethodID(env, cBugsnagObserver, "<init>", "()V");
-            CATCH(return);
-            jobject observer = (*env)->NewObject(env, cBugsnagObserver, mObvInit);
-            CATCH(return);
-            CALL_VOID(cClient, client, addObserver, Ljava/util/Observer;, observer);
-            CATCH(return);
-        }
-    }
-
-    // client.notifyBugsnagObservers(NotifyType.ALL);
-    Java_com_clostra_newnode_internal_NewNode_updateBugsnagDetails(env, NULL, ALL);
-
-    debug("bugsnag started\n");
-}
-
 void bugsnag_leave_breadcrumb_log(const char *buf)
 {
     bsg_breadcrumb *crumb = bugsnag_breadcrumb_init("newnode", BSG_CRUMB_LOG);
@@ -229,55 +123,13 @@ JNIEnv* get_env()
     return env;
 }
 
-bool android_https(const char* url)
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_callback(JNIEnv* env, jobject thiz, jlong callblock, jint value)
 {
-    // XXX: thread on the java side, use get_env()
-    JNIEnv *env;
-    int stat = (*g_jvm)->GetEnv(g_jvm, (void **)&env, JNI_VERSION_1_6);
-    if (stat == JNI_EDETACHED) {
-        if ((*g_jvm)->AttachCurrentThread(g_jvm, &env, NULL) != 0) {
-            fprintf(stderr, "%s Failed to get JNI environment\n", __func__);
-            return false;
-        }
-    }
-
-    // URL jUrl = new URL(url)
-    jstring jUrlStr = JSTR(url);
-
-    jclass jUrlClass = (*env)->FindClass(env, "java/net/URL");
-    jmethodID jUrlConstructorID = (*env)->GetMethodID(env, jUrlClass, "<init>", "(Ljava/lang/String;)V");
-    jobject jUrl = (*env)->NewObject(env, jUrlClass, jUrlConstructorID, jUrlStr);
-    CATCH(return false);
-    (*env)->DeleteLocalRef(env, jUrlStr);
-
-    // HttpURLConnection connection = (HttpURLConnection) jUrl.openConnection();
-    jmethodID jUrlOpenConnectionID = (*env)->GetMethodID(env, jUrlClass, "openConnection", "()Ljava/net/URLConnection;");
-    jobject jConnection = (*env)->CallObjectMethod(env, jUrl, jUrlOpenConnectionID);
-    CATCH(return false);
-
-    // connection.setRequestMethod("GET");
-    jstring jMethod = JSTR("GET");
-    jclass jConnectionClass = (*env)->FindClass(env, "java/net/HttpURLConnection");
-    jmethodID jConnectionSetMethodID = (*env)->GetMethodID(env, jConnectionClass, "setRequestMethod", "(Ljava/lang/String;)V");
-    (*env)->CallVoidMethod(env, jConnection, jConnectionSetMethodID, jMethod);
-    CATCH(return false);
-    (*env)->DeleteLocalRef(env, jMethod);
-
-    // connection.connect();
-    jmethodID jConnectionConnectID = (*env)->GetMethodID(env, jConnectionClass, "connect", "()V");
-    (*env)->CallVoidMethod(env, jConnection, jConnectionConnectID);
-    CATCH(return false);
-
-    // result.responseStatus = connection.getResponseCode();
-    jmethodID jConnectionGetResponseCodeID = (*env)->GetMethodID(env, jConnectionClass, "getResponseCode", "()I");
-    jint responseStatus = (*env)->CallIntMethod(env, jConnection, jConnectionGetResponseCodeID);
-    CATCH(return false);
-
-    if (stat == JNI_EDETACHED) {
-        (*g_jvm)->DetachCurrentThread(g_jvm);
-    }
-
-    return responseStatus == 200;
+    timer_start(g_n, 0, ^{
+        https_complete_callback cb = (https_complete_callback)callblock;
+        cb(value == 200);
+        Block_release(cb);
+    });
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNIEnv* env, jobject thiz, jobject newNodeObj)
@@ -285,8 +137,6 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
     newNode = (*env)->NewGlobalRef(env, newNodeObj);
 
     o_debug = 1;
-
-    bugsnag_client_setup(env);
 
     char app_id[64] = {0};
     FILE *cmdline = fopen("/proc/self/cmdline", "r");
@@ -297,15 +147,27 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
     }
     // XXX: TODO: use real app name
     const char *app_name = app_id;
-    g_n = newnode_init(app_name, app_id, &http_port, &socks_port, ^void (const char *url, https_complete_callback cb) {
-        char *url2 = strdup(url);
+    g_n = newnode_init(app_name, app_id, &http_port, &socks_port, ^(const char* url, https_complete_callback cb) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow"
+        JNIEnv *env = get_env();
+#pragma clang diagnostic pop
+        if (!newNode) {
+            cb(false);
+            return;
+        }
+        jclass cNewNode = (*env)->GetObjectClass(env, newNode);
+        CATCH(
+            cb(false);
+            return;
+        );
         cb = Block_copy(cb);
-        thread(^{
-            bool s = android_https(url2);
-            cb(s);
-            free(url2);
+        CALL_VOID(cNewNode, newNode, http, Ljava/lang/String;J, JSTR(url), (jlong)cb);
+        CATCH(
+            cb(false);
             Block_release(cb);
-        });
+            return;
+        );
     });
 }
 
@@ -390,12 +252,15 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(
     jobject arrayref = (*env)->NewGlobalRef(env, array);
     sockaddr_in6 sin6 = endpoint_to_addr(env, endpoint);
     timer_start(g_n, 0, ^{
-        JNIEnv *env2 = get_env();
-        jbyte *buf = (*env2)->GetByteArrayElements(env2, arrayref, NULL);
-        jsize len = (*env2)->GetArrayLength(env2, arrayref);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow"
+        JNIEnv *env = get_env();
+#pragma clang diagnostic pop
+        jbyte *buf = (*env)->GetByteArrayElements(env, arrayref, NULL);
+        jsize len = (*env)->GetArrayLength(env, arrayref);
         udp_received(g_n, (uint8_t*)buf, len, (const sockaddr *)&sin6, sizeof(sin6));
-        (*env2)->ReleaseByteArrayElements(env2, arrayref, buf, JNI_ABORT);
-        (*env2)->DeleteGlobalRef(env2, arrayref);
+        (*env)->ReleaseByteArrayElements(env, arrayref, buf, JNI_ABORT);
+        (*env)->DeleteGlobalRef(env, arrayref);
 
         // XXX: this should be called when the read buffer is drained
         utp_issue_deferred_acks(g_n->utp);
