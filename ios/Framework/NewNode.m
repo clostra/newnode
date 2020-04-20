@@ -30,6 +30,9 @@ NetService *ns = nil;
     chdir(cachesPath.UTF8String);
 
     NSString *appName = NSBundle.mainBundle.infoDictionary[@"CFBundleDisplayName"];
+    if (!appName) {
+        appName = NSBundle.mainBundle.infoDictionary[@"CFBundleName"];
+    }
     NSString *appId = NSBundle.mainBundle.infoDictionary[@"CFBundleIdentifier"];
 
     network *n = newnode_init(appName.UTF8String, appId.UTF8String, &http_port, &socks_port, ^(const char *url, https_complete_callback cb) {
