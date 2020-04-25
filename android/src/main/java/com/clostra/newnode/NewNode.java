@@ -33,6 +33,7 @@ public class NewNode {
         void init();
         void shutdown();
         void setLogLevel(int level);
+        void setRequestDiscoveryPermission(boolean enabled);
     }
     static NewNodeInternal newNode;
 
@@ -73,6 +74,10 @@ public class NewNode {
         } catch (Exception e) {
         }
         return null;
+    }
+
+    public static void setRequestDiscoveryPermission(boolean enabled) {
+        newNode.setRequestDiscoveryPermission(enabled);
     }
 
     public static void init() {

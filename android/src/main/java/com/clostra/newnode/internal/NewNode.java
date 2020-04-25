@@ -42,6 +42,7 @@ public class NewNode implements NewNodeInternal, Runnable {
 
     static Thread t;
     static Thread updateThread;
+    static boolean requestPermission = true;
     static NearbyHelper nearbyHelper;
     static Client bugsnagClient;
 
@@ -187,7 +188,7 @@ public class NewNode implements NewNodeInternal, Runnable {
             t = new Thread(this, "newnode");
             t.start();
             Log.e("newnode", "version " + VERSION + " started");
-            nearbyHelper = new NearbyHelper(app());
+            nearbyHelper = new NearbyHelper(app(), requestPermission);
         }
 
         registerProxy();
@@ -195,6 +196,13 @@ public class NewNode implements NewNodeInternal, Runnable {
 
     public void shutdown() {
         unregisterProxy();
+    }
+
+    public void setRequestDiscoveryPermission(boolean enabled) {
+        requestPermission = enabled;
+        if (nearbyHelper != null) {
+            nearbyHelper.requestPermission = requestPermission;
+        }
     }
 
     void sendPacket(byte[] packet, String endpoint) {

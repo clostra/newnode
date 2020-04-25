@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 
+import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.nearby.Nearby;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
@@ -41,6 +42,7 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
     Application app;
     String serviceName = UUID.randomUUID().toString();
 
+    boolean requestPermission = true;
     Set<String> connections = new HashSet<>();
 
     PayloadCallback payloadCallback = new PayloadCallback() {
@@ -94,11 +96,10 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
         }
     };
 
-    public NearbyHelper(Application app) {
+    public NearbyHelper(Application app, boolean requestPermission) {
         this.app = app;
-        Log.e(TAG, "registerActivityLifecycleCallbacks permission");
+        this.requestPermission = requestPermission;
         app.registerActivityLifecycleCallbacks(this);
-        Log.e(TAG, "registerActivityLifecycleCallbacks permission done");
         startDiscovery();
         startAdvertising();
     }
@@ -116,6 +117,12 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
         .addOnFailureListener(new OnFailureListener() {
             @Override
             public void onFailure(Exception e) {
+                if (e instanceof ApiException) {
+                    ApiException ae = (ApiException)e;
+                    if (ae.getStatusCode() == ConnectionsStatusCodes.STATUS_ALREADY_ADVERTISING) {
+                        return;
+                    }
+                }
                 Log.e(TAG, "startAdvertising onFailure", e);
             }
         });
@@ -201,7 +208,7 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
     @Override
     public void onActivityStarted(Activity activity) {
         Log.e(TAG, "onActivityStarted");
-        if (!(activity instanceof PermissionActivity)) {
+        if (requestPermission && !(activity instanceof PermissionActivity)) {
             activity.startActivity(new Intent(activity, PermissionActivity.class));
         }
     }
