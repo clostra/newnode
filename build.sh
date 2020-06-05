@@ -1,5 +1,6 @@
 #!/bin/bash
-set -e
+set -euxo pipefail
+
 
 export CC=clang
 export CXX=clang++
@@ -56,7 +57,7 @@ FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-paramet
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
   -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE"
 # -fvisibility=hidden -fvisibility-inlines-hidden -flto=thin \
-if [ ! -z "$DEBUG" ]; then
+if [ ! -z ${DEBUG+x} ]; then
     FLAGS="$FLAGS -O0 -DDEBUG=1 -fsanitize=address -fsanitize=undefined --coverage"
 else
     FLAGS="$FLAGS -O0 -fsanitize=address -fsanitize=undefined"
