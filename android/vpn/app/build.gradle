@@ -1,0 +1,34 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 29
+    buildToolsVersion "29.0.3"
+
+    defaultConfig {
+        applicationId "com.clostra.newnode.vpn"
+        minSdkVersion 29
+        targetSdkVersion 29
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+        }
+    }
+}
+
+dependencies {
+    // include AAR directly (must include dependencies)
+    //implementation project(':newnode')
+    //implementation 'com.bugsnag:bugsnag-android:4.5.0'
+    //implementation 'com.google.android.gms:play-services-nearby:17.+'
+
+    // use jcenter
+    implementation 'com.clostra.newnode:newnode:+'
+}
