@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euxo pipefail
 
 
 function build_android {
@@ -29,6 +29,7 @@ function build_android {
     cd ..
     LIBEVENT_CFLAGS=-ILibevent/$TRIPLE/include
     LIBEVENT="Libevent/$TRIPLE/lib/libevent.a Libevent/$TRIPLE/lib/libevent_pthreads.a"
+
 
     export ANDROID_NDK_HOME=$NDK
     cd libsodium
@@ -81,7 +82,7 @@ function build_android {
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
       -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -DANDROID"
     #-fvisibility=hidden -fvisibility-inlines-hidden -flto \
-    if [ ! -z "$DEBUG" ]; then
+    if [ ! -z ${DEBUG+x} ]; then
         FLAGS="$FLAGS -O0 -DDEBUG=1"
     else
         FLAGS="$FLAGS -O0"
