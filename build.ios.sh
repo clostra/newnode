@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euxo pipefail
 
 
 function build_ios {
@@ -46,7 +46,7 @@ function build_ios {
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
       -fvisibility-inlines-hidden \
       -I."
-    if [ ! -z "$DEBUG" ]; then
+    if [ ! -z ${DEBUG+x} ]; then
         FLAGS="$FLAGS -DDEBUG=1"
     fi
 
