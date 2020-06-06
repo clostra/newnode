@@ -134,6 +134,8 @@ struct proxy_request {
 
     direct_request direct_requests[2];
 
+    int direct_code;
+    char *direct_code_line;
     evkeyvalq direct_headers;
     evkeyvalq output_headers;
 
@@ -674,6 +676,7 @@ void proxy_request_cleanup(proxy_request *p, const char *reason)
             d->range.chunk_buffer = NULL;
         }
     }
+    free(p->direct_code_line);
     evhttp_clear_headers(&p->direct_headers);
     evhttp_clear_headers(&p->output_headers);
     if (p->header_buf) {
@@ -922,6 +925,8 @@ int proxy_setup_range(proxy_request *p, evhttp_request *req, chunked_range *rang
         if (code == 206 && !rangeh) {
             code = 200;
         }
+        p->direct_code = code;
+        p->direct_code_line = strdup(req->response_code_line);
         p->header_buf = build_request_buffer(code, req->input_headers);
         uint64_t header_prefix = p->header_buf ? evbuffer_get_length(p->header_buf) : 0;
         range->chunk_index = (range->start + header_prefix) / LEAF_CHUNK_SIZE;
@@ -1398,13 +1403,13 @@ void peer_verified(network *n, peer *peer)
     }
 }
 
-void proxy_save_cache(proxy_request *p, int code, const char *code_line)
+void proxy_save_cache(proxy_request *p)
 {
     char headers_name[PATH_MAX];
     snprintf(headers_name, sizeof(headers_name), "%s.headers", p->cache_name);
     evkeyvalq *headers = &p->direct_headers;
     int headers_file = creat(headers_name, 0600);
-    if (!write_header_to_file(headers_file, code, code_line, headers)) {
+    if (!write_header_to_file(headers_file, p->direct_code, p->direct_code_line, headers)) {
         unlink(headers_name);
     }
     fsync(headers_file);
@@ -1534,7 +1539,7 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
     if (p->cache_file != -1) {
         if (req->response_code == 304) {
             // have hash, file, and headers.
-            proxy_save_cache(p, 200, "OK");
+            proxy_save_cache(p);
             return 0;
         }
         // we probably asked for If-None-Match and it didn't match. forget about the file
@@ -1689,7 +1694,7 @@ bool peer_request_process_chunks(peer_request *r, evhttp_request *req)
             assert(p->merkle_tree_finished);
             assert(p->have_bitfield);
             if (proxy_is_complete(p)) {
-                proxy_save_cache(p, req->response_code, req->response_code_line);
+                proxy_save_cache(p);
             }
             return true;
         }
