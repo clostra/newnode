@@ -149,7 +149,7 @@ public class NewNode implements NewNodeInternal, Runnable {
             try {
                 JSONObject asset = assets.getJSONObject(i);
                 String name = asset.getString("name");
-                if (name.equals("classes.dex")) {
+                if (name.equals("classes.dex.gz")) {
                     saveLocally(asset, "newnode." + version + ".dex");
                     break;
                 }
