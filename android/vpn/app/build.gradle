@@ -4,6 +4,14 @@ android {
     compileSdkVersion 29
     buildToolsVersion "29.0.3"
 
+    new File(System.getenv('NDK') + '/source.properties').eachLine { line ->
+        def matcher = line =~ /Pkg.Revision = (.*)/
+        if (matcher) {
+            ndkVersion = matcher[0][1]
+            return true
+        }
+    }
+
     defaultConfig {
         applicationId "com.clostra.newnode.vpn"
         minSdkVersion 29
