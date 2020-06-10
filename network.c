@@ -99,7 +99,7 @@ int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, sockl
 
     ssize_t r = sendto(fd, buf, len, 0, sa, salen);
     if (r < 0 && errno != EHOSTUNREACH) {
-        debug("sendto failed %d %s\n", errno, strerror(errno));
+        debug("sendto %s failed %d %s\n", sockaddr_str(sa), errno, strerror(errno));
     }
     return r;
 }
@@ -481,6 +481,34 @@ const char* sockaddr_str(const sockaddr *sa)
     return buf;
 }
 
+bool sockaddr_is_localhost(const sockaddr *sa, socklen_t salen)
+{
+    switch(sa->sa_family) {
+    case AF_INET: {
+        const sockaddr_in *sin = (sockaddr_in *)sa;
+        return IN_LOOPBACK(ntohl(sin->sin_addr.s_addr));
+    }
+    case AF_INET6: {
+        const sockaddr_in6 *sin6 = (sockaddr_in6 *)sa;
+        return IN6_IS_ADDR_LOOPBACK(&sin6->sin6_addr);
+    }
+    }
+    return false;
+}
+
+bool bufferevent_is_localhost(const bufferevent *bev)
+{
+    int fd = bufferevent_getfd((bufferevent*)bev);
+    sockaddr_storage ss;
+    socklen_t len = sizeof(ss);
+    getsockname(fd, (sockaddr *)&ss, &len);
+    // AF_LOCAL is from socketpair(), which means utp
+    if (ss.ss_family == AF_LOCAL) {
+        return false;
+    }
+    return sockaddr_is_localhost((sockaddr *)&ss, len);
+}
+
 void set_max_nofile()
 {
     rlimit nofile;
@@ -555,6 +583,7 @@ network* network_setup(char *address, port_t port)
         network_free(n);
         return NULL;
     }
+
 #ifdef _WIN32
     evdns_base_config_windows_nameservers(n->evdns);
 #else
@@ -572,7 +601,7 @@ network* network_setup(char *address, port_t port)
 #endif
 
     evdns_base_nameserver_ip_add(n->evdns, "8.8.8.8");
-    evdns_base_nameserver_ip_add(n->evdns, "8.8.4.4");
+    evdns_base_nameserver_ip_add(n->evdns, "1.1.1.1");
 
     n->http = evhttp_new(n->evbase);
     if (!n->http) {
