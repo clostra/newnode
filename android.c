@@ -66,8 +66,6 @@ void start_stdio_thread()
  jmethodID m ## meth = (*env)->GetMethodID(env, class, #meth, "(" STR(sig) ")V"); \
  if (m ## meth) (*env)->CallVoidMethod(env, obj, m ## meth, __VA_ARGS__);
 
-#define CALL_VOID_BOOL(class, obj, meth, arg) CALL_VOID(class, obj, meth, Z, arg)
-
 #define CATCH(code) if ((*env)->ExceptionOccurred(env)) { \
   (*env)->ExceptionDescribe(env); \
   (*env)->ExceptionClear(env); \
@@ -237,6 +235,68 @@ jstring addr_to_endpoint(JNIEnv* env, const sockaddr_in6 *sin6)
     memcpy(s, &sin6->sin6_addr.s6_addr[2], addrlen - 2);
     memcpy(&s[addrlen - 2], &sin6->sin6_port, sizeof(sin6->sin6_port));
     return JSTR(s);
+}
+
+bool vpn_protect(int socket)
+{
+    JNIEnv *env = get_env();
+    if (!newNode) {
+        return false;
+    }
+    IMPORT(com/clostra/newnode/vpn, VpnService);
+    if ((*env)->ExceptionOccurred(env)) {
+        (*env)->ExceptionClear(env);
+        return true;
+    }
+    jmethodID mVpnProtect = (*env)->GetStaticMethodID(env, cVpnService, "vpnProtect", "(I)Z");
+    CATCH(return false);
+    jboolean success = (*env)->CallStaticBooleanMethod(env, cVpnService, mVpnProtect, socket);
+    CATCH(return false);
+    return (bool)success;
+}
+
+int __real_bind(int socket, const struct sockaddr *address, socklen_t length);
+int __wrap_bind(int socket, const struct sockaddr *address, socklen_t length)
+{
+    //debug("bind %d %s\n", socket, sockaddr_str(address));
+    if (!sockaddr_is_localhost(address, length) && !vpn_protect(socket)) {
+        debug("bind failed to protect\n");
+        errno = EADDRNOTAVAIL;
+        return -1;
+    }
+    return __real_bind(socket, address, length);
+}
+
+int __real_connect(int socket, const struct sockaddr *address, socklen_t length);
+int __wrap_connect(int socket, const struct sockaddr *address, socklen_t length)
+{
+    //debug("connect %d %s\n", socket, sockaddr_str(address));
+    sockaddr_storage ss;
+    socklen_t slen = sizeof(ss);
+    if (getsockname(socket, (sockaddr*)&ss, &slen) == -1 || slen == 0 || sockaddr_get_port((const sockaddr*)&ss) == 0) {
+        if (!vpn_protect(socket)) {
+            debug("connect failed to protect\n");
+            errno = EADDRNOTAVAIL;
+            return -1;
+        }
+    }
+    return __real_connect(socket, address, length);
+}
+
+ssize_t __real_sendto(int socket, const void *buffer, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len);
+ssize_t __wrap_sendto(int socket, const void *buffer, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len)
+{
+    //debug("sendto %d %s\n", socket, sockaddr_str(dest_addr));
+    sockaddr_storage ss;
+    socklen_t slen = sizeof(ss);
+    if (getsockname(socket, (sockaddr*)&ss, &slen) == -1 || slen == 0 || sockaddr_get_port((const sockaddr*)&ss) == 0) {
+        if (!vpn_protect(socket)) {
+            debug("sendto failed to protect\n");
+            errno = EADDRNOTAVAIL;
+            return -1;
+        }
+    }
+    return __real_sendto(socket, buffer, length, flags, dest_addr, dest_len);
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_addEndpoint(JNIEnv* env, jobject thiz, jstring endpoint)
