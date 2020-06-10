@@ -811,34 +811,6 @@ bool write_header_to_file(int headers_file, int code, const char *code_line, evk
     return success;
 }
 
-bool addr_is_localhost(const sockaddr *sa, socklen_t salen)
-{
-    switch(sa->sa_family) {
-    case AF_INET: {
-        const sockaddr_in *sin = (sockaddr_in *)sa;
-        return IN_LOOPBACK(ntohl(sin->sin_addr.s_addr));
-    }
-    case AF_INET6: {
-        const sockaddr_in6 *sin6 = (sockaddr_in6 *)sa;
-        return IN6_IS_ADDR_LOOPBACK(&sin6->sin6_addr);
-    }
-    }
-    return false;
-}
-
-bool bufferevent_is_localhost(bufferevent *bev)
-{
-    int fd = bufferevent_getfd(bev);
-    sockaddr_storage ss;
-    socklen_t len = sizeof(ss);
-    getsockname(fd, (sockaddr *)&ss, &len);
-    // AF_LOCAL is from socketpair(), which means utp
-    if (ss.ss_family == AF_LOCAL) {
-        return false;
-    }
-    return addr_is_localhost((sockaddr *)&ss, len);
-}
-
 bool evcon_is_localhost(evhttp_connection *evcon)
 {
     return bufferevent_is_localhost(evhttp_connection_get_bufferevent(evcon));
