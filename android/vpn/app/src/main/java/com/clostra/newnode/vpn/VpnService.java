@@ -45,7 +45,7 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
         mConfigureIntent = PendingIntent.getActivity(this, 0, new Intent(this, VpnActivity.class), PendingIntent.FLAG_UPDATE_CURRENT);
 
         Builder builder = new Builder();
-        builder.addAddress("10.7.0.3", 32);
+        builder.addAddress("10.7.0.1", 32);
         builder.addAddress("2001:db8::1", 64);
         builder.addRoute("0.0.0.0", 0);
         builder.addRoute("::", 0);
@@ -79,7 +79,7 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
 
     @Override
     public boolean handleMessage(Message message) {
-        Toast.makeText(this, message.what, Toast.LENGTH_SHORT).show();
+        sendBroadcast(new Intent(VpnActivity.ACTION_STATE).putExtra("state", message.what));
         if (message.what != R.string.disconnected) {
             updateForegroundNotification(message.what);
         }
@@ -89,9 +89,7 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
     private void connect() {
         // Become a foreground service. Background services can be VPN services too, but they can
         // be killed by background check before getting a chance to receive onRevoke().
-        updateForegroundNotification(R.string.connecting);
-        mHandler.sendEmptyMessage(R.string.connecting);
-
+        mHandler.sendEmptyMessage(R.string.connected);
     }
 
     private void disconnect() {

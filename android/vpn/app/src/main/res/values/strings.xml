@@ -1,9 +1,7 @@
 <resources>
     <string name="app">NewNode VPN</string>
 
-    <string name="connect">Connect</string>
-
-    <string name="connecting">NewNode VPN is connecting...</string>
-    <string name="connected">NewNode VPN is connected!</string>
-    <string name="disconnected">NewNode VPN is disconnected!</string>
+    <string name="connecting">Connecting...</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
 </resources>
