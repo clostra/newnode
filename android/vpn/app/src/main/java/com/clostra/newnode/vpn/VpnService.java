@@ -11,14 +11,7 @@ import android.os.Handler;
 import android.os.Message;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
-import android.util.Pair;
 import android.widget.Toast;
-
-import java.io.IOException;
-import java.util.Collections;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 import com.clostra.newnode.NewNode;
 
@@ -28,8 +21,15 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
     public static final String ACTION_CONNECT = "com.clostra.newnode.vpn.START";
     public static final String ACTION_DISCONNECT = "com.clostra.newnode.vpn.STOP";
 
+    static VpnService vpnService;
+
     private Handler mHandler;
     private PendingIntent mConfigureIntent;
+
+    static public boolean vpnProtect(int socket) {
+        Log.d(TAG, "vpnProtect:" + socket);
+        return vpnService.protect(socket);
+    }
 
     @Override
     public void onCreate() {
@@ -38,17 +38,21 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
             mHandler = new Handler(this);
         }
 
+        vpnService = this;
+
         NewNode.init();
 
         mConfigureIntent = PendingIntent.getActivity(this, 0, new Intent(this, VpnActivity.class), PendingIntent.FLAG_UPDATE_CURRENT);
 
-        TODO: protect sockets
-
-
         Builder builder = new Builder();
         builder.addAddress("10.7.0.3", 32);
+        builder.addAddress("2001:db8::1", 64);
         builder.addRoute("0.0.0.0", 0);
-        builder.addDnsServer("1.0.0.1");
+        builder.addRoute("::", 0);
+        builder.addDnsServer("8.8.8.8");
+        builder.addDnsServer("1.1.1.1");
+        builder.addDnsServer("2001:4860:4860::8888");
+        builder.addDnsServer("2606:4700:4700::1111");
         builder.setSession("NewNode");
         String proxyHost = System.getProperty("proxyHost");
         int proxyPort = Integer.parseInt(System.getProperty("proxyPort"));
