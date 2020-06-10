@@ -1,0 +1,10 @@
+<component name="libraryTable">
+  <library name="Gradle: artifacts:newnode:unspecified@jar">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/newnode/build/.transforms/bee7bf45939632f521df3c5168b3b189/newnode-debug/jars/classes.jar!/" />
+      <root url="file://$PROJECT_DIR$/newnode/build/.transforms/bee7bf45939632f521df3c5168b3b189/newnode-debug/res" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
