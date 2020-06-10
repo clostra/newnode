@@ -33,10 +33,10 @@ android {
 
 dependencies {
     // include AAR directly (must include dependencies)
-    //implementation project(':newnode')
-    //implementation 'com.bugsnag:bugsnag-android:4.5.0'
-    //implementation 'com.google.android.gms:play-services-nearby:17.+'
+    implementation project(':newnode')
+    implementation 'com.bugsnag:bugsnag-android:4.5.0'
+    implementation 'com.google.android.gms:play-services-nearby:17.+'
 
     // use jcenter
-    implementation 'com.clostra.newnode:newnode:+'
+    //implementation 'com.clostra.newnode:newnode:+'
 }
