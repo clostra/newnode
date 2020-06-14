@@ -61,7 +61,6 @@ public class NewNode implements NewNodeInternal, Runnable {
                     break;
                 }
             } catch (IllegalStateException e) {
-                Log.d("newnode", "no match: " + f.getName());
             } catch (Exception e) {
                 Log.e("newnode", "", e);
             }
