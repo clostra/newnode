@@ -16,6 +16,8 @@ android {
         applicationId "com.clostra.newnode.vpn"
         minSdkVersion 29
         targetSdkVersion 29
+        versionCode 101
+        versionName "1.0.1"
     }
 
     compileOptions {
