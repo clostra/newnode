@@ -54,13 +54,17 @@ public class NewNode implements NewNodeInternal, Runnable {
         for (int i = files.length - 1; i >= 0; i--) {
             File f = files[i];
             try {
-                String v2 = Pattern.compile("^libnewnode.v?([\\.0-9]*).so$").matcher(f.getName()).group(1);
+                Matcher m = Pattern.compile("^libnewnode.v?([.0-9]*).so$").matcher(f.getName());
+                if (!m.find()) {
+                    continue;
+                }
+                String v2 = m.group(1);
                 if (VERSION.compareTo(v2) < 0) {
+                    Log.d("newnode", "loading "+f.getName());
                     System.load(f.getAbsolutePath());
                     VERSION = v2;
                     break;
                 }
-            } catch (IllegalStateException e) {
             } catch (Exception e) {
                 Log.e("newnode", "", e);
             }
@@ -68,6 +72,7 @@ public class NewNode implements NewNodeInternal, Runnable {
         // XXX: might not work in a classes.dex
         if (VERSION.equals(BuildConfig.VERSION_NAME)) {
             try {
+                Log.d("newnode", "loading built-in newnode");
                 System.loadLibrary("newnode");
             } catch (UnsatisfiedLinkError e) {
                 Log.e("newnode", "", e);
