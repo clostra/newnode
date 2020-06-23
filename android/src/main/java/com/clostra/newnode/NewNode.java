@@ -45,7 +45,11 @@ public class NewNode {
         for (int i = files.length - 1; i >= 0; i--) {
             File f = files[i];
             try {
-                String v2 = Pattern.compile("^newnode.v?([\\.0-9]*).dex$").matcher(f.getName()).group(1);
+                Matcher m = Pattern.compile("^newnode.v?([\\.0-9]*).dex$").matcher(f.getName());
+                if (!m.find()) {
+                    continue;
+                }
+                String v2 = m.group(1);
                 if (VERSION.compareTo(v2) < 0) {
                     Log.d("newnode", "Loading " + f.getAbsolutePath());
                     PathClassLoader classLoader = new PathClassLoader(f.getAbsolutePath(), NewNode.class.getClassLoader().getParent());
