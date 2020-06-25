@@ -72,6 +72,9 @@ void start_stdio_thread()
   code; \
 }
 
+#define push_frame() (*env)->PushLocalFrame(env, 16)
+#define pop_frame() (*env)->PopLocalFrame(env, NULL);
+
 enum notify_type {
     ALL = 1,
     USER = 2,
@@ -150,22 +153,26 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
 #pragma clang diagnostic ignored "-Wshadow"
         JNIEnv *env = get_env();
 #pragma clang diagnostic pop
-        if (!newNode) {
-            cb(false);
-            return;
-        }
-        jclass cNewNode = (*env)->GetObjectClass(env, newNode);
-        CATCH(
-            cb(false);
-            return;
-        );
-        cb = Block_copy(cb);
-        CALL_VOID(cNewNode, newNode, http, Ljava/lang/String;J, JSTR(url), (jlong)cb);
-        CATCH(
-            cb(false);
-            Block_release(cb);
-            return;
-        );
+        push_frame();
+        ^() {
+            if (!newNode) {
+                cb(false);
+                return;
+            }
+            jclass cNewNode = (*env)->GetObjectClass(env, newNode);
+            CATCH(
+                cb(false);
+                return;
+            );
+            https_complete_callback cbc = Block_copy(cb);
+            CALL_VOID(cNewNode, newNode, http, Ljava/lang/String;J, JSTR(url), (jlong)cbc);
+            CATCH(
+                cb(false);
+                Block_release(cbc);
+                return;
+            );
+        }();
+        pop_frame();
     });
 }
 
@@ -240,19 +247,24 @@ jstring addr_to_endpoint(JNIEnv* env, const sockaddr_in6 *sin6)
 bool vpn_protect(int socket)
 {
     JNIEnv *env = get_env();
-    if (!newNode) {
-        return false;
-    }
-    IMPORT(com/clostra/newnode/vpn, VpnService);
-    if ((*env)->ExceptionOccurred(env)) {
-        (*env)->ExceptionClear(env);
-        return true;
-    }
-    jmethodID mVpnProtect = (*env)->GetStaticMethodID(env, cVpnService, "vpnProtect", "(I)Z");
-    CATCH(return false);
-    jboolean success = (*env)->CallStaticBooleanMethod(env, cVpnService, mVpnProtect, socket);
-    CATCH(return false);
-    return (bool)success;
+    push_frame();
+    bool r = ^bool() {
+        if (!newNode) {
+            return false;
+        }
+        IMPORT(com/clostra/newnode/vpn, VpnService);
+        if ((*env)->ExceptionOccurred(env)) {
+            (*env)->ExceptionClear(env);
+            return true;
+        }
+        jmethodID mVpnProtect = (*env)->GetStaticMethodID(env, cVpnService, "vpnProtect", "(I)Z");
+        CATCH(return false);
+        jboolean success = (*env)->CallStaticBooleanMethod(env, cVpnService, mVpnProtect, socket);
+        CATCH(return false);
+        return (bool)success;
+    }();
+    pop_frame();
+    return r;
 }
 
 int __real_bind(int socket, const struct sockaddr *address, socklen_t length);
@@ -329,24 +341,29 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(
 
 ssize_t d2d_sendto(const uint8* buf, size_t len, const sockaddr_in6 *sin6)
 {
-    if (sin6->sin6_addr.s6_addr[0] != 0xfe || sin6->sin6_addr.s6_addr[1] != 0x80) {
-        return -1;
-    }
     JNIEnv *env = get_env();
-    if (!newNode) {
-        return -1;
-    }
-    jclass cNewNode = (*env)->GetObjectClass(env, newNode);
-    CATCH(return -1);
-    jstring endpoint = addr_to_endpoint(env, sin6);
-    CATCH(return -1);
-    jbyteArray array = (*env)->NewByteArray(env, len);
-    CATCH(return -1);
-    (*env)->SetByteArrayRegion(env, array, 0, len, (const jbyte *)buf);
-    CATCH(return -1);
-    CALL_VOID(cNewNode, newNode, sendPacket, [BLjava/lang/String;, array, endpoint);
-    CATCH(return -1);
-    return len;
+    push_frame();
+    ssize_t r = ^ssize_t() {
+        if (sin6->sin6_addr.s6_addr[0] != 0xfe || sin6->sin6_addr.s6_addr[1] != 0x80) {
+            return -1;
+        }
+        if (!newNode) {
+            return -1;
+        }
+        jstring endpoint = addr_to_endpoint(env, sin6);
+        CATCH(return -1);
+        jbyteArray array = (*env)->NewByteArray(env, len);
+        CATCH(return -1);
+        (*env)->SetByteArrayRegion(env, array, 0, len, (const jbyte *)buf);
+        CATCH(return -1);
+        jclass cNewNode = (*env)->GetObjectClass(env, newNode);
+        CATCH(return -1);
+        CALL_VOID(cNewNode, newNode, sendPacket, [BLjava/lang/String;, array, endpoint);
+        CATCH(return -1);
+        return len;
+    }();
+    pop_frame();
+    return r;
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
