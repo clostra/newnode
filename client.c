@@ -2591,6 +2591,8 @@ void connect_other_event_cb(bufferevent *bev, short events, void *ctx)
         }
         assert(i != lenof(c->bevs) - 1);
     }
+
+    bufferevent_free(bev);
 }
 
 void connected(connect_req *c, bufferevent *other)
