@@ -45,7 +45,12 @@ void icmp_handler(network *n)
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 break;
             }
-            pdie("recvmsg");
+            debug("recvmsg MSG_ERRQUEUE failed %d %s\n", errno, strerror(errno));
+            break;
+        }
+
+        if (remote.ss_family != AF_INET && remote.ss_family != AF_INET6) {
+            break;
         }
 
         socklen_t remote_len = sockaddr_get_length((const sockaddr *)&remote);
