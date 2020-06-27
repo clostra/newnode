@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/un.h>
 #include <sys/socket.h>
 #include <sys/resource.h>
 #include <netinet/in.h>
@@ -394,17 +395,18 @@ const char* bev_events_to_str(short events)
 
 socklen_t sockaddr_get_length(const sockaddr* sa)
 {
-    socklen_t sa_len = 0;
     switch (sa->sa_family) {
-    default:
     case AF_INET:
-        sa_len = sizeof(sockaddr_in);
-        break;
+        return sizeof(sockaddr_in);
     case AF_INET6:
-        sa_len = sizeof(sockaddr_in6);
-        break;
+        return sizeof(sockaddr_in6);
+    case AF_LOCAL:
+        return sizeof(sockaddr_un);
+    default:
+    case 0:
+        debug("%s address family %d not supported\n", __func__, sa->sa_family);
+        assert(false);
     }
-    return sa_len;
 }
 
 port_t sockaddr_get_port(const sockaddr* sa)
@@ -416,6 +418,7 @@ port_t sockaddr_get_port(const sockaddr* sa)
         return ntohs(((sockaddr_in6*)sa)->sin6_port);
     default:
     case 0:
+        debug("%s address family %d not supported\n", __func__, sa->sa_family);
         assert(false);
     }
 }
@@ -429,6 +432,10 @@ void sockaddr_set_port(sockaddr* sa, port_t port)
     case AF_INET6:
         ((sockaddr_in6*)sa)->sin6_port = htons(port);
         return;
+    default:
+    case 0:
+        debug("%s address family %d not supported\n", __func__, sa->sa_family);
+        assert(false);
     }
 }
 
@@ -453,8 +460,14 @@ int sockaddr_cmp(const struct sockaddr * sa, const struct sockaddr * sb)
         const sockaddr_in6 *sin6b = (const sockaddr_in6*)sa;
         return memcmp(&sin6a->sin6_addr, &sin6b->sin6_addr, sizeof(sin6a->sin6_addr));
     }
+    case AF_LOCAL: {
+        const sockaddr_un *suna = (const sockaddr_un*)sa;
+        const sockaddr_un *sunb = (const sockaddr_un*)sa;
+        return strcmp(suna->sun_path, sunb->sun_path);
+    }
     default:
     case 0:
+        debug("%s address family %d not supported\n", __func__, sa->sa_family);
         assert(false);
     }
 }
@@ -466,9 +479,17 @@ bool sockaddr_eq(const struct sockaddr * sa, const struct sockaddr * sb)
 
 const char* sockaddr_str(const sockaddr *sa)
 {
+    if (sa->sa_family == AF_LOCAL) {
+        const sockaddr_un *sun = (const sockaddr_un*)sa;
+        return sun->sun_path;
+    }
     char host[NI_MAXHOST];
     char serv[NI_MAXSERV];
-    getnameinfo(sa, sockaddr_get_length(sa), host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+    int r = getnameinfo(sa, sockaddr_get_length(sa), host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+    if (r) {
+        debug("getnameinfo failed %d %s\n", r, gai_strerror(r));
+        return "";
+    }
     static char buf[1 + NI_MAXHOST + 2 + NI_MAXSERV + 1];
     switch (sa->sa_family) {
     case AF_INET:
@@ -477,6 +498,10 @@ const char* sockaddr_str(const sockaddr *sa)
     case AF_INET6:
         snprintf(buf, sizeof(buf), "[%s]:%s", host, serv);
         break;
+    default:
+    case 0:
+        debug("%s address family %d not supported\n", __func__, sa->sa_family);
+        assert(false);
     }
     return buf;
 }
@@ -492,6 +517,13 @@ bool sockaddr_is_localhost(const sockaddr *sa, socklen_t salen)
         const sockaddr_in6 *sin6 = (sockaddr_in6 *)sa;
         return IN6_IS_ADDR_LOOPBACK(&sin6->sin6_addr);
     }
+    case AF_LOCAL: {
+        return true;
+    }
+    default:
+    case 0:
+        debug("%s address family %d not supported\n", __func__, sa->sa_family);
+        assert(false);
     }
     return false;
 }
