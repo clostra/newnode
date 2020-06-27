@@ -40,6 +40,8 @@ LIBUTP_CFLAGS=-Ilibutp
 LIBUTP=libutp/libutp.a
 
 
+LIBBLOCKSRUNTIME_CFLAGS=
+LIBBLOCKSRUNTIME=
 if ! echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -fblocks - 2>/dev/null; then
     cd blocksruntime
     if [ ! -f native/libBlocksRuntime.a ]; then
@@ -68,7 +70,9 @@ if uname|grep -i Darwin >/dev/null; then
     CFLAGS="$CFLAGS -fobjc-arc -fmodules"
 fi
 
+LRT=
 echo "int main() {}"|clang -x c - -lrt 2>/dev/null && LRT="-lrt"
+LM=
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
 
 rm *.o || true
