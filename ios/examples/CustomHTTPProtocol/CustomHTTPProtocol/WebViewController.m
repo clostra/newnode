@@ -215,6 +215,11 @@ static NSString * kAnchorInstallSchemePrefix = @"x-anchor-install-";
 
     assert(domain != nil);
 
+    int kPluginIsHandlingLoad = 204;
+    if (code == kPluginIsHandlingLoad) {
+        handled = YES;
+    }
+
     // If we get an error from WebKit saying that the user navigated to a resource 
     // that it can't display (WebKitErrorFrameLoadInterruptedByPolicyChange) and the 
     // URL looks like a certificate, kick off the anchor install UI.
