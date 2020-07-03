@@ -214,7 +214,6 @@
 				LastUpgradeCheck = 0930;
 				TargetAttributes = {
 					E4C546D71330E45800DA48D3 = {
-						DevelopmentTeam = 7E8DL4SBR7;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -408,7 +407,7 @@
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 7E8DL4SBR7;
+				DEVELOPMENT_TEAM = 4AXG23WSHH;
 				HEADER_SEARCH_PATHS = "";
 				INFOPLIST_FILE = CustomHTTPProtocol/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -429,7 +428,7 @@
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 7E8DL4SBR7;
+				DEVELOPMENT_TEAM = 4AXG23WSHH;
 				HEADER_SEARCH_PATHS = "";
 				INFOPLIST_FILE = CustomHTTPProtocol/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
