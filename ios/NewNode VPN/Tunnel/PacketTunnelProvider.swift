@@ -24,9 +24,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         o_debug = 1
         let app_name = Bundle.main.infoDictionary?["CFBundleDisplayName"] as! String
         let app_id = Bundle.main.infoDictionary?["CFBundleIdentifier"] as! String
-        var http_port: UInt16 = 8006
-        var socks_port: UInt16 = 8007
-        newnode_init(app_name, app_id, &http_port, &socks_port, Optional<(Optional<UnsafePointer<Int8>>, Optional<(Bool) -> ()>) -> ()> {
+        var http_port: UInt16 = 0
+        var socks_port: UInt16 = 0
+        let n = newnode_init(app_name, app_id, &http_port, &socks_port, Optional<(Optional<UnsafePointer<Int8>>, Optional<(Bool) -> ()>) -> ()> {
             url, cb in
             let url = String(cString: url!)
             os_log("https: %{public}s", url)
@@ -67,6 +67,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         settings.proxySettings = proxySettings
         
+        newnode_thread(n)
+
         self.setTunnelNetworkSettings(settings) { (error: Error?) in
             os_log("setTunnelNetworkSettings %{public}@", error.debugDescription)
             completionHandler(error)
