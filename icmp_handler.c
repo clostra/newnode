@@ -50,6 +50,7 @@ void icmp_handler(network *n)
         }
 
         if (remote.ss_family != AF_INET && remote.ss_family != AF_INET6) {
+            debug("%s address family not supported:%d\n", remote.ss_family);
             break;
         }
 
