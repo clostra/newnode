@@ -3077,7 +3077,9 @@ void load_peer_file(const char *s, peer_array **pa)
     if (f) {
         peer p;
         while (fread(&p, sizeof(p), 1, f) == 1) {
-            add_peer(pa, memdup(&p, sizeof(p)));
+            if (p.addr.ss_family == AF_INET || p.addr.ss_family == AF_INET6) {
+                add_peer(pa, memdup(&p, sizeof(p)));
+            }
         }
         const char *label = "peers";
         if (*pa == injectors) {
