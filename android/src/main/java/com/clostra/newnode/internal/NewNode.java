@@ -41,7 +41,7 @@ public class NewNode implements NewNodeInternal, Runnable {
     public static String VERSION = BuildConfig.VERSION_NAME;
 
     static Thread t;
-    static Thread updateThread;
+    //static Thread updateThread;
     static boolean requestPermission = true;
     static NearbyHelper nearbyHelper;
     static Client bugsnagClient;
@@ -78,6 +78,7 @@ public class NewNode implements NewNodeInternal, Runnable {
                 Log.e("newnode", "", e);
             }
         }
+        /*
         updateThread = new Thread() { public void run() {
             while (!Thread.interrupted()) {
                 try {
@@ -92,6 +93,7 @@ public class NewNode implements NewNodeInternal, Runnable {
             }
         }};
         updateThread.start();
+        */
     }
 
     static Application app() {
@@ -103,6 +105,7 @@ public class NewNode implements NewNodeInternal, Runnable {
         return null;
     }
 
+    /*
     static boolean saveLocally(JSONObject asset, String output) throws Exception {
         Application app = app();
         String downloadUrl = asset.getString("browser_download_url");
@@ -181,6 +184,7 @@ public class NewNode implements NewNodeInternal, Runnable {
             }
         }
     }
+    */
 
     public void run() {
         newnodeRun();
