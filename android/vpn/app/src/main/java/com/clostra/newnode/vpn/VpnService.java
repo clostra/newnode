@@ -98,12 +98,12 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
     private void disconnect() {
         mHandler.sendEmptyMessage(R.string.disconnected);
         stopForeground(true);
-        try {
-            if (fd != null) {
+        if (fd != null) {
+            try {
                 fd.close();
-            }
-        } catch(IOException e) {}
-        fd = null;
+            } catch(IOException e) {}
+            fd = null;
+        }
     }
 
     private void updateForegroundNotification(final int message) {
