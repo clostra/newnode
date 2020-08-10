@@ -12,6 +12,7 @@ import android.os.Message;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 import android.widget.Toast;
+import java.io.IOException;
 
 import com.clostra.newnode.NewNode;
 
@@ -25,6 +26,7 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
 
     private Handler mHandler;
     private PendingIntent mConfigureIntent;
+    private ParcelFileDescriptor fd;
 
     static public boolean vpnProtect(int socket) {
         Log.d(TAG, "vpnProtect:" + socket);
@@ -39,30 +41,11 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
         }
 
         vpnService = this;
-
-        NewNode.init();
-
-        mConfigureIntent = PendingIntent.getActivity(this, 0, new Intent(this, VpnActivity.class), PendingIntent.FLAG_UPDATE_CURRENT);
-
-        Builder builder = new Builder();
-        builder.addAddress("10.7.0.1", 32);
-        builder.addAddress("2001:db8::1", 64);
-        builder.addRoute("0.0.0.0", 0);
-        builder.addRoute("::", 0);
-        builder.addDnsServer("8.8.8.8");
-        builder.addDnsServer("1.1.1.1");
-        builder.addDnsServer("2001:4860:4860::8888");
-        builder.addDnsServer("2606:4700:4700::1111");
-        builder.setSession("NewNode");
-        String proxyHost = System.getProperty("proxyHost");
-        int proxyPort = Integer.parseInt(System.getProperty("proxyPort"));
-        builder.setHttpProxy(ProxyInfo.buildDirectProxy(proxyHost, proxyPort));
-        Log.i(TAG, "builder:" + builder);
-        ParcelFileDescriptor p = builder.establish();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        Log.d(TAG, "onStartCommand: " + intent.getAction());
         if (intent != null && ACTION_DISCONNECT.equals(intent.getAction())) {
             disconnect();
             return START_NOT_STICKY;
@@ -87,6 +70,26 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
     }
 
     private void connect() {
+        NewNode.init();
+
+        mConfigureIntent = PendingIntent.getActivity(this, 0, new Intent(this, VpnActivity.class), PendingIntent.FLAG_UPDATE_CURRENT);
+
+        Builder builder = new Builder();
+        builder.addAddress("10.7.0.1", 32);
+        builder.addAddress("2001:db8::1", 64);
+        builder.addRoute("0.0.0.0", 0);
+        builder.addRoute("::", 0);
+        builder.addDnsServer("8.8.8.8");
+        builder.addDnsServer("1.1.1.1");
+        builder.addDnsServer("2001:4860:4860::8888");
+        builder.addDnsServer("2606:4700:4700::1111");
+        builder.setSession("NewNode");
+        String proxyHost = System.getProperty("proxyHost");
+        int proxyPort = Integer.parseInt(System.getProperty("proxyPort"));
+        builder.setHttpProxy(ProxyInfo.buildDirectProxy(proxyHost, proxyPort));
+        Log.i(TAG, "builder:" + builder);
+        fd = builder.establish();
+
         // Become a foreground service. Background services can be VPN services too, but they can
         // be killed by background check before getting a chance to receive onRevoke().
         mHandler.sendEmptyMessage(R.string.connected);
@@ -95,6 +98,12 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
     private void disconnect() {
         mHandler.sendEmptyMessage(R.string.disconnected);
         stopForeground(true);
+        try {
+            if (fd != null) {
+                fd.close();
+            }
+        } catch(IOException e) {}
+        fd = null;
     }
 
     private void updateForegroundNotification(final int message) {
