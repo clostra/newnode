@@ -56,6 +56,8 @@ See [`ios/examples/CustomHTTPProtocol`](https://github.com/clostra/newnode/tree/
 
 ## macOS / Linux
 ```bash
+git clone --recurse-submodules git@github.com:clostra/newnode.git
+cd newnode
 ./build.sh
 ```
 `client` (and `injector`) are the resulting binaries.
