@@ -55,9 +55,15 @@ NSURLSession *session = [NSURLSession sessionWithConfiguration:config];
 See [`ios/examples/CustomHTTPProtocol`](https://github.com/clostra/newnode/tree/master/ios/examples/CustomHTTPProtocol) for an example.
 
 ## macOS / Linux
+
+Clone this repo and build NewNode:
 ```bash
 git clone --recurse-submodules git@github.com:clostra/newnode.git
 cd newnode
 ./build.sh
 ```
-`client` (and `injector`) are the resulting binaries.
+
+Then, run it:
+```bash
+./client
+```
