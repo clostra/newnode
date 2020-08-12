@@ -120,6 +120,6 @@
     <orderEntry type="library" name="Gradle: androidx.documentfile:documentfile:1.0.0@aar" level="project" />
     <orderEntry type="library" name="Gradle: androidx.localbroadcastmanager:localbroadcastmanager:1.0.0@aar" level="project" />
     <orderEntry type="library" name="Gradle: androidx.print:print:1.0.0@aar" level="project" />
-    <orderEntry type="library" name="Gradle: /Users/ghazel/projects/newnode/android/vpn:newnode::null" level="project" />
+    <orderEntry type="library" name="Gradle: artifacts:newnode:unspecified@jar" level="project" />
   </component>
 </module>
