@@ -63,6 +63,8 @@ class ViewController: UIViewController, LLSwitchDelegate {
                 try manager.connection.startVPNTunnel()
             } catch {
                 os_log("Unexpected error %@", error.localizedDescription)
+                manager.connection.stopVPNTunnel()
+                self.waitForStop(manager)
             }
         } else {
             os_log("stopping...")
