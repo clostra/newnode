@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 51;
+	objectVersion = 52;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -12,36 +12,15 @@
 		3C3C05A822DD3CB800C68AF5 /* LLAnimationManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 3C3C05A422DD3CB800C68AF5 /* LLAnimationManager.m */; };
 		3C3C05A922DD3CB800C68AF5 /* LLEyesLayer.m in Sources */ = {isa = PBXBuildFile; fileRef = 3C3C05A522DD3CB800C68AF5 /* LLEyesLayer.m */; };
 		3C3C05AA22DD3CB800C68AF5 /* LLSwitch.m in Sources */ = {isa = PBXBuildFile; fileRef = 3C3C05A722DD3CB800C68AF5 /* LLSwitch.m */; };
+		3C3D5BDC24E4566500F17659 /* libc++.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C3D5BDB24E4566500F17659 /* libc++.tbd */; };
+		3C3D5BDD24E457ED00F17659 /* NewNode.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C3D5BCD24E3BA1E00F17659 /* NewNode.xcframework */; };
 		3C50125422D4AF5000F8487C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C50125322D4AF5000F8487C /* AppDelegate.swift */; };
 		3C50125622D4AF5000F8487C /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C50125522D4AF5000F8487C /* ViewController.swift */; };
 		3C50125922D4AF5000F8487C /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 3C50125722D4AF5000F8487C /* Main.storyboard */; };
 		3C50125B22D4AF5100F8487C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3C50125A22D4AF5100F8487C /* Assets.xcassets */; };
 		3C50125E22D4AF5100F8487C /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 3C50125C22D4AF5100F8487C /* LaunchScreen.storyboard */; };
 		3C50127122D4B10000F8487C /* Tunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 3C50126922D4B10000F8487C /* Tunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		3C5012A622D52B1F00F8487C /* network.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C50128422D52B1E00F8487C /* network.c */; };
-		3C5012A722D52B1F00F8487C /* merkle_tree.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C50128522D52B1E00F8487C /* merkle_tree.c */; };
-		3C5012A822D52B1F00F8487C /* icmp_handler.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C50128622D52B1E00F8487C /* icmp_handler.c */; };
-		3C5012A922D52B1F00F8487C /* utp_bufferevent.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C50128B22D52B1E00F8487C /* utp_bufferevent.c */; };
-		3C5012AB22D52B1F00F8487C /* bev_splice.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C50129322D52B1E00F8487C /* bev_splice.c */; };
-		3C5012AC22D52B1F00F8487C /* http.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C50129522D52B1E00F8487C /* http.c */; };
-		3C5012AD22D52B1F00F8487C /* client.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C50129622D52B1E00F8487C /* client.c */; };
-		3C5012AE22D52B1F00F8487C /* log.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C50129A22D52B1F00F8487C /* log.c */; };
-		3C5012AF22D52B1F00F8487C /* dht.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C50129C22D52B1F00F8487C /* dht.c */; };
-		3C5012B022D52B1F00F8487C /* timer.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C50129D22D52B1F00F8487C /* timer.c */; };
-		3C5012B122D52B1F00F8487C /* obfoo.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C50129F22D52B1F00F8487C /* obfoo.c */; };
-		3C5012B222D52B1F00F8487C /* lsd.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C5012A122D52B1F00F8487C /* lsd.c */; };
-		3C5012B322D52B1F00F8487C /* sha1.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C5012A222D52B1F00F8487C /* sha1.c */; };
-		3C5012B422D52B1F00F8487C /* hash_table.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C5012A322D52B1F00F8487C /* hash_table.c */; };
-		3C5012B522D52B1F00F8487C /* base64.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C5012A522D52B1F00F8487C /* base64.c */; };
-		3C5012B922D52B3000F8487C /* libsodium.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C5012B822D52B3000F8487C /* libsodium.a */; };
-		3C5012BB22D52B3000F8487C /* libevent_pthreads.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C5012BA22D52B3000F8487C /* libevent_pthreads.a */; };
-		3C5012BD22D52B3000F8487C /* libevent.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C5012BC22D52B3000F8487C /* libevent.a */; };
-		3C5012BF22D52B3000F8487C /* libutp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C5012BE22D52B3000F8487C /* libutp.a */; };
 		3C5012C222D5316F00F8487C /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C50126B22D4B10000F8487C /* PacketTunnelProvider.swift */; };
-		3C6017B7237E0E130025C62B /* NetService.m in Sources */ = {isa = PBXBuildFile; fileRef = 3C6017B6237E0E130025C62B /* NetService.m */; };
-		3C69A3462383D7640094CC39 /* thread.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C69A3442383D7640094CC39 /* thread.c */; };
-		3C70DFBF245511BB00911F20 /* d2d.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C70DFBD245511BB00911F20 /* d2d.c */; };
-		3CA12AEE237A3DE800972EA1 /* dht.c in Sources */ = {isa = PBXBuildFile; fileRef = 3CA12AED237A3DE800972EA1 /* dht.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -55,6 +34,16 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		3C3D5B6624E3A45A00F17659 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		3C50127522D4B10000F8487C /* Embed App Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -79,6 +68,8 @@
 		3C3C05A522DD3CB800C68AF5 /* LLEyesLayer.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = LLEyesLayer.m; path = LLSwitch/LLEyesLayer.m; sourceTree = "<group>"; };
 		3C3C05A622DD3CB800C68AF5 /* LLSwitch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = LLSwitch.h; path = LLSwitch/LLSwitch.h; sourceTree = "<group>"; };
 		3C3C05A722DD3CB800C68AF5 /* LLSwitch.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = LLSwitch.m; path = LLSwitch/LLSwitch.m; sourceTree = "<group>"; };
+		3C3D5BCD24E3BA1E00F17659 /* NewNode.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = NewNode.xcframework; path = ../../NewNode.xcframework; sourceTree = "<group>"; };
+		3C3D5BDB24E4566500F17659 /* libc++.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = "libc++.tbd"; path = "Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk/usr/lib/libc++.tbd"; sourceTree = DEVELOPER_DIR; };
 		3C50125022D4AF5000F8487C /* NewNode VPN.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NewNode VPN.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		3C50125322D4AF5000F8487C /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		3C50125522D4AF5000F8487C /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -90,50 +81,6 @@
 		3C50126B22D4B10000F8487C /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
 		3C50126D22D4B10000F8487C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		3C50126E22D4B10000F8487C /* Tunnel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tunnel.entitlements; sourceTree = "<group>"; };
-		3C50128322D52B1E00F8487C /* constants.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = constants.h; path = ../../constants.h; sourceTree = SOURCE_ROOT; };
-		3C50128422D52B1E00F8487C /* network.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = network.c; path = ../../network.c; sourceTree = SOURCE_ROOT; };
-		3C50128522D52B1E00F8487C /* merkle_tree.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = merkle_tree.c; path = ../../merkle_tree.c; sourceTree = SOURCE_ROOT; };
-		3C50128622D52B1E00F8487C /* icmp_handler.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = icmp_handler.c; path = ../../icmp_handler.c; sourceTree = SOURCE_ROOT; };
-		3C50128722D52B1E00F8487C /* bev_splice.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = bev_splice.h; path = ../../bev_splice.h; sourceTree = SOURCE_ROOT; };
-		3C50128822D52B1E00F8487C /* base64.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = base64.h; path = ../../base64.h; sourceTree = SOURCE_ROOT; };
-		3C50128922D52B1E00F8487C /* newnode.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = newnode.h; path = ../../newnode.h; sourceTree = SOURCE_ROOT; };
-		3C50128A22D52B1E00F8487C /* merkle_tree.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = merkle_tree.h; path = ../../merkle_tree.h; sourceTree = SOURCE_ROOT; };
-		3C50128B22D52B1E00F8487C /* utp_bufferevent.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = utp_bufferevent.c; path = ../../utp_bufferevent.c; sourceTree = SOURCE_ROOT; };
-		3C50128C22D52B1E00F8487C /* log.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = log.h; path = ../../log.h; sourceTree = SOURCE_ROOT; };
-		3C50128D22D52B1E00F8487C /* lsd.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = lsd.h; path = ../../lsd.h; sourceTree = SOURCE_ROOT; };
-		3C50128E22D52B1E00F8487C /* sha1.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = sha1.h; path = ../../sha1.h; sourceTree = SOURCE_ROOT; };
-		3C50128F22D52B1E00F8487C /* backtrace.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = backtrace.h; path = ../../backtrace.h; sourceTree = SOURCE_ROOT; };
-		3C50129122D52B1E00F8487C /* hash_table.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = hash_table.h; path = ../../hash_table.h; sourceTree = SOURCE_ROOT; };
-		3C50129222D52B1E00F8487C /* icmp_handler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = icmp_handler.h; path = ../../icmp_handler.h; sourceTree = SOURCE_ROOT; };
-		3C50129322D52B1E00F8487C /* bev_splice.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = bev_splice.c; path = ../../bev_splice.c; sourceTree = SOURCE_ROOT; };
-		3C50129422D52B1E00F8487C /* khash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = khash.h; path = ../../khash.h; sourceTree = SOURCE_ROOT; };
-		3C50129522D52B1E00F8487C /* http.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = http.c; path = ../../http.c; sourceTree = SOURCE_ROOT; };
-		3C50129622D52B1E00F8487C /* client.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = client.c; path = ../../client.c; sourceTree = SOURCE_ROOT; };
-		3C50129722D52B1F00F8487C /* dht.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = dht.h; path = ../../dht.h; sourceTree = SOURCE_ROOT; };
-		3C50129822D52B1F00F8487C /* ios.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = ios.h; path = ../../ios.h; sourceTree = SOURCE_ROOT; };
-		3C50129922D52B1F00F8487C /* network.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = network.h; path = ../../network.h; sourceTree = SOURCE_ROOT; };
-		3C50129A22D52B1F00F8487C /* log.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = log.c; path = ../../log.c; sourceTree = SOURCE_ROOT; };
-		3C50129B22D52B1F00F8487C /* timer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = timer.h; path = ../../timer.h; sourceTree = SOURCE_ROOT; };
-		3C50129C22D52B1F00F8487C /* dht.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = dht.c; path = ../../dht.c; sourceTree = SOURCE_ROOT; };
-		3C50129D22D52B1F00F8487C /* timer.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = timer.c; path = ../../timer.c; sourceTree = SOURCE_ROOT; };
-		3C50129E22D52B1F00F8487C /* utp_bufferevent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = utp_bufferevent.h; path = ../../utp_bufferevent.h; sourceTree = SOURCE_ROOT; };
-		3C50129F22D52B1F00F8487C /* obfoo.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = obfoo.c; path = ../../obfoo.c; sourceTree = SOURCE_ROOT; };
-		3C5012A022D52B1F00F8487C /* obfoo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = obfoo.h; path = ../../obfoo.h; sourceTree = SOURCE_ROOT; };
-		3C5012A122D52B1F00F8487C /* lsd.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = lsd.c; path = ../../lsd.c; sourceTree = SOURCE_ROOT; };
-		3C5012A222D52B1F00F8487C /* sha1.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = sha1.c; path = ../../sha1.c; sourceTree = SOURCE_ROOT; };
-		3C5012A322D52B1F00F8487C /* hash_table.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = hash_table.c; path = ../../hash_table.c; sourceTree = SOURCE_ROOT; };
-		3C5012A422D52B1F00F8487C /* http.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = http.h; path = ../../http.h; sourceTree = SOURCE_ROOT; };
-		3C5012A522D52B1F00F8487C /* base64.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = base64.c; path = ../../base64.c; sourceTree = SOURCE_ROOT; };
-		3C5012B822D52B3000F8487C /* libsodium.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsodium.a; path = "../../libsodium/arm-apple-darwin10/lib/libsodium.a"; sourceTree = SOURCE_ROOT; };
-		3C5012BA22D52B3000F8487C /* libevent_pthreads.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libevent_pthreads.a; path = "../../Libevent/arm-apple-darwin10/lib/libevent_pthreads.a"; sourceTree = SOURCE_ROOT; };
-		3C5012BC22D52B3000F8487C /* libevent.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libevent.a; path = "../../Libevent/arm-apple-darwin10/lib/libevent.a"; sourceTree = SOURCE_ROOT; };
-		3C5012BE22D52B3000F8487C /* libutp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libutp.a; path = ../../libutp/libutp.a; sourceTree = SOURCE_ROOT; };
-		3C6017B6237E0E130025C62B /* NetService.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = NetService.m; path = ../NetService.m; sourceTree = SOURCE_ROOT; };
-		3C69A3442383D7640094CC39 /* thread.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = thread.c; path = ../../thread.c; sourceTree = SOURCE_ROOT; };
-		3C69A3452383D7640094CC39 /* thread.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = thread.h; path = ../../thread.h; sourceTree = SOURCE_ROOT; };
-		3C70DFBD245511BB00911F20 /* d2d.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = d2d.c; path = ../../../d2d.c; sourceTree = "<group>"; };
-		3C70DFBE245511BB00911F20 /* d2d.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = d2d.h; path = ../../../d2d.h; sourceTree = "<group>"; };
-		3CA12AED237A3DE800972EA1 /* dht.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = dht.c; path = ../../dht/dht.c; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -149,11 +96,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3C5012B922D52B3000F8487C /* libsodium.a in Frameworks */,
+				3C3D5BDC24E4566500F17659 /* libc++.tbd in Frameworks */,
 				3C3C057C22D6192600C68AF5 /* NetworkExtension.framework in Frameworks */,
-				3C5012BB22D52B3000F8487C /* libevent_pthreads.a in Frameworks */,
-				3C5012BD22D52B3000F8487C /* libevent.a in Frameworks */,
-				3C5012BF22D52B3000F8487C /* libutp.a in Frameworks */,
+				3C3D5BDD24E457ED00F17659 /* NewNode.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -211,7 +156,6 @@
 		3C50126A22D4B10000F8487C /* Tunnel */ = {
 			isa = PBXGroup;
 			children = (
-				3C50128222D52AF800F8487C /* NewNode Core */,
 				3C50126B22D4B10000F8487C /* PacketTunnelProvider.swift */,
 				3C50126D22D4B10000F8487C /* Info.plist */,
 				3C50126E22D4B10000F8487C /* Tunnel.entitlements */,
@@ -223,76 +167,11 @@
 		3C50127622D5256700F8487C /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				3C3D5BDB24E4566500F17659 /* libc++.tbd */,
+				3C3D5BCD24E3BA1E00F17659 /* NewNode.xcframework */,
 				3C34FA8422D54A160001F694 /* NetworkExtension.framework */,
-				3C5012B822D52B3000F8487C /* libsodium.a */,
-				3C5012BA22D52B3000F8487C /* libevent_pthreads.a */,
-				3C5012BC22D52B3000F8487C /* libevent.a */,
-				3C5012BE22D52B3000F8487C /* libutp.a */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		3C50128222D52AF800F8487C /* NewNode Core */ = {
-			isa = PBXGroup;
-			children = (
-				3C50128F22D52B1E00F8487C /* backtrace.h */,
-				3C5012A522D52B1F00F8487C /* base64.c */,
-				3C50128822D52B1E00F8487C /* base64.h */,
-				3C50129322D52B1E00F8487C /* bev_splice.c */,
-				3C50128722D52B1E00F8487C /* bev_splice.h */,
-				3C50129622D52B1E00F8487C /* client.c */,
-				3C50128322D52B1E00F8487C /* constants.h */,
-				3C70DFBD245511BB00911F20 /* d2d.c */,
-				3C70DFBE245511BB00911F20 /* d2d.h */,
-				3CA12AEC237A3D8C00972EA1 /* dht */,
-				3C50129C22D52B1F00F8487C /* dht.c */,
-				3C50129722D52B1F00F8487C /* dht.h */,
-				3C5012A322D52B1F00F8487C /* hash_table.c */,
-				3C50129122D52B1E00F8487C /* hash_table.h */,
-				3C50129522D52B1E00F8487C /* http.c */,
-				3C5012A422D52B1F00F8487C /* http.h */,
-				3C50128622D52B1E00F8487C /* icmp_handler.c */,
-				3C50129222D52B1E00F8487C /* icmp_handler.h */,
-				3CAB6058237A8F6A006A450B /* ios */,
-				3C50129822D52B1F00F8487C /* ios.h */,
-				3C50129422D52B1E00F8487C /* khash.h */,
-				3C50129A22D52B1F00F8487C /* log.c */,
-				3C50128C22D52B1E00F8487C /* log.h */,
-				3C5012A122D52B1F00F8487C /* lsd.c */,
-				3C50128D22D52B1E00F8487C /* lsd.h */,
-				3C50128522D52B1E00F8487C /* merkle_tree.c */,
-				3C50128A22D52B1E00F8487C /* merkle_tree.h */,
-				3C50128422D52B1E00F8487C /* network.c */,
-				3C50129922D52B1F00F8487C /* network.h */,
-				3C50128922D52B1E00F8487C /* newnode.h */,
-				3C50129F22D52B1F00F8487C /* obfoo.c */,
-				3C5012A022D52B1F00F8487C /* obfoo.h */,
-				3C5012A222D52B1F00F8487C /* sha1.c */,
-				3C50128E22D52B1E00F8487C /* sha1.h */,
-				3C69A3442383D7640094CC39 /* thread.c */,
-				3C69A3452383D7640094CC39 /* thread.h */,
-				3C50129D22D52B1F00F8487C /* timer.c */,
-				3C50129B22D52B1F00F8487C /* timer.h */,
-				3C50128B22D52B1E00F8487C /* utp_bufferevent.c */,
-				3C50129E22D52B1F00F8487C /* utp_bufferevent.h */,
-			);
-			name = "NewNode Core";
-			sourceTree = "<group>";
-		};
-		3CA12AEC237A3D8C00972EA1 /* dht */ = {
-			isa = PBXGroup;
-			children = (
-				3CA12AED237A3DE800972EA1 /* dht.c */,
-			);
-			name = dht;
-			sourceTree = "<group>";
-		};
-		3CAB6058237A8F6A006A450B /* ios */ = {
-			isa = PBXGroup;
-			children = (
-				3C6017B6237E0E130025C62B /* NetService.m */,
-			);
-			name = ios;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -306,6 +185,7 @@
 				3C50124D22D4AF5000F8487C /* Frameworks */,
 				3C50124E22D4AF5000F8487C /* Resources */,
 				3C50127522D4B10000F8487C /* Embed App Extensions */,
+				3C3D5B6624E3A45A00F17659 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -414,26 +294,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3C5012AE22D52B1F00F8487C /* log.c in Sources */,
-				3C5012AD22D52B1F00F8487C /* client.c in Sources */,
-				3C5012A622D52B1F00F8487C /* network.c in Sources */,
-				3C5012B022D52B1F00F8487C /* timer.c in Sources */,
-				3C69A3462383D7640094CC39 /* thread.c in Sources */,
-				3C5012B322D52B1F00F8487C /* sha1.c in Sources */,
-				3C5012B422D52B1F00F8487C /* hash_table.c in Sources */,
-				3C5012A822D52B1F00F8487C /* icmp_handler.c in Sources */,
-				3C70DFBF245511BB00911F20 /* d2d.c in Sources */,
-				3C6017B7237E0E130025C62B /* NetService.m in Sources */,
-				3C5012A922D52B1F00F8487C /* utp_bufferevent.c in Sources */,
-				3C5012AB22D52B1F00F8487C /* bev_splice.c in Sources */,
-				3C5012AF22D52B1F00F8487C /* dht.c in Sources */,
-				3CA12AEE237A3DE800972EA1 /* dht.c in Sources */,
-				3C5012B222D52B1F00F8487C /* lsd.c in Sources */,
-				3C5012AC22D52B1F00F8487C /* http.c in Sources */,
-				3C5012B122D52B1F00F8487C /* obfoo.c in Sources */,
-				3C5012B522D52B1F00F8487C /* base64.c in Sources */,
 				3C5012C222D5316F00F8487C /* PacketTunnelProvider.swift in Sources */,
-				3C5012A722D52B1F00F8487C /* merkle_tree.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -645,22 +506,14 @@
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
 				DEVELOPMENT_TEAM = 4AXG23WSHH;
 				FRAMEWORK_SEARCH_PATHS = ../../;
-				HEADER_SEARCH_PATHS = (
-					../../libutp,
-					"../../libsodium/libsodium-ios/include",
-					"../../Libevent/arm-apple-darwin10/include",
-				);
+				HEADER_SEARCH_PATHS = "";
 				INFOPLIST_FILE = Tunnel/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/../../libsodium/libsodium-ios/lib",
-					"$(PROJECT_DIR)/../../Libevent/arm-apple-darwin10/lib",
-					"$(PROJECT_DIR)/../../libutp/arm-apple-darwin10",
-				);
+				LIBRARY_SEARCH_PATHS = "";
 				MARKETING_VERSION = 1.0.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.newnode.vpn.tunnel;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -681,22 +534,14 @@
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
 				DEVELOPMENT_TEAM = 4AXG23WSHH;
 				FRAMEWORK_SEARCH_PATHS = ../../;
-				HEADER_SEARCH_PATHS = (
-					../../libutp,
-					"../../libsodium/libsodium-ios/include",
-					"../../Libevent/arm-apple-darwin10/include",
-				);
+				HEADER_SEARCH_PATHS = "";
 				INFOPLIST_FILE = Tunnel/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/../../libsodium/libsodium-ios/lib",
-					"$(PROJECT_DIR)/../../Libevent/arm-apple-darwin10/lib",
-					"$(PROJECT_DIR)/../../libutp/arm-apple-darwin10",
-				);
+				LIBRARY_SEARCH_PATHS = "";
 				MARKETING_VERSION = 1.0.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.newnode.vpn.tunnel;
 				PRODUCT_NAME = "$(TARGET_NAME)";

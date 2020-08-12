@@ -21,23 +21,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let cachesPath = NSSearchPathForDirectoriesInDomains(.cachesDirectory, .userDomainMask, true).last!
         chdir(cachesPath)
 
-        o_debug = 1
-        let app_name = Bundle.main.infoDictionary?["CFBundleDisplayName"] as! String
-        let app_id = Bundle.main.infoDictionary?["CFBundleIdentifier"] as! String
-        var http_port: UInt16 = 0
-        var socks_port: UInt16 = 0
-        let n = newnode_init(app_name, app_id, &http_port, &socks_port, Optional<(Optional<UnsafePointer<Int8>>, Optional<(Bool) -> ()>) -> ()> {
-            url, cb in
-            let url = String(cString: url!)
-            os_log("https: %{public}s", url)
-            URLSession.shared.downloadTask(with: URL(string: url)!) {
-                urlOrNil, responseOrNil, errorOrNil in
-                if let error = errorOrNil {
-                    os_log("https error: %@", error.localizedDescription)
-                }
-                cb!(errorOrNil != nil)
-            }.resume()
-        })
+        NewNode.logLevel = 1
+        let d = NewNode.connectionProxyDictionary
+        let http_port = (d?["HTTPPort"] ?? 0) as! Int
+        let socks_port = (d?["SOCKSPort"] ?? 0) as! Int
+
         if (http_port == 0 || socks_port == 0) {
             os_log("Error: NewNode could not be initialized")
             completionHandler(NewNodeError.initializationError)
@@ -67,8 +55,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         settings.proxySettings = proxySettings
         
-        newnode_thread(n)
-
         self.setTunnelNetworkSettings(settings) { (error: Error?) in
             os_log("setTunnelNetworkSettings %{public}@", error.debugDescription)
             completionHandler(error)

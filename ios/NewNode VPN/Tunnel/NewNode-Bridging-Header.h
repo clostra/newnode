@@ -9,8 +9,6 @@
 #ifndef NewNode_Bridging_Header_h
 #define NewNode_Bridging_Header_h
 
-#include "newnode.h"
-#include "constants.h"
-#include "log.h"
+#include "NewNode.h"
 
 #endif /* NewNode_Bridging_Header_h */

@@ -15,8 +15,7 @@ NetService *ns = nil;
 
 + (void)initialize
 {
-    BugsnagConfiguration *config = BugsnagConfiguration.new;
-    config.apiKey = @"f5ce7103ec0ed93bee065269e8c2b676";
+    BugsnagConfiguration *config = [BugsnagConfiguration.alloc initWithApiKey:@"f5ce7103ec0ed93bee065269e8c2b676"];
     config.appVersion = @(VERSION);
     /*
     NSURLSessionConfiguration *urlConfig = NSURLSessionConfiguration.defaultSessionConfiguration;
