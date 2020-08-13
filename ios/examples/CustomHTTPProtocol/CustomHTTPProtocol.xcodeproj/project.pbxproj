@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		3C3D5BE124E4BBB000F17659 /* NewNode.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C3D5BE024E4BBB000F17659 /* NewNode.xcframework */; };
-		3C3D5BE524E4BBDF00F17659 /* libc++.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C3D5BE424E4BBDF00F17659 /* libc++.tbd */; };
 		3CB1E29520A7F61C0034A2C2 /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 3CB1E29420A7F61C0034A2C2 /* Launch Screen.storyboard */; };
 		E42BFC801951B14500F774B3 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E42BFC7F1951B14500F774B3 /* Main.storyboard */; };
 		E42BFC831951B89F00F774B3 /* ThreadInfo.m in Sources */ = {isa = PBXBuildFile; fileRef = E42BFC821951B89F00F774B3 /* ThreadInfo.m */; };
@@ -77,7 +76,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3C3D5BE524E4BBDF00F17659 /* libc++.tbd in Frameworks */,
 				3C3D5BE124E4BBB000F17659 /* NewNode.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
