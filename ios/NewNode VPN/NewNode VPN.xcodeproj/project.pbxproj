@@ -12,7 +12,6 @@
 		3C3C05A822DD3CB800C68AF5 /* LLAnimationManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 3C3C05A422DD3CB800C68AF5 /* LLAnimationManager.m */; };
 		3C3C05A922DD3CB800C68AF5 /* LLEyesLayer.m in Sources */ = {isa = PBXBuildFile; fileRef = 3C3C05A522DD3CB800C68AF5 /* LLEyesLayer.m */; };
 		3C3C05AA22DD3CB800C68AF5 /* LLSwitch.m in Sources */ = {isa = PBXBuildFile; fileRef = 3C3C05A722DD3CB800C68AF5 /* LLSwitch.m */; };
-		3C3D5BDC24E4566500F17659 /* libc++.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C3D5BDB24E4566500F17659 /* libc++.tbd */; };
 		3C3D5BDD24E457ED00F17659 /* NewNode.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C3D5BCD24E3BA1E00F17659 /* NewNode.xcframework */; };
 		3C50125422D4AF5000F8487C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C50125322D4AF5000F8487C /* AppDelegate.swift */; };
 		3C50125622D4AF5000F8487C /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C50125522D4AF5000F8487C /* ViewController.swift */; };
@@ -96,7 +95,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3C3D5BDC24E4566500F17659 /* libc++.tbd in Frameworks */,
 				3C3C057C22D6192600C68AF5 /* NetworkExtension.framework in Frameworks */,
 				3C3D5BDD24E457ED00F17659 /* NewNode.xcframework in Frameworks */,
 			);
