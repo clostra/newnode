@@ -34,7 +34,6 @@
 
 /* Begin PBXFileReference section */
 		3C3D5BE024E4BBB000F17659 /* NewNode.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = NewNode.xcframework; path = ../../../NewNode.xcframework; sourceTree = "<group>"; };
-		3C3D5BE424E4BBDF00F17659 /* libc++.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = "libc++.tbd"; path = "usr/lib/libc++.tbd"; sourceTree = SDKROOT; };
 		3CB1E29420A7F61C0034A2C2 /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
 		3CB1E29D20A951150034A2C2 /* NewNode.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NewNode.framework; path = ../../../NewNode.framework; sourceTree = "<group>"; };
 		E42BFC7F1951B14500F774B3 /* Main.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
@@ -86,7 +85,6 @@
 		3CB1E28F20A58FBA0034A2C2 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				3C3D5BE424E4BBDF00F17659 /* libc++.tbd */,
 				3C3D5BE024E4BBB000F17659 /* NewNode.xcframework */,
 				3CB1E29D20A951150034A2C2 /* NewNode.framework */,
 			);
