@@ -58,7 +58,7 @@ See [`ios/examples/CustomHTTPProtocol`](https://github.com/clostra/newnode/tree/
 
 Clone this repo and build NewNode:
 ```bash
-git clone --recurse-submodules git@github.com:clostra/newnode.git
+git clone --recurse-submodules https://github.com/clostra/newnode.git
 cd newnode
 ./build.sh
 ```
