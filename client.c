@@ -850,6 +850,23 @@ void direct_submit_request(proxy_request *p);
 void direct_chunked_cb(evhttp_request *req, void *arg);
 void proxy_submit_request(proxy_request *p);
 
+void proxy_set_length(proxy_request *p, uint64_t total_length)
+{
+    uint64_t old_length = num_chunks(p);
+    uint64_t old_chunks = DIV_ROUND_UP(old_length, LEAF_CHUNK_SIZE);
+    p->total_length = total_length;
+    if (!p->have_bitfield) {
+        p->have_bitfield = calloc(1, num_chunks(p));
+        return;
+    }
+    bool *have_bitfield = realloc(p->have_bitfield, num_chunks(p));
+    if (num_chunks(p) > old_chunks && have_bitfield) {
+        uint64_t diff = num_chunks(p) - old_chunks;
+        bzero(&have_bitfield[old_chunks], diff);
+    }
+    p->have_bitfield = have_bitfield;
+}
+
 int proxy_setup_range(proxy_request *p, evhttp_request *req, chunked_range *range)
 {
     if (p->cache_file == -1) {
@@ -925,11 +942,7 @@ int proxy_setup_range(proxy_request *p, evhttp_request *req, chunked_range *rang
         return -1;
     }
 
-    p->total_length = total_length;
-
-    if (!p->have_bitfield) {
-        p->have_bitfield = calloc(1, num_chunks(p));
-    }
+    proxy_set_length(p, total_length);
 
     return 1;
 }
@@ -1231,8 +1244,7 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
         }
 
         if (p->chunked) {
-            p->total_length = p->byte_playhead;
-            p->have_bitfield = realloc(p->have_bitfield, num_chunks(p));
+            proxy_set_length(p, p->byte_playhead);
             continue;
         }
 
@@ -1295,11 +1307,10 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
     if (p->chunked) {
         size_t buffered = d->range.chunk_buffer ? evbuffer_get_length(d->range.chunk_buffer) : 0;
         if (!d->range.chunk_index) {
-            p->total_length = evbuffer_get_length(p->header_buf) + buffered;
+            proxy_set_length(p, evbuffer_get_length(p->header_buf) + buffered);
         } else {
-            p->total_length = p->byte_playhead + buffered;
+            proxy_set_length(p, p->byte_playhead + buffered);
         }
-        p->have_bitfield = realloc(p->have_bitfield, num_chunks(p));
         p->chunked = false;
     }
 
