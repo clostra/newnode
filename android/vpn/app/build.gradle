@@ -12,12 +12,30 @@ android {
         }
     }
 
+    signingConfigs {
+       release {
+           storeFile file(RELEASE_STORE_FILE)
+           storePassword RELEASE_STORE_PASSWORD
+           keyAlias RELEASE_KEY_ALIAS
+           keyPassword RELEASE_KEY_PASSWORD
+           v1SigningEnabled true
+           v2SigningEnabled true
+       }
+    }
+
     defaultConfig {
         applicationId "com.clostra.newnode.vpn"
         minSdkVersion 29
         targetSdkVersion 29
-        versionCode 102
-        versionName "1.0.2"
+
+        new File('../../constants.h').eachLine { line ->
+            def matcher = line =~ /VERSION "(.*)"/
+            if (matcher) {
+                versionName matcher[0][1]
+                return true
+            }
+        }
+        versionCode versionName.replace(".", "").toInteger()
     }
 
     compileOptions {
@@ -29,6 +47,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+            signingConfig signingConfigs.release
         }
     }
 }
