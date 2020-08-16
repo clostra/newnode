@@ -45,7 +45,7 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.d(TAG, "onStartCommand: " + intent.getAction());
+        Log.d(TAG, "onStartCommand: " + intent != null ? intent.getAction() : "null");
         if (intent != null && ACTION_DISCONNECT.equals(intent.getAction())) {
             disconnect();
             return START_NOT_STICKY;
