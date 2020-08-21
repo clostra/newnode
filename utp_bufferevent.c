@@ -294,7 +294,7 @@ bufferevent* utp_socket_create_bev(event_base *base, utp_socket *s)
     int fds[2];
     int r = socketpair(PF_LOCAL, SOCK_STREAM, 0, fds);
     if (r) {
-        return r;
+        return NULL;
     }
     evutil_make_socket_closeonexec(fds[0]);
     evutil_make_socket_nonblocking(fds[0]);
