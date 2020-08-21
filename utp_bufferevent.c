@@ -274,7 +274,10 @@ utp_bufferevent* utp_bufferevent_new(event_base *base, utp_socket *s, int fd)
 int utp_socket_create_fd(event_base *base, utp_socket *s)
 {
     int fds[2];
-    socketpair(PF_LOCAL, SOCK_STREAM, 0, fds);
+    int r = socketpair(PF_LOCAL, SOCK_STREAM, 0, fds);
+    if (r) {
+        return r;
+    }
     evutil_make_socket_closeonexec(fds[0]);
     evutil_make_socket_nonblocking(fds[0]);
     utp_bufferevent *u = utp_bufferevent_new(base, s, fds[0]);
@@ -289,7 +292,10 @@ int utp_socket_create_fd(event_base *base, utp_socket *s)
 bufferevent* utp_socket_create_bev(event_base *base, utp_socket *s)
 {
     int fds[2];
-    socketpair(PF_LOCAL, SOCK_STREAM, 0, fds);
+    int r = socketpair(PF_LOCAL, SOCK_STREAM, 0, fds);
+    if (r) {
+        return r;
+    }
     evutil_make_socket_closeonexec(fds[0]);
     evutil_make_socket_nonblocking(fds[0]);
     utp_bufferevent *u = utp_bufferevent_new(base, s, fds[0]);
