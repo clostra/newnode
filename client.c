@@ -479,7 +479,6 @@ void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
 void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
 {
     network *n = (network*)closure;
-    debug("dht_event_callback event:%d\n", event);
 
     peer_array **peer_list = NULL;
 
@@ -512,6 +511,8 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
     } else if (event == DHT_EVENT_VALUES6) {
         debug("dht_event_callback v6 num_peers:%zu\n", num_peers);
         add_v6_addresses(n, peer_list, peers, num_peers);
+    } else {
+        debug("dht_event_callback event:%d\n", event);
     }
 
     if (o_debug >= 2) {
@@ -763,7 +764,7 @@ void proxy_direct_requests_cancel(proxy_request *p)
 void peer_request_cancel(peer_request *r)
 {
     if (r->req) {
-        debug("%s:%d p:%p r:%p\n", __func__, __LINE__, r->p, r);
+        debug("r:%p %s:%d p:%p\n", r, __func__, __LINE__, r->p);
         evhttp_cancel_request(r->req);
         r->req = NULL;
     }
@@ -771,6 +772,7 @@ void peer_request_cancel(peer_request *r)
         abort_connect(&r->r);
     } else {
         peer_disconnect(r->pc);
+        debug("r:%p %s:%d r->pc = NULL\n", r, __func__, __LINE__);
         r->pc = NULL;
     }
     if (r->range.chunk_buffer) {
@@ -1653,16 +1655,20 @@ bool peer_request_process_chunks(peer_request *r, evhttp_request *req)
                 }
                 evhttp_send_reply_end(p->server_req);
                 p->server_req = NULL;
-                // we cannot reuse the connection until we know the reqeust has finished the reply
-                for (size_t i = 0; i < lenof(p->requests); i++) {
-                    peer_request *pr = &p->requests[i];
-                    // give them a tiny grace period
-                    if (pr->req && (pr->range.chunk_index * LEAF_CHUNK_SIZE) + 1024 > pr->range.end) {
-                        evhttp_request_set_chunked_cb(pr->req, NULL);
-                        continue;
-                    }
-                    peer_request_cancel(pr);
+            }
+
+            // we cannot reuse the connection until we know the reqeust has finished the reply
+            for (size_t i = 0; i < lenof(p->requests); i++) {
+                peer_request *pr = &p->requests[i];
+                if (!pr->req) {
+                    continue;
                 }
+                // give them a tiny grace period
+                if ((pr->range.chunk_index * LEAF_CHUNK_SIZE) + 1024 > pr->range.end) {
+                    evhttp_request_set_chunked_cb(pr->req, NULL);
+                    continue;
+                }
+                peer_request_cancel(pr);
             }
 
             //join_url_swarm(p->n, uri);
@@ -2180,7 +2186,7 @@ void proxy_submit_request(proxy_request *p)
     queue_request(p->n, &r->r, ^bool(peer *peer) {
         return filter_peer(peer, p->server_req, via);
     }, ^(peer_connection *pc) {
-        debug("%s:%d peer:%p\n", __func__, __LINE__, pc->peer);
+        debug("%s:%d r:%p peer:%p\n", __func__, __LINE__, r, pc->peer);
         r->pc = pc;
         peer_submit_request_on_con(r, r->pc->evcon);
     });
@@ -2391,7 +2397,7 @@ void submit_trace_request(network *n)
     t->n = n;
     connect_more_injectors(n, true);
     queue_request(n, &t->r, NULL, ^(peer_connection *pc) {
-        debug("%s:%d peer:%p\n", __func__, __LINE__, pc->peer);
+        debug("%s:%d t:%p peer:%p\n", __func__, __LINE__, t, pc->peer);
         t->pc = pc;
         trace_submit_request_on_con(t, t->pc->evcon);
     });
@@ -2845,7 +2851,7 @@ void connect_peer(connect_req *c, bool injector_preference)
     queue_request(c->n, &c->r, ^bool(peer *peer) {
         return filter_peer(peer, c->server_req, via);
     }, ^(peer_connection *pc) {
-        debug("c:%p %s on_connect\n", c, __func__);
+        debug("%s:%d c:%p peer:%p\n", __func__, __LINE__, c, pc->peer);
         assert(!c->pc);
         assert(!c->r.on_connect);
 
