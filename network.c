@@ -100,7 +100,7 @@ int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, sockl
 
     ssize_t r = sendto(fd, buf, len, 0, sa, salen);
     if (r < 0 && errno != EHOSTUNREACH) {
-        debug("sendto %s failed %d %s\n", sockaddr_str(sa), errno, strerror(errno));
+        debug("sendto(%zu, %s) failed %d %s\n", len, sockaddr_str(sa), errno, strerror(errno));
     }
     return r;
 }
