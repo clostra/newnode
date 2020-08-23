@@ -74,16 +74,3 @@ void hexdump(const void *addr, size_t len)
 
     fprintf(stderr, "  %s\n", buff);
 }
-
-#ifndef ANDROID
-void print_trace()
-{
-    void *array[100];
-    int size = backtrace(array, sizeof(array) / sizeof(array[0]));
-    char **strings = backtrace_symbols(array, size);
-    for (int i = 0; i < size; i++) {
-        printf("%s\n", strings[i]);
-    }
-    free(strings);
-}
-#endif
