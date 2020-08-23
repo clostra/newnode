@@ -562,6 +562,13 @@ void set_max_nofile()
     debug("getrlimit: r:%d cur:%zu max:%zu\n", r, (size_t)nofile.rlim_cur, (size_t)nofile.rlim_max);
 }
 
+uint64_t us_clock()
+{
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
+}
+
 void network_free(network *n)
 {
     utp_destroy(n->utp);
