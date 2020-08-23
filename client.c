@@ -214,13 +214,6 @@ TAILQ_HEAD(, pending_request) pending_requests;
 
 void save_peers(network *n);
 
-uint64_t us_clock()
-{
-    timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
-}
-
 int mkpath(char *file_path)
 {
     for (char *p = strchr(file_path + 1, '/'); p; p = strchr(p + 1, '/')) {
