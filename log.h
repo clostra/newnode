@@ -28,6 +28,5 @@ void bugsnag_log(const char *fmt, ...);
 void die(const char *fmt, ...);
 void pdie(const char *err);
 void hexdump(const void *p, size_t len);
-void print_trace(void);
 
 #endif // __LOG_H__
