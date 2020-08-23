@@ -23,6 +23,7 @@
 #include "constants.h"
 #include "bev_splice.h"
 #include "merkle_tree.h"
+#include "stall_detector.h"
 #include "utp_bufferevent.h"
 #include "http.h"
 
@@ -599,6 +600,8 @@ static_assert(20 >= crypto_generichash_BYTES_MIN, "dht hash must fit in generich
     evhttp_set_gencb(n->http, http_request_cb, n);
     evhttp_bind_socket_with_handle(n->http, "127.0.0.1", port);
     printf("listening on TCP: %s:%d\n", "127.0.0.1", port);
+
+    stall_detector(n->evbase);
 
     return network_loop(n);
 }
