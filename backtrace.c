@@ -16,17 +16,23 @@
 volatile bool g_backtrace_occurred;
 volatile pthread_t g_backtrace_thread;
 
+void *backtrace_array[100];
+size_t backtrace_array_size;
 
 #ifndef ANDROID
-void print_trace_skip(int skip)
+void print_backtrace_array(void *array, size_t size)
 {
-    void *array[100];
-    size_t size = backtrace(array, sizeof(array) / sizeof(array[0]));
     char **strings = backtrace_symbols(array, size);
-    for (size_t i = 1 + skip; i < size; i++) {
+    for (size_t i = 0; i < size; i++) {
         printf("%s\n", strings[i]);
     }
     free(strings);
+}
+void print_trace_skip(int skip)
+{
+    void *array[100];
+    size_t size = backtrace(array, lenof(array));
+    print_backtrace_array(&array[skip], size - skip);
 }
 #else
 void print_trace_skip(int skip)
@@ -45,8 +51,7 @@ static void backtrace_signal_handler(int signum, siginfo_t *info, void *context)
     if (!pthread_equal(g_backtrace_thread, pthread_self())) {
         return;
     }
-    // backtrace_signal_handler, _sigtramp
-    print_trace_skip(2);
+    backtrace_array_size = backtrace(backtrace_array, lenof(backtrace_array));
     g_backtrace_occurred = true;
 }
 
@@ -70,4 +75,8 @@ void backtrace_thread(pthread_t thread)
     while (!g_backtrace_occurred) {
         usleep(10 * 1000);
     }
+
+    // backtrace_signal_handler, _sigtramp
+    int skip = MIN(backtrace_array_size, 2);
+    print_backtrace_array(&backtrace_array[skip], backtrace_array_size - skip);
 }
