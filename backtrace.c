@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "backtrace.h"
+#include "network.h"
 
 
 volatile bool g_backtrace_occurred;
@@ -51,6 +52,11 @@ static void backtrace_signal_handler(int signum, siginfo_t *info, void *context)
 
 void backtrace_thread(pthread_t thread)
 {
+    // pre-call these to make sure dlopen is not called in the signal handler
+    void *dummy_trace_array[1];
+    size_t dummy_trace_size = backtrace(dummy_trace_array, lenof(dummy_trace_array));
+    backtrace_symbols(dummy_trace_array, dummy_trace_size);
+
     g_backtrace_occurred = false;
     g_backtrace_thread = thread;
 
