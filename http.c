@@ -235,8 +235,12 @@ uint64 utp_on_accept(utp_callback_arguments *a)
     ddebug("utp_on_accept %p %s\n", a->socket, sockaddr_str((const sockaddr*)&addr));
     add_sockaddr(n, (sockaddr *)&addr, addrlen);
     int fd = utp_socket_create_fd(n->evbase, a->socket);
+    if (fd < 0) {
+        debug("%s failed %d %s\n", __func__, errno, strerror(errno));
+        return 0;
+    }
     evutil_make_socket_closeonexec(fd);
     evutil_make_socket_nonblocking(fd);
     evhttp_get_request(n->http, fd, (sockaddr *)&addr, addrlen);
-    return 0;
+    return 1;
 }
