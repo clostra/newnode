@@ -237,6 +237,7 @@ uint64 utp_on_accept(utp_callback_arguments *a)
     int fd = utp_socket_create_fd(n->evbase, a->socket);
     if (fd < 0) {
         debug("%s failed %d %s\n", __func__, errno, strerror(errno));
+        utp_close(a->socket);
         return 0;
     }
     evutil_make_socket_closeonexec(fd);
