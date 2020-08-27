@@ -44,7 +44,7 @@ function build_android {
     cd libutp
     if [ ! -f $TRIPLE/libutp.a ]; then
         make clean
-        OPT=-O0 CPPFLAGS="-fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" make -j3 libutp.a
+        OPT=-O2 CPPFLAGS="-fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" make -j3 libutp.a
         mkdir $TRIPLE
         mv libutp.a $TRIPLE
     fi

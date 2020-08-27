@@ -20,7 +20,7 @@ function build_apple {
     cd libutp
     if [ ! -f $TRIPLE/libutp.a ]; then
         make clean
-        CPPFLAGS=$CFLAGS make -j3 libutp.a
+        OPT=-O2 CPPFLAGS=$CFLAGS make -j3 libutp.a
         mkdir $TRIPLE
         mv libutp.a $TRIPLE
     fi
