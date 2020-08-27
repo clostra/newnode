@@ -33,6 +33,7 @@ typedef struct {
     evhttp_request *server_req;
     evbuffer *pending_output;
     evhttp_connection *evcon;
+    uint64 start_time;
 
     // XXX: remove after no X-Sign clients exist
     crypto_generichash_state content_state;
@@ -60,6 +61,11 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
 void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
 {
     dht_ping_node(addr, addrlen);
+}
+
+double pdelta(proxy_request *p)
+{
+    return (double)(us_clock() - p->start_time) / 1000.0;
 }
 
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri);
@@ -94,7 +100,7 @@ void request_cleanup(proxy_request *p)
 void request_done_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("p:%p request_done_cb %p\n", p, req);
+    debug("p:%p (%.2fms) request_done_cb %p\n", p, pdelta(p), req);
     if (!req) {
         return;
     }
@@ -207,7 +213,7 @@ void hash_headers(evkeyvalq *in, crypto_generichash_state *content_state)
 int header_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("p:%p header_cb %d %s\n", p, req->response_code, req->response_code_line);
+    debug("p:%p (%.2fms) header_cb %d %s\n", p, pdelta(p), req->response_code, req->response_code_line);
 
     int klass = req->response_code / 100;
 
@@ -233,7 +239,7 @@ int header_cb(evhttp_request *req, void *arg)
 void error_cb(evhttp_request_error error, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("p:%p error_cb %d\n", p, error);
+    debug("p:%p (%.2fms) error_cb %d\n", p, pdelta(p), error);
     if (p->server_req) {
         switch (error) {
         case EVREQ_HTTP_TIMEOUT: evhttp_send_error(p->server_req, 504, "Gateway Timeout"); break;
@@ -254,6 +260,7 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     proxy_request *p = alloc(proxy_request);
     p->n = n;
     p->server_req = server_req;
+    p->start_time = us_clock();
     p->evcon = evcon;
     p->m = alloc(merkle_tree);
     evhttp_request *client_req = evhttp_request_new(request_done_cb, p);
@@ -281,7 +288,14 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
 typedef struct {
     evhttp_request *server_req;
     bufferevent *direct;
+    uint64 start_time;
 } connect_req;
+
+
+double cdelta(connect_req *c)
+{
+    return (double)(us_clock() - c->start_time) / 1000.0;
+}
 
 void connect_cleanup(connect_req *c, int err)
 {
@@ -321,7 +335,7 @@ void connect_cleanup(connect_req *c, int err)
         content_sign(&sig, content_hash);
         size_t out_len;
         char *b64_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
-        debug("returning sig for %s %d %s %s\n", evhttp_request_get_uri(c->server_req), code, reason, b64_sig);
+        debug("c:%p (%.2fms) returning sig for %s %d %s %s\n", c, cdelta(c), evhttp_request_get_uri(c->server_req), code, reason, b64_sig);
 
         // XXX: remove after no X-Sign clients exist
         overwrite_header(c->server_req, "X-Sign", b64_sig);
@@ -348,7 +362,7 @@ void connected(connect_req *c, bufferevent *other)
 void connect_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p connect_event_cb bev:%p req:%s events:0x%x %s\n", c, bev, evhttp_request_get_uri(c->server_req), events, bev_events_to_str(events));
+    debug("c:%p (%.2fms) connect_event_cb bev:%p req:%s events:0x%x %s\n", c, cdelta(c), bev, evhttp_request_get_uri(c->server_req), events, bev_events_to_str(events));
 
     if (events & BEV_EVENT_TIMEOUT) {
         connect_cleanup(c, ETIMEDOUT);
@@ -367,7 +381,7 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
 void close_cb(evhttp_connection *evcon, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p close_cb\n", c);
+    debug("c:%p (%.2fms) close_cb\n", c, cdelta(c));
     evhttp_connection_set_closecb(evcon, NULL, NULL);
     c->server_req = NULL;
     if (c->direct) {
@@ -399,6 +413,7 @@ void connect_request(network *n, evhttp_request *req)
 
     connect_req *c = alloc(connect_req);
     c->server_req = req;
+    c->start_time = us_clock();
 
     evhttp_connection_set_closecb(req->evcon, close_cb, c);
 
