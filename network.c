@@ -100,7 +100,16 @@ int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, sockl
 
     ssize_t r = sendto(fd, buf, len, 0, sa, salen);
     if (r < 0 && errno != EHOSTUNREACH) {
-        debug("sendto(%zu, %s) failed %d %s\n", len, sockaddr_str(sa), errno, strerror(errno));
+        if (errno == ECONNREFUSED || errno == ECONNRESET ||
+            errno == EHOSTUNREACH || errno == ENETUNREACH) {
+#ifdef __linux__
+            // ugg, libevent doesn't tell us about POLLERR
+            // https://github.com/libevent/libevent/issues/495
+            icmp_handler(n);
+#endif
+        } else {
+            debug("sendto(%zu, %s) failed %d %s\n", len, sockaddr_str(sa), errno, strerror(errno));
+        }
     }
     return r;
 }
@@ -242,10 +251,18 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
         uint8_t buf[64 * 1024 + 1];
         ssize_t len = recvfrom(n->fd, buf, sizeof(buf), 0, (sockaddr *)&src_addr, &addrlen);
         if (len < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNREFUSED ||
-                errno == ECONNRESET || errno == EHOSTUNREACH || errno == ENETUNREACH) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 utp_issue_deferred_acks(n->utp);
                 break;
+            }
+            if (errno == ECONNREFUSED || errno == ECONNRESET ||
+                errno == EHOSTUNREACH || errno == ENETUNREACH) {
+#ifdef __linux__
+                // ugg, libevent doesn't tell us about POLLERR
+                // https://github.com/libevent/libevent/issues/495
+                icmp_handler(n);
+                break;
+#endif
             }
             debug("%s recvfrom error %d %s\n", __func__, errno, strerror(errno));
             if (errno == ENOTCONN) {
