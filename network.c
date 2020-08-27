@@ -102,11 +102,7 @@ int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, sockl
     if (r < 0 && errno != EHOSTUNREACH) {
         if (errno == ECONNREFUSED || errno == ECONNRESET ||
             errno == EHOSTUNREACH || errno == ENETUNREACH) {
-#ifdef __linux__
-            // ugg, libevent doesn't tell us about POLLERR
-            // https://github.com/libevent/libevent/issues/495
-            icmp_handler(n);
-#endif
+            // ICMP
         } else {
             debug("sendto(%zu, %s) failed %d %s\n", len, sockaddr_str(sa), errno, strerror(errno));
         }

@@ -181,7 +181,7 @@ bool dht_process_udp(dht *d, const uint8_t *buffer, size_t len, const sockaddr *
     return r != -1;
 }
 
-bool dht_process_icmp(dht *d, const uint8_t *buffer, size_t len, const sockaddr *to, socklen_t tolen, time_t *tosleep)
+bool dht_process_icmp_error(dht *d, const uint8_t *buffer, size_t len, const sockaddr *to, socklen_t tolen)
 {
     // TODO: parse the buffer, cancel that request
     return false;

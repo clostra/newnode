@@ -56,9 +56,6 @@ void icmp_handler(network *n)
 
         socklen_t remote_len = sockaddr_get_length((const sockaddr *)&remote);
 
-        time_t tosleep;
-        dht_process_icmp(n->dht, (const byte*)&msg, sizeof(msg), (const sockaddr *)&remote, remote_len, &tosleep);
-
         for (cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
             if (cmsg->cmsg_level != SOL_IP && cmsg->cmsg_level != SOL_IPV6) {
                 debug("Unhandled errqueue level: %d\n", cmsg->cmsg_level);
@@ -119,9 +116,11 @@ void icmp_handler(network *n)
             if (e->ee_type == 3 && e->ee_code == 4) {
                 ddebug("ICMP type 3, code 4: Fragmentation error, discovered MTU %d\n", e->ee_info);
                 utp_process_icmp_fragmentation(n->utp, vec_buf, len, (const sockaddr *)&remote, remote_len, e->ee_info);
+                // XXX: can dht do anything with fragmentation?
             } else {
                 ddebug("ICMP type %d, code %d\n", e->ee_type, e->ee_code);
                 utp_process_icmp_error(n->utp, vec_buf, len, (const sockaddr *)&remote, remote_len);
+                dht_process_icmp_error(n->dht, vec_buf, len, (const sockaddr *)&remote, remote_len);
             }
         }
     }
