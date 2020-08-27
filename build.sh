@@ -34,7 +34,7 @@ LIBSODIUM=libsodium/native/lib/libsodium.a
 
 
 cd libutp
-test -f libutp.a || (make clean && OPT=-O0 CPPFLAGS="-fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" make -j3 libutp.a)
+test -f libutp.a || (make clean && OPT=-O2 CPPFLAGS="-fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" make -j3 libutp.a)
 cd ..
 LIBUTP_CFLAGS=-Ilibutp
 LIBUTP=libutp/libutp.a
