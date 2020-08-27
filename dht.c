@@ -40,7 +40,7 @@ void dht_filter_event_callback(void *closure, int event, const unsigned char *in
             socklen_t sa_len = sockaddr_get_length(n->dht->peer_sa);
             blacklist = realloc(blacklist, blacklist_len * sizeof(sockaddr_storage*));
             blacklist[blacklist_len - 1] = memdup(n->dht->peer_sa, sa_len);
-            dht_blacklist_address(n->dht->peer_sa, sa_len);
+            dht_remove_address(n->dht->peer_sa, sa_len);
         }
         if (event == DHT_EVENT_SEARCH_DONE) {
             n->dht->filter_running = false;
@@ -183,7 +183,7 @@ bool dht_process_udp(dht *d, const uint8_t *buffer, size_t len, const sockaddr *
 
 bool dht_process_icmp_error(dht *d, const uint8_t *buffer, size_t len, const sockaddr *to, socklen_t tolen)
 {
-    // TODO: parse the buffer, cancel that request
+    dht_remove_address(to, tolen);
     return false;
 }
 
