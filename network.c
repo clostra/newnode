@@ -39,6 +39,10 @@
 
 uint64 utp_on_firewall(utp_callback_arguments *a)
 {
+    network *n = (network*)utp_context_get_userdata(a->context);
+    if (evhttp_get_connection_count(n->http) > 100000) {
+        return 1;
+    }
     return 0;
 }
 
@@ -664,6 +668,7 @@ network* network_setup(char *address, port_t port)
     // don't add any content type automatically
     evhttp_set_default_content_type(n->http, NULL);
     evhttp_set_bevcb(n->http, create_bev, NULL);
+    evhttp_set_timeout(n->http, 50);
 
     if (evthread_make_base_notifiable(n->evbase)) {
         fprintf(stderr, "evthread_make_base_notifiable failed\n");
