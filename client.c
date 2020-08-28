@@ -2185,10 +2185,10 @@ void proxy_submit_request(proxy_request *p)
     });
 }
 
-void server_evcon_close_cb(evhttp_connection *evcon, void *ctx)
+void proxy_evcon_close_cb(evhttp_connection *evcon, void *ctx)
 {
     proxy_request *p = (proxy_request*)ctx;
-    debug("p:%p server_evcon_close_cb\n", p);
+    debug("p:%p evcon:%p (%.2fms) %s\n", p, evcon, pdelta(p), __func__);
     evhttp_connection_set_closecb(evcon, NULL, NULL);
     p->server_req = NULL;
     p->dont_free = true;
@@ -2231,7 +2231,7 @@ void submit_request(network *n, evhttp_request *server_req)
 
     debug("p:%p new request %s\n", p, p->uri);
 
-    evhttp_connection_set_closecb(p->server_req->evcon, server_evcon_close_cb, p);
+    evhttp_connection_set_closecb(p->server_req->evcon, proxy_evcon_close_cb, p);
 
     const char *request_header_whitelist[] = {"Referer", "Origin", "Host", "Via", "Range", "Accept-Encoding"};
     for (uint i = 0; i < lenof(request_header_whitelist); i++) {
@@ -2822,7 +2822,7 @@ void connect_direct_event_cb(bufferevent *bev, short events, void *ctx)
 void connect_evcon_close_cb(evhttp_connection *evcon, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p connect_evcon_close_cb\n", c);
+    debug("c:%p evcon:%p %s\n", c, evcon, __func__);
     evhttp_connection_set_closecb(evcon, NULL, NULL);
     c->server_req = NULL;
     c->dont_free = true;
