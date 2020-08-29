@@ -1760,7 +1760,7 @@ void stats_changed()
         return;
     }
     debug("starting stats timer\n");
-    stats_report_timer = timer_start(g_n, 1000, ^{
+    stats_report_timer = timer_start(g_n, 10000, ^{
         debug("reporting stats\n");
         stats_report_timer = NULL;
         g_stats_changed = false;
