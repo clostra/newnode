@@ -243,7 +243,7 @@ void ubev_write_cb(bufferevent *bev, void *ctx)
 void ubev_event_cb(bufferevent *bev, short events, void *ctx)
 {
     utp_bufferevent* u = (utp_bufferevent*)ctx;
-    debug("%s %p events:0x%x %s\n", __func__, u->utp, events, bev_events_to_str(events));
+    //debug("%s %p events:0x%x %s\n", __func__, u->utp, events, bev_events_to_str(events));
     if (!(bufferevent_get_enabled(bev) & EV_READ)) {
         if (u->utp && !evbuffer_get_length(bufferevent_get_input(u->bev))) {
             utp_shutdown(u->utp, SHUT_WR);
