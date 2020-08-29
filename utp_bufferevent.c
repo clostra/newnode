@@ -249,6 +249,13 @@ void ubev_event_cb(bufferevent *bev, short events, void *ctx)
             utp_shutdown(u->utp, SHUT_WR);
         }
     }
+    if (events & BEV_EVENT_EOF) {
+        // XXX: this is technically wrong. if no writing error has occurred we can't tell this from a shutdown
+        u->bev_eof = true;
+        if (!evbuffer_get_length(bufferevent_get_output(u->bev))) {
+            bufferevent_disable(u->bev, EV_WRITE);
+        }
+    }
     if (!(bufferevent_get_enabled(bev) & EV_WRITE)) {
         evbuffer_clear(bufferevent_get_output(u->bev));
         if (u->utp) {

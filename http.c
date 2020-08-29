@@ -221,16 +221,6 @@ void return_connection(evhttp_connection *evcon)
     evhttp_connection_free(evcon);
 }
 
-
-void evhttp_close_cb(evhttp_connection *evcon, void *ctx)
-{
-    utp_socket *socket = (utp_socket*)ctx;
-    ddebug("%s:%d\n", __func__, __LINE__);
-    // libevent doesn't notify write eof until a write occurs. so utp_bufferevent keeps the utp connection open and waiting.
-    // close it manually
-    utp_close(socket);
-}
-
 uint64 utp_on_accept(utp_callback_arguments *a)
 {
     network *n = (network*)utp_context_get_userdata(a->context);
@@ -252,7 +242,6 @@ uint64 utp_on_accept(utp_callback_arguments *a)
     }
     evutil_make_socket_closeonexec(fd);
     evutil_make_socket_nonblocking(fd);
-    evhttp_connection *evcon = evhttp_get_request(n->http, fd, (sockaddr *)&addr, addrlen);
-    evhttp_connection_set_closecb(evcon, evhttp_close_cb, a->socket);
+    evhttp_get_request(n->http, fd, (sockaddr *)&addr, addrlen);
     return 1;
 }
