@@ -51,7 +51,6 @@ void ubev_utp_closed(utp_bufferevent *u)
 
 void ubev_utp_close(utp_bufferevent *u)
 {
-    debug("ubev_utp_close u:%p utp:%p\n", u, u->utp);
     utp_set_userdata(u->utp, NULL);
     utp_close(u->utp);
     ubev_utp_closed(u);
