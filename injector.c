@@ -34,6 +34,7 @@ typedef struct {
     evbuffer *pending_output;
     evhttp_connection *evcon;
     uint64 start_time;
+    evhttp_request *req;
     merkle_tree *m;
 } proxy_request;
 
@@ -82,9 +83,11 @@ void content_sign(content_sig *sig, const uint8_t *content_hash)
 
 void request_cleanup(proxy_request *p)
 {
+    if (p->req) {
+        return;
+    }
     if (p->evcon) {
         evhttp_connection_free(p->evcon);
-        p->evcon = NULL;
     }
     if (p->pending_output) {
         evbuffer_free(p->pending_output);
@@ -99,6 +102,10 @@ void request_done_cb(evhttp_request *req, void *arg)
     debug("p:%p (%.2fms) request_done_cb %p\n", p, pdelta(p), req);
     if (!req) {
         return;
+    }
+    p->req = NULL;
+    if (p->server_req && p->server_req->evcon) {
+        evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
     }
     if (req->response_code != 0 && p->server_req) {
         debug("p:%p server_request_done_cb: %s\n", p, evhttp_request_get_uri(p->server_req));
@@ -214,7 +221,11 @@ void error_cb(evhttp_request_error error, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p (%.2fms) error_cb %d\n", p, pdelta(p), error);
+    p->req = NULL;
     if (p->server_req) {
+        if (p->server_req->evcon) {
+            evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
+        }
         switch (error) {
         case EVREQ_HTTP_TIMEOUT: evhttp_send_error(p->server_req, 504, "Gateway Timeout"); break;
         case EVREQ_HTTP_EOF: evhttp_send_error(p->server_req, 502, "Bad Gateway (EOF)"); break;
@@ -229,6 +240,19 @@ void error_cb(evhttp_request_error error, void *arg)
     request_cleanup(p);
 }
 
+void proxy_evcon_close_cb(evhttp_connection *evcon, void *ctx)
+{
+    proxy_request *p = (proxy_request*)ctx;
+    debug("p:%p evcon:%p (%.2fms) %s\n", p, evcon, pdelta(p), __func__);
+    evhttp_connection_set_closecb(evcon, NULL, NULL);
+    p->server_req = NULL;
+    if (p->req) {
+        evhttp_cancel_request(p->req);
+        p->req = NULL;
+    }
+    request_cleanup(p);
+}
+
 void submit_request(network *n, evhttp_request *server_req, evhttp_connection *evcon, const evhttp_uri *uri)
 {
     proxy_request *p = alloc(proxy_request);
@@ -237,26 +261,29 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     p->start_time = us_clock();
     p->evcon = evcon;
     p->m = alloc(merkle_tree);
-    evhttp_request *client_req = evhttp_request_new(request_done_cb, p);
+
+    evhttp_connection_set_closecb(p->server_req->evcon, proxy_evcon_close_cb, p);
+
+    p->req = evhttp_request_new(request_done_cb, p);
     const char *request_header_whitelist[] = {"Referer", "Host", "Origin"};
     for (size_t i = 0; i < lenof(request_header_whitelist); i++) {
-        copy_header(p->server_req, client_req, request_header_whitelist[i]);
+        copy_header(p->server_req, p->req, request_header_whitelist[i]);
     }
 
     // TODO: range requests / partial content handling
-    evhttp_remove_header(client_req->output_headers, "Range");
-    evhttp_remove_header(client_req->output_headers, "If-Range");
+    evhttp_remove_header(p->req->output_headers, "Range");
+    evhttp_remove_header(p->req->output_headers, "If-Range");
 
-    overwrite_header(client_req, "User-Agent", "newnode/" VERSION);
+    overwrite_header(p->req, "User-Agent", "newnode/" VERSION);
 
-    evhttp_request_set_header_cb(client_req, header_cb);
-    evhttp_request_set_error_cb(client_req, error_cb);
+    evhttp_request_set_header_cb(p->req, header_cb);
+    evhttp_request_set_error_cb(p->req, error_cb);
 
     char request_uri[2048];
     const char *q = evhttp_uri_get_query(uri);
     snprintf(request_uri, sizeof(request_uri), "%s%s%s", evhttp_uri_get_path(uri), q?"?":"", q?q:"");
-    evhttp_make_request(evcon, client_req, p->server_req->type, request_uri);
-    debug("p:%p con:%p request submitted: %s\n", p, client_req->evcon, evhttp_request_get_uri(client_req));
+    evhttp_make_request(evcon, p->req, p->server_req->type, request_uri);
+    debug("p:%p con:%p request submitted: %s\n", p, p->req->evcon, evhttp_request_get_uri(p->req));
 }
 
 typedef struct {
