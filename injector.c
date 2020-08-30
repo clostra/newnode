@@ -348,7 +348,7 @@ void connect_cleanup(connect_req *c, int err)
 void connected(connect_req *c, bufferevent *other)
 {
     bufferevent *bev = evhttp_connection_detach_bufferevent(c->server_req->evcon);
-    evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
+    evhttp_connection_free(c->server_req->evcon);
     c->server_req = NULL;
     connect_cleanup(c, 0);
     evbuffer_add_printf(bufferevent_get_output(bev), "HTTP/1.0 200 Connection established\r\n\r\n");
