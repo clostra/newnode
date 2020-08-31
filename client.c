@@ -2612,7 +2612,7 @@ void connected(connect_req *c, bufferevent *other)
     if (c->server_req) {
         evhttp_connection *evcon = c->server_req->evcon;
         c->pending_bev = evhttp_connection_detach_bufferevent(evcon);
-        evhttp_connection_set_closecb(evcon, NULL, NULL);
+        evhttp_connection_free(evcon);
         c->server_req = NULL;
         debug("c:%p detach from server_req r:%p evcon:%p bev:%p\n", c, c->server_req, evcon, c->pending_bev);
 
