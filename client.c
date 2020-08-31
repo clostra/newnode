@@ -2614,7 +2614,7 @@ void connected(connect_req *c, bufferevent *other)
         c->pending_bev = evhttp_connection_detach_bufferevent(evcon);
         evhttp_connection_free(evcon);
         c->server_req = NULL;
-        debug("c:%p detach from server_req r:%p evcon:%p bev:%p\n", c, c->server_req, evcon, c->pending_bev);
+        debug("c:%p detach from server_req req:%p evcon:%p bev:%p\n", c, c->server_req, evcon, c->pending_bev);
 
         bufferevent_setcb(c->pending_bev, connect_server_read_cb, NULL, connect_server_event_cb, c);
         bufferevent_setcb(other, connect_other_read_cb, NULL, connect_other_event_cb, c);
@@ -2756,8 +2756,9 @@ int connect_header_cb(evhttp_request *req, void *arg)
     free(c->pc);
     c->pc = NULL;
 
-    debug("c:%p detach from client r:%p evcon:%p\n", c, req, req->evcon);
+    debug("c:%p detach from client req:%p evcon:%p\n", c, req, req->evcon);
     connected(c, evhttp_connection_detach_bufferevent(req->evcon));
+    evhttp_connection_free_on_completion(req->evcon);
     return -1;
 }
 
