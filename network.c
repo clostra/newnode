@@ -681,6 +681,12 @@ network* network_setup(char *address, port_t port)
         return NULL;
     }
 
+    if (sodium_init() < 0) {
+        fprintf(stderr, "sodium_init failed\n");
+        network_free(n);
+        return NULL;
+    }
+
     n->utp = utp_init(2);
     lsd_setup(n);
 
