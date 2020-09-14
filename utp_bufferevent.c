@@ -254,6 +254,8 @@ void ubev_event_cb(bufferevent *bev, short events, void *ctx)
         u->bev_eof = true;
         if (!evbuffer_get_length(bufferevent_get_output(u->bev))) {
             bufferevent_disable(u->bev, EV_WRITE);
+        } else {
+            debug("%s evhttp directed buffer not empty len:%lu\n", __func__, evbuffer_get_length(bufferevent_get_output(u->bev)));
         }
     }
     if (!(bufferevent_get_enabled(bev) & EV_WRITE)) {
