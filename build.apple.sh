@@ -107,7 +107,7 @@ LIBSODIUM=libsodium/libsodium-apple/ios-simulators/lib/libsodium.a
 BASEDIR="${XCODEDIR}/Platforms/iPhoneSimulator.platform/Developer"
 SDK="${BASEDIR}/SDKs/iPhoneSimulator.sdk"
 IOS_SIMULATOR_VERSION_MIN=${IOS_SIMULATOR_VERSION_MIN-"8.0.0"}
-ACTION=build
+ACTION=archive
 
 ARCH=x86_64
 CFLAGS="-arch $ARCH -isysroot ${SDK} -mios-simulator-version-min=${IOS_SIMULATOR_VERSION_MIN}"
