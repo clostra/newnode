@@ -106,7 +106,7 @@ LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-apple/ios-simulators/include
 LIBSODIUM=libsodium/libsodium-apple/ios-simulators/lib/libsodium.a
 BASEDIR="${XCODEDIR}/Platforms/iPhoneSimulator.platform/Developer"
 SDK="${BASEDIR}/SDKs/iPhoneSimulator.sdk"
-IOS_SIMULATOR_VERSION_MIN=9.0.0
+IOS_SIMULATOR_VERSION_MIN=9.3.0
 
 ARCH=x86_64
 CFLAGS="-arch $ARCH -isysroot ${SDK} -mios-simulator-version-min=${IOS_SIMULATOR_VERSION_MIN}"
@@ -119,7 +119,7 @@ LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-apple/ios/include
 LIBSODIUM=libsodium/libsodium-apple/ios/lib/libsodium.a
 BASEDIR="${XCODEDIR}/Platforms/iPhoneOS.platform/Developer"
 SDK="${BASEDIR}/SDKs/iPhoneOS.sdk"
-IOS_VERSION_MIN=9.0.0
+IOS_VERSION_MIN=9.3.0
 
 ARCH=armv7
 CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -mios-version-min=${IOS_VERSION_MIN} -fembed-bitcode"
