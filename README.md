@@ -22,7 +22,6 @@ import com.clostra.newnode.NewNode;
 protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     NewNode.init();
-    ...
 }
 ```
 
@@ -30,26 +29,20 @@ See [`android/examples/WebViewSample`](https://github.com/clostra/newnode/tree/m
 
 ## iOS
 
-### Carthage
+Add this repo as a Swift Package.
 
-Add to your Cartfile:
-```carthage
-github "clostra/newnode"
-```
-
-### Cocoapods
-
-Add to your Podfile:
-```cocoapods
-pod 'NewNode'
-```
-
-Add to your `NSURLSession`:
-
+ObjC:
 ```objc
 NSURLSessionConfiguration *config = NSURLSessionConfiguration.defaultSessionConfiguration;
 config.connectionProxyDictionary = NewNode.connectionProxyDictionary;
 NSURLSession *session = [NSURLSession sessionWithConfiguration:config];
+```
+
+Swift:
+```swift
+let config = URLSessionConfiguration.default
+config.connectionProxyDictionary = NewNode.connectionProxyDictionary
+let session = URLSession(configuration: config)
 ```
 
 See [`ios/examples/CustomHTTPProtocol`](https://github.com/clostra/newnode/tree/master/ios/examples/CustomHTTPProtocol) for an example.
