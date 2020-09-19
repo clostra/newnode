@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		3C3D5BE124E4BBB000F17659 /* NewNode.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C3D5BE024E4BBB000F17659 /* NewNode.xcframework */; };
+		3C95DBF52515B54A00141066 /* NewNode in Frameworks */ = {isa = PBXBuildFile; productRef = 3C95DBF42515B54A00141066 /* NewNode */; };
 		3CB1E29520A7F61C0034A2C2 /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 3CB1E29420A7F61C0034A2C2 /* Launch Screen.storyboard */; };
 		E42BFC801951B14500F774B3 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E42BFC7F1951B14500F774B3 /* Main.storyboard */; };
 		E42BFC831951B89F00F774B3 /* ThreadInfo.m in Sources */ = {isa = PBXBuildFile; fileRef = E42BFC821951B89F00F774B3 /* ThreadInfo.m */; };
@@ -33,9 +33,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		3C3D5BE024E4BBB000F17659 /* NewNode.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = NewNode.xcframework; path = ../../../NewNode.xcframework; sourceTree = "<group>"; };
 		3CB1E29420A7F61C0034A2C2 /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
-		3CB1E29D20A951150034A2C2 /* NewNode.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NewNode.framework; path = ../../../NewNode.framework; sourceTree = "<group>"; };
 		E42BFC7F1951B14500F774B3 /* Main.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 		E42BFC811951B89F00F774B3 /* ThreadInfo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ThreadInfo.h; sourceTree = "<group>"; };
 		E42BFC821951B89F00F774B3 /* ThreadInfo.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ThreadInfo.m; sourceTree = "<group>"; };
@@ -75,7 +73,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3C3D5BE124E4BBB000F17659 /* NewNode.xcframework in Frameworks */,
+				3C95DBF52515B54A00141066 /* NewNode in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -85,8 +83,6 @@
 		3CB1E28F20A58FBA0034A2C2 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				3C3D5BE024E4BBB000F17659 /* NewNode.xcframework */,
-				3CB1E29D20A951150034A2C2 /* NewNode.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -187,6 +183,9 @@
 			dependencies = (
 			);
 			name = CustomHTTPProtocol;
+			packageProductDependencies = (
+				3C95DBF42515B54A00141066 /* NewNode */,
+			);
 			productName = CustomHTTPProtocol;
 			productReference = E4C546D81330E45800DA48D3 /* CustomHTTPProtocol.app */;
 			productType = "com.apple.product-type.application";
@@ -213,6 +212,9 @@
 				Base,
 			);
 			mainGroup = E4C546CD1330E45800DA48D3;
+			packageReferences = (
+				3C95DBF32515B54A00141066 /* XCRemoteSwiftPackageReference "newnode" */,
+			);
 			productRefGroup = E4C546D91330E45800DA48D3 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -455,6 +457,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		3C95DBF32515B54A00141066 /* XCRemoteSwiftPackageReference "newnode" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/clostra/newnode.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.9.6;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		3C95DBF42515B54A00141066 /* NewNode */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3C95DBF32515B54A00141066 /* XCRemoteSwiftPackageReference "newnode" */;
+			productName = NewNode;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E4C546CF1330E45800DA48D3 /* Project object */;
 }

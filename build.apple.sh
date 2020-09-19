@@ -152,31 +152,11 @@ TRIPLE=x86_64-apple-ios
 build_apple
 
 
-VERSION=`grep "VERSION " constants.h | sed -n 's/.*"\(.*\)"/\1/p'`
-
-FRAMEWORK="NewNode.framework"
-rm -rf $FRAMEWORK || true
-mkdir -p $FRAMEWORK/Modules
-cp ios/Framework/module.modulemap $FRAMEWORK/Modules/module.modulemap
-mkdir -p $FRAMEWORK/Headers
-cp ios/Framework/NewNode-iOS.h $FRAMEWORK/Headers/NewNode.h
-sed "s/\$(CURRENT_PROJECT_VERSION)/$VERSION/" ios/Framework/Info.plist > $FRAMEWORK/Info.plist
-LIPO_ARGS=""
-for triple in x86_64-apple-darwin10 arm-apple-darwin10 armv7-apple-darwin10; do
-    LIPO_ARGS="${LIPO_ARGS} $triple/libnewnode.dylib"
-done
-lipo -create -output $FRAMEWORK/NewNode $LIPO_ARGS
-rm -rf $FRAMEWORK.dSYM || true
-dsymutil $FRAMEWORK/NewNode -o $FRAMEWORK.dSYM
-strip -x $FRAMEWORK/NewNode
-du -ch $FRAMEWORK
-du -ch $FRAMEWORK.dSYM
-
 XCFRAMEWORK="NewNode.xcframework"
 rm -rf $XCFRAMEWORK || true
 XCFRAMEWORK_ARGS=""
 for triple in x86_64-apple-darwin10 fat-apple-darwin10 x86_64-apple-ios; do
-  XCFRAMEWORK_ARGS="${XCFRAMEWORK_ARGS} -library $triple/libnewnode.a"
-  XCFRAMEWORK_ARGS="${XCFRAMEWORK_ARGS} -headers $FRAMEWORK/Headers"
+  XCFRAMEWORK_ARGS+=" -library $triple/libnewnode.a"
+  XCFRAMEWORK_ARGS+=" -headers Headers"
 done
 xcodebuild -create-xcframework ${XCFRAMEWORK_ARGS} -output $XCFRAMEWORK
