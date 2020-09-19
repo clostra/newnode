@@ -6,7 +6,7 @@ Pod::Spec.new do |s|
   s.license = { :type => 'GPLv2', :file => 'LICENSE' }
   s.author = 'Clostra'
   s.platform = :ios
-  s.ios.deployment_target = '8.0'
-  s.source = { :http => "https://github.com/clostra/newnode/releases/download/#{s.version}/NewNode.framework.zip" }
-  s.vendored_frameworks = 'NewNode.framework'
+  s.ios.deployment_target = '9.0'
+  s.source = { :http => "https://github.com/clostra/newnode/releases/download/#{s.version}/NewNode.xcframework.zip" }
+  s.vendored_frameworks = 'NewNode.xcframework'
 end
