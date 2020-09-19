@@ -150,6 +150,9 @@ TRIPLE=x86_64-apple-ios
 build_apple
 
 
+mkdir -p Headers
+cp ios/Framework/NewNode-iOS.h Headers/NewNode.h
+
 XCFRAMEWORK="NewNode.xcframework"
 rm -rf $XCFRAMEWORK || true
 XCFRAMEWORK_ARGS=""
