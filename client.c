@@ -301,7 +301,7 @@ void on_utp_connect(network *n, peer_connection *pc)
             }
         }
         assert(found);
-        debug("using new pc:%p evcon:%p via:%c (%s) for request:%p\n", pc, pc->evcon, pc->peer->via, r->via, r);
+        debug("using new pc:%p evcon:%p via:%c (%s) for request:%p\n", pc, pc->evcon, pc->peer->via ? pc->peer->via : ' ', r->via, r);
         pending_request_complete(r, pc);
         if (!TAILQ_EMPTY(&pending_requests)) {
             connect_more_injectors(n, false);
@@ -711,7 +711,8 @@ void peer_reuse(network *n, peer_connection *pc)
         }
         TAILQ_REMOVE(&pending_requests, r, next);
         pending_requests_len--;
-        debug("reusing pc:%p evcon:%p via:%c (%s) for request:%p (outstanding:%zu)\n", pc, pc->evcon, pc->peer->via, r->via, r, pending_requests_len);
+        debug("reusing pc:%p evcon:%p via:%c (%s) for request:%p (outstanding:%zu)\n",
+              pc, pc->evcon, pc->peer->via ? pc->peer->via : ' ', r->via, r, pending_requests_len);
         pending_request_complete(r, pc);
         return;
     }
@@ -2062,7 +2063,7 @@ void queue_request(network *n, pending_request *r, peer_filter filter, peer_conn
             continue;
         }
         peer_connections[i] = NULL;
-        debug("using pc:%p evcon:%p via:%c for request:%p\n", pc, pc->evcon, pc->peer->via, r);
+        debug("using pc:%p evcon:%p via:%c for request:%p\n", pc, pc->evcon, pc->peer->via ? pc->peer->via : ' ', r);
         on_connect(pc);
         return;
     }
@@ -2073,7 +2074,7 @@ void queue_request(network *n, pending_request *r, peer_filter filter, peer_conn
         for (uint i = 0; i < lenof(peer_connections); i++) {
             peer_connection *pc = peer_connections[i];
             if (pc && pc->evcon && filter && filter(pc->peer)) {
-                debug("discarding pc:%p due to filtering '%c'\n", pc, pc->peer->via);
+                debug("discarding pc:%p due to filtering '%c'\n", pc, pc->peer->via ? pc->peer->via : ' ');
                 peer_disconnect(pc);
                 peer_connections[i] = NULL;
                 disconnected++;
