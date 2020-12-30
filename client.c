@@ -848,11 +848,15 @@ void proxy_submit_request(proxy_request *p);
 
 void proxy_set_length(proxy_request *p, uint64_t total_length)
 {
+    debug("%s p:%p total_length:%llu num_chunks:%llu\n", __func__, p, total_length, num_chunks(p));
     uint64_t old_length = num_chunks(p);
     uint64_t old_chunks = DIV_ROUND_UP(old_length, LEAF_CHUNK_SIZE);
     p->total_length = total_length;
     if (!p->have_bitfield) {
         p->have_bitfield = calloc(1, num_chunks(p));
+        return;
+    }
+    if (num_chunks(p) == old_chunks) {
         return;
     }
     bool *have_bitfield = realloc(p->have_bitfield, num_chunks(p));
@@ -1125,7 +1129,12 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
             header_prefix = evbuffer_get_length(p->header_buf);
         }
 
-        evbuffer_remove_buffer(input, r->chunk_buffer, this_chunk_len - header_prefix - evbuffer_get_length(r->chunk_buffer));
+        uint64_t received = this_chunk_len - header_prefix - evbuffer_get_length(r->chunk_buffer);
+        evbuffer_remove_buffer(input, r->chunk_buffer, received);
+
+        if (p->chunked) {
+            proxy_set_length(p, p->byte_playhead + received);
+        }
 
         debug("d:%p chunk_index:%"PRIu64"/%"PRIu64" %"PRIu64" < %"PRIu64"\n", d, r->chunk_index, num_chunks(p),
             header_prefix + evbuffer_get_length(r->chunk_buffer), this_chunk_len);
@@ -1133,6 +1142,7 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
             return true;
         }
 
+        debug("p->have_bitfield:%p r->chunk_index:%llu\n", p->have_bitfield, r->chunk_index);
         if (p->have_bitfield[r->chunk_index]) {
             debug("d:%p duplicate chunk:%"PRIu64"\n", d, r->chunk_index);
         } else {
@@ -1239,18 +1249,7 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
             return true;
         }
 
-        if (p->chunked) {
-            proxy_set_length(p, p->byte_playhead);
-            continue;
-        }
-
-        if (r->chunk_index > num_chunks(p)) {
-            const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
-            const char *content_length = evhttp_find_header(req->input_headers, "Content-Length");
-            debug("d:%p r->chunk_index:%"PRIu64" > num_chunks:%"PRIu64" Content-Length:%s Content-Range:%s url:%s\n",
-                d, r->chunk_index, num_chunks(p), content_length, content_range, p->uri);
-            assert(r->chunk_index <= num_chunks(p));
-        }
+        assert(r->chunk_index <= num_chunks(p));
         if (r->chunk_index >= num_chunks(p)) {
             // done, let the connection close naturally
             debug("d:%p done, let the connection close naturally\n", d);
