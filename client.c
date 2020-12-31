@@ -1133,7 +1133,8 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
         evbuffer_remove_buffer(input, r->chunk_buffer, received);
 
         if (p->chunked) {
-            proxy_set_length(p, p->byte_playhead + received);
+            // always keep the length optimistic. it will set accurately when the transfer finishes
+            proxy_set_length(p, p->byte_playhead + this_chunk_len * 2);
         }
 
         debug("d:%p chunk_index:%"PRIu64"/%"PRIu64" %"PRIu64" < %"PRIu64"\n", d, r->chunk_index, num_chunks(p),
