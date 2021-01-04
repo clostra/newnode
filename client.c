@@ -848,7 +848,7 @@ void proxy_submit_request(proxy_request *p);
 
 void proxy_set_length(proxy_request *p, uint64_t total_length)
 {
-    debug("%s p:%p total_length:%llu num_chunks:%llu\n", __func__, p, total_length, num_chunks(p));
+    debug("%s p:%p total_length:%"PRIu64" num_chunks:%"PRIu64"\n", __func__, p, total_length, num_chunks(p));
     uint64_t old_length = num_chunks(p);
     uint64_t old_chunks = DIV_ROUND_UP(old_length, LEAF_CHUNK_SIZE);
     p->total_length = total_length;
@@ -1143,7 +1143,7 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
             return true;
         }
 
-        debug("p->have_bitfield:%p r->chunk_index:%llu\n", p->have_bitfield, r->chunk_index);
+        debug("p->have_bitfield:%p r->chunk_index:%"PRIu64"\n", p->have_bitfield, r->chunk_index);
         if (p->have_bitfield[r->chunk_index]) {
             debug("d:%p duplicate chunk:%"PRIu64"\n", d, r->chunk_index);
         } else {
