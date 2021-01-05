@@ -1510,6 +1510,14 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
     }
 
     overwrite_kv_header(&p->direct_headers, "X-MSign", msign);
+    const char *response_header_whitelist[] = hashed_headers;
+    for (uint i = 0; i < lenof(response_header_whitelist); i++) {
+        const char *key = response_header_whitelist[i];
+        const char *value = evhttp_find_header(req->input_headers, key);
+        if (value) {
+            overwrite_kv_header(&p->direct_headers, key, value);
+        }
+    }
     overwrite_kv_header(&p->direct_headers, "Content-Location", content_location);
     peer_verified(p->n, r->pc->peer);
 
