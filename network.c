@@ -656,8 +656,10 @@ network* network_setup(char *address, port_t port)
     }
 #endif
 
-    evdns_base_nameserver_ip_add(n->evdns, "8.8.8.8");
     evdns_base_nameserver_ip_add(n->evdns, "1.1.1.1");
+    evdns_base_nameserver_ip_add(n->evdns, "1.0.0.1");
+    evdns_base_nameserver_ip_add(n->evdns, "8.8.8.8");
+    evdns_base_nameserver_ip_add(n->evdns, "8.8.4.4");
 
     n->http = evhttp_new(n->evbase);
     if (!n->http) {
