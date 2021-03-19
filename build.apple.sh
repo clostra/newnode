@@ -153,6 +153,25 @@ build_apple
 mkdir -p Headers
 cp ios/Framework/NewNode-iOS.h Headers/NewNode.h
 
+FRAMEWORK="NewNode.framework"
+rm -rf $FRAMEWORK || true
+mkdir -p $FRAMEWORK/Modules
+cp ios/Framework/module.modulemap $FRAMEWORK/Modules/module.modulemap
+mkdir -p $FRAMEWORK/Headers
+cp ios/Framework/NewNode-iOS.h $FRAMEWORK/Headers/NewNode.h
+VERSION=`grep "VERSION " constants.h | sed -n 's/.*"\(.*\)"/\1/p'`
+sed "s/\$(CURRENT_PROJECT_VERSION)/$VERSION/" ios/Framework/Info.plist > $FRAMEWORK/Info.plist
+LIPO_ARGS=""
+for triple in x86_64-apple-darwin10 arm-apple-darwin10 armv7-apple-darwin10; do
+    LIPO_ARGS="${LIPO_ARGS} $triple/libnewnode.dylib"
+done
+lipo -create -output $FRAMEWORK/NewNode $LIPO_ARGS
+rm -rf $FRAMEWORK.dSYM || true
+dsymutil $FRAMEWORK/NewNode -o $FRAMEWORK.dSYM
+strip -x $FRAMEWORK/NewNode
+du -ch $FRAMEWORK
+du -ch $FRAMEWORK.dSYM
+
 XCFRAMEWORK="NewNode.xcframework"
 rm -rf $XCFRAMEWORK || true
 XCFRAMEWORK_ARGS=""
