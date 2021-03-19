@@ -163,7 +163,7 @@ VERSION=`grep "VERSION " constants.h | sed -n 's/.*"\(.*\)"/\1/p'`
 sed "s/\$(CURRENT_PROJECT_VERSION)/$VERSION/" ios/Framework/Info.plist > $FRAMEWORK/Info.plist
 LIPO_ARGS=""
 for triple in x86_64-apple-darwin10 arm-apple-darwin10 armv7-apple-darwin10; do
-    LIPO_ARGS="${LIPO_ARGS} $triple/libnewnode.dylib"
+    LIPO_ARGS+=" $triple/libnewnode.dylib"
 done
 lipo -create -output $FRAMEWORK/NewNode $LIPO_ARGS
 rm -rf $FRAMEWORK.dSYM || true
