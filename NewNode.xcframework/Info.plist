@@ -8,7 +8,7 @@
 			<key>HeadersPath</key>
 			<string>Headers</string>
 			<key>LibraryIdentifier</key>
-			<string>ios-x86_64-maccatalyst</string>
+			<string>ios-x86_64-simulator</string>
 			<key>LibraryPath</key>
 			<string>libnewnode.a</string>
 			<key>SupportedArchitectures</key>
@@ -18,7 +18,7 @@
 			<key>SupportedPlatform</key>
 			<string>ios</string>
 			<key>SupportedPlatformVariant</key>
-			<string>maccatalyst</string>
+			<string>simulator</string>
 		</dict>
 		<dict>
 			<key>HeadersPath</key>
@@ -39,7 +39,7 @@
 			<key>HeadersPath</key>
 			<string>Headers</string>
 			<key>LibraryIdentifier</key>
-			<string>ios-x86_64-simulator</string>
+			<string>ios-x86_64-maccatalyst</string>
 			<key>LibraryPath</key>
 			<string>libnewnode.a</string>
 			<key>SupportedArchitectures</key>
@@ -49,7 +49,7 @@
 			<key>SupportedPlatform</key>
 			<string>ios</string>
 			<key>SupportedPlatformVariant</key>
-			<string>simulator</string>
+			<string>maccatalyst</string>
 		</dict>
 	</array>
 	<key>CFBundlePackageType</key>
