@@ -362,7 +362,7 @@ static void bugsnag_signal_handler(int code, struct siginfo *si, void *sc) {
                 bsg_stackframe frame = {
                     .method = unwind_frame->method,
                     .file = unwind_frame->file,
-                    .line_number = (int) unwind_frame->frame_pointer,
+                    .line_number = (int)(uintptr_t) unwind_frame->frame_pointer,
                     .frame_address = (uintptr_t) unwind_frame->frame_pointer
                 };
 
