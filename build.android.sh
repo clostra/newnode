@@ -8,6 +8,16 @@ function build_android {
     HOST_TAG=$(echo "$HOST_OS-$HOST_ARCH" | tr '[:upper:]' '[:lower:]')
     TRIPLE=$NDK_TRIPLE
 
+
+    export ANDROID_NDK_HOME=$NDK
+    cd libsodium
+    test -f configure || ./autogen.sh
+    test -f libsodium-android-$CPU_ARCH/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
+    cd ..
+    LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-android-$CPU_ARCH/include
+    LIBSODIUM=libsodium/libsodium-android-$CPU_ARCH/lib/libsodium.a
+
+
     export TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/$HOST_TAG
     export AR=$TOOLCHAIN/bin/$NDK_TRIPLE-ar
     export AS=$TOOLCHAIN/bin/$NDK_TRIPLE-as
@@ -30,15 +40,6 @@ function build_android {
     cd ..
     LIBEVENT_CFLAGS=-ILibevent/$TRIPLE/include
     LIBEVENT="Libevent/$TRIPLE/lib/libevent.a Libevent/$TRIPLE/lib/libevent_pthreads.a"
-
-
-    export ANDROID_NDK_HOME=$NDK
-    cd libsodium
-    test -f configure || ./autogen.sh
-    test -f libsodium-android-$CPU_ARCH/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
-    cd ..
-    LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-android-$CPU_ARCH/include
-    LIBSODIUM=libsodium/libsodium-android-$CPU_ARCH/lib/libsodium.a
 
 
     cd libutp
@@ -123,7 +124,8 @@ SODIUM_SCRIPT=$CPU_ARCH
 # large file support doesn't work for sendfile until API 21
 # https://github.com/android-ndk/ndk/issues/536#issuecomment-333197557
 LIBEVENT_CONFIG=--disable-largefile
-build_android
+build_android &
+wait %%
 LIBEVENT_CONFIG=
 
 NDK_API=21
@@ -133,7 +135,8 @@ CPU_ARCH=armv8-a
 NDK_TRIPLE=aarch64-linux-android
 NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$CPU_ARCH
-build_android
+build_android &
+wait %%
 
 NDK_API=19
 ARCH=x86
@@ -142,7 +145,9 @@ CPU_ARCH=i686
 NDK_TRIPLE=i686-linux-android
 NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$ABI
-build_android
+# disabled until libsodium is fixed https://github.com/jedisct1/libsodium/issues/1047
+#build_android &
+#wait %%
 
 NDK_API=21
 ARCH=x86_64
@@ -151,4 +156,5 @@ CPU_ARCH=westmere
 NDK_TRIPLE=x86_64-linux-android
 NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$ABI
-build_android
+build_android &
+wait %%
