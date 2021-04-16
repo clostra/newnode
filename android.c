@@ -206,6 +206,11 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_registerProxy(J
     (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("http.proxyPort"), JSTR(port));
     (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("https.proxyHost"), JSTR("127.0.0.1"));
     (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("https.proxyPort"), JSTR(port));
+
+    char proxy[128];
+    snprintf(proxy, sizeof(proxy), "http://127.0.0.1:%s", port);
+    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("http_proxy"), proxy);
+    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("https_proxy"), proxy);
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_unregisterProxy(JNIEnv* env, jobject thiz)
@@ -222,6 +227,8 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_unregisterProxy
     (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("http.proxyPort"));
     (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("https.proxyHost"));
     (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("https.proxyPort"));
+    (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("http_proxy"));
+    (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("https_proxy"));
 }
 
 void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen);
