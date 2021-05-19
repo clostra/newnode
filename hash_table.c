@@ -32,9 +32,12 @@ void* hash_get(hash_table *h, const char *key)
 void* hash_get_or_insert(hash_table *h, const char *key, create_fn c)
 {
     int absent;
-    khint_t k = kh_put(hash_table_val, h, key, &absent);
+    char *key_dup = strdup(key);
+    khint_t k = kh_put(hash_table_val, h, key_dup, &absent);
     if (absent) {
         kh_val(h, k) = c();
+    } else {
+        free(key_dup);
     }
     return kh_val(h, k);
 }
@@ -42,8 +45,12 @@ void* hash_get_or_insert(hash_table *h, const char *key, create_fn c)
 void* hash_set(hash_table *h, const char *key, void *val)
 {
     int absent;
-    khint_t k = kh_put(hash_table_val, h, key, &absent);
+    char *key_dup = strdup(key);
+    khint_t k = kh_put(hash_table_val, h, key_dup, &absent);
     void *old = absent ? NULL : kh_val(h, k);
+    if (!absent) {
+        free(key_dup);
+    }
     kh_val(h, k) = val;
     return old;
 }
@@ -55,6 +62,8 @@ void* hash_remove(hash_table *h, const char *key)
         return NULL;
     }
     void *r = kh_val(h, k);
+    char *key_dup = (char*)kh_key(h, k);
+    free(key_dup);
     kh_del(hash_table_val, h, k);
     return r;
 }
