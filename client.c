@@ -1862,7 +1862,7 @@ void bufferevent_count_bytes(network *n, const char *authority, bool from_localh
     if (!byte_count_per_authority) {
         byte_count_per_authority = hash_table_create();
     }
-    byte_counts *byte_count = hash_get_or_insert(byte_count_per_authority, strdup(authority), ^{
+    byte_counts *byte_count = hash_get_or_insert(byte_count_per_authority, authority, ^{
         return alloc(byte_counts);
     });
 
