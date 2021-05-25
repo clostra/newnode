@@ -426,7 +426,7 @@ void connect_request(network *n, evhttp_request *req)
 void http_request_cb(evhttp_request *req, void *arg)
 {
     network *n = (network*)arg;
-    char *e_host;
+    const char *e_host;
     ev_uint16_t e_port;
     evhttp_connection_get_peer(req->evcon, &e_host, &e_port);
     debug("con:%p %s:%u request received %s %s\n", req->evcon, e_host, e_port,
