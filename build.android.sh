@@ -29,7 +29,7 @@ function build_android {
     export STRIP=$TOOLCHAIN/bin/$NDK_TRIPLE-strip
 
 
-    cd Libevent
+    cd libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
         CFLAGS="-fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" ./configure --disable-shared --disable-openssl --with-pic $LIBEVENT_CONFIG --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
@@ -38,8 +38,8 @@ function build_android {
         make install
     fi
     cd ..
-    LIBEVENT_CFLAGS=-ILibevent/$TRIPLE/include
-    LIBEVENT="Libevent/$TRIPLE/lib/libevent.a Libevent/$TRIPLE/lib/libevent_pthreads.a"
+    LIBEVENT_CFLAGS=-Ilibevent/$TRIPLE/include
+    LIBEVENT="libevent/$TRIPLE/lib/libevent.a libevent/$TRIPLE/lib/libevent_pthreads.a"
 
 
     cd libutp
