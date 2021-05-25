@@ -1788,7 +1788,7 @@ void stats_changed()
             byte_counts byte_count = *b;
             bzero(b, sizeof(*b));
 
-            __auto_type report = ^(const char *type, uint64_t count, void (^cb)(void)) {
+            __auto_type report = ^(const char *type, uint64_t count, void (^failure)(void)) {
                 if (!count) {
                     return;
                 }
@@ -1809,13 +1809,13 @@ void stats_changed()
                          g_app_name,
                          g_app_id,
                          g_cid);
-                cb = Block_copy(cb);
+                failure = Block_copy(failure);
                 g_https_cb(url, ^(bool success) {
                     timer_start(g_n, 0, ^{
                         if (!success) {
-                            cb();
+                            failure();
                         }
-                        Block_release(cb);
+                        Block_release(failure);
                         if (g_stats_changed) {
                             stats_changed();
                         }
