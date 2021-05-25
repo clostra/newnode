@@ -6,7 +6,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.INTERNET"/>
 
-    <application android:label="@string/app" android:icon="@mipmap/ic_launcher"
+    <application android:label="@string/app"
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
         android:allowBackup="false">
 
         <activity android:name=".VpnActivity"

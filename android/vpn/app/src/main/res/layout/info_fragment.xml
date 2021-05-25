@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/white">
+
+        <ImageButton
+            android:id="@+id/info_close_button"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:background="@null"
+            android:contentDescription="@string/info_how_it_works"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_blue_info_icon"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/textView3"
+            style="@style/info_header"
+            android:layout_width="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="@string/info_how_it_works"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/info_close_button" />
+
+        <TextView
+            android:id="@+id/textView5"
+            style="@style/info_text"
+            android:layout_width="0dp"
+            android:text="@string/info1"
+            app:layout_constraintEnd_toStartOf="@+id/barrier3"
+            app:layout_constraintStart_toStartOf="@+id/barrier2"
+            app:layout_constraintTop_toBottomOf="@+id/textView3" />
+
+        <TextView
+            android:id="@+id/textView4"
+            style="@style/info_text"
+            android:layout_width="0dp"
+            android:text="@string/info2"
+            app:layout_constraintEnd_toStartOf="@+id/barrier3"
+            app:layout_constraintStart_toStartOf="@+id/barrier2"
+            app:layout_constraintTop_toBottomOf="@+id/textView5" />
+
+        <TextView
+            android:id="@+id/textView2"
+            style="@style/info_text"
+            android:layout_width="0dp"
+            android:text="@string/info3"
+            app:layout_constraintEnd_toStartOf="@+id/barrier3"
+            app:layout_constraintStart_toStartOf="@+id/barrier2"
+            app:layout_constraintTop_toBottomOf="@+id/textView4" />
+
+
+        <androidx.constraintlayout.widget.Barrier
+            android:id="@+id/barrier3"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:barrierDirection="right"
+            app:constraint_referenced_ids="textView3" />
+
+        <androidx.constraintlayout.widget.Barrier
+            android:id="@+id/barrier2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:barrierDirection="left"
+            app:constraint_referenced_ids="textView3" />
+
+
+</androidx.constraintlayout.widget.ConstraintLayout>
