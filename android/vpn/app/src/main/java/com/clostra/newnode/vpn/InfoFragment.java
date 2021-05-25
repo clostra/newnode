@@ -4,7 +4,6 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ImageButton;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -21,8 +20,8 @@ public class InfoFragment extends Fragment {
 
         View view = inflater.inflate(R.layout.info_fragment, container, false);
 
-        ImageButton close = view.findViewById(R.id.info_close_button);
-        close.setOnClickListener(v -> getParentFragmentManager().beginTransaction().remove(this).commit());
+        View infoFragmentLayout = view.findViewById(R.id.info_fragment);
+        infoFragmentLayout.setOnClickListener(v -> getParentFragmentManager().beginTransaction().remove(this).commit());
 
         return view;
     }
