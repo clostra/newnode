@@ -177,7 +177,7 @@ evhttp_connection *make_connection(network *n, const evhttp_uri *uri)
     for (size_t i = 0; i < lenof(connections); i++) {
         evhttp_connection *evcon = connections[i];
         if (evcon) {
-            char *e_host;
+            const char *e_host;
             ev_uint16_t e_port;
             evhttp_connection_get_peer(evcon, &e_host, &e_port);
             if (port == e_port && strcasecmp(host, e_host) == 0) {
