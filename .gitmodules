@@ -16,3 +16,6 @@
 [submodule "bugsnag-cocoa"]
 	path = bugsnag-cocoa
 	url = https://github.com/clostra/bugsnag-cocoa
+[submodule "libevent"]
+	path = libevent
+	url = https://github.com/clostra/libevent
