@@ -2919,7 +2919,7 @@ int evhttp_parse_headers_(evhttp_request *, evbuffer*);
 void http_request_cb(evhttp_request *req, void *arg)
 {
     network *n = (network*)arg;
-    char *e_host;
+    const char *e_host;
     ev_uint16_t e_port;
     evhttp_connection_get_peer(req->evcon, &e_host, &e_port);
     debug("req:%p evcon:%p %s:%u received %s %s\n", req, req->evcon, e_host, e_port,
