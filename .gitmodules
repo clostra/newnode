@@ -1,9 +1,6 @@
 [submodule "libutp"]
 	path = libutp
 	url = https://github.com/clostra/libutp
-[submodule "Libevent"]
-	path = Libevent
-	url = https://github.com/clostra/Libevent
 [submodule "libsodium"]
 	path = libsodium
 	url = https://github.com/jedisct1/libsodium
