@@ -6,7 +6,7 @@ export CC=clang
 export CXX=clang++
 
 
-cd Libevent
+cd libevent
 if [ ! -d native ]; then
     ./autogen.sh
     ./configure --disable-shared --disable-openssl --prefix=$(pwd)/native
@@ -15,8 +15,8 @@ if [ ! -d native ]; then
     make install
 fi
 cd ..
-LIBEVENT_CFLAGS=-ILibevent/native/include
-LIBEVENT="Libevent/native/lib/libevent.a Libevent/native/lib/libevent_pthreads.a"
+LIBEVENT_CFLAGS=-Ilibevent/native/include
+LIBEVENT="libevent/native/lib/libevent.a libevent/native/lib/libevent_pthreads.a"
 
 
 cd libsodium

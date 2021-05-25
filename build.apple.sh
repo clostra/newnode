@@ -4,7 +4,7 @@ set -euo pipefail
 
 function build_apple {
 
-    cd Libevent
+    cd libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
         ./configure --disable-shared --disable-openssl --host=$TRIPLE --prefix=$(pwd)/$TRIPLE CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS"
@@ -13,8 +13,8 @@ function build_apple {
         make install
     fi
     cd ..
-    LIBEVENT_CFLAGS=-ILibevent/$TRIPLE/include
-    LIBEVENT="Libevent/$TRIPLE/lib/libevent.a Libevent/$TRIPLE/lib/libevent_pthreads.a"
+    LIBEVENT_CFLAGS=-Ilibevent/$TRIPLE/include
+    LIBEVENT="libevent/$TRIPLE/lib/libevent.a libevent/$TRIPLE/lib/libevent_pthreads.a"
 
 
     cd libutp
@@ -73,8 +73,8 @@ function build_apple {
     }
 
     arx $TRIPLE/objects/libutp $LIBUTP
-    arx $TRIPLE/objects/libevent Libevent/$TRIPLE/lib/libevent.a
-    arx $TRIPLE/objects/libevent Libevent/$TRIPLE/lib/libevent_pthreads.a
+    arx $TRIPLE/objects/libevent libevent/$TRIPLE/lib/libevent.a
+    arx $TRIPLE/objects/libevent libevent/$TRIPLE/lib/libevent_pthreads.a
     arx $TRIPLE/objects/libbugsnag $LIBBUGSNAG
     arx $TRIPLE/objects/libsodium libsodium.a
 
