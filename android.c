@@ -209,8 +209,8 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_registerProxy(J
 
     char proxy[128];
     snprintf(proxy, sizeof(proxy), "http://127.0.0.1:%s", port);
-    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("http_proxy"), proxy);
-    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("https_proxy"), proxy);
+    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("http_proxy"), JSTR(proxy));
+    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("https_proxy"), JSTR(proxy));
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_unregisterProxy(JNIEnv* env, jobject thiz)
