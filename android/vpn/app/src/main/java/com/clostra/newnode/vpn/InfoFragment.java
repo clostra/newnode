@@ -20,8 +20,7 @@ public class InfoFragment extends Fragment {
 
         View view = inflater.inflate(R.layout.info_fragment, container, false);
 
-        View infoFragmentLayout = view.findViewById(R.id.info_fragment);
-        infoFragmentLayout.setOnClickListener(v -> getParentFragmentManager().beginTransaction().remove(this).commit());
+        view.setOnClickListener(v -> getParentFragmentManager().beginTransaction().remove(this).commit());
 
         return view;
     }

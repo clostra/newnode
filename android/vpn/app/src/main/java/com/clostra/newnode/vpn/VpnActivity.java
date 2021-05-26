@@ -5,16 +5,29 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.graphics.Typeface;
 import android.graphics.drawable.TransitionDrawable;
 import android.os.Bundle;
+import android.provider.ContactsContract;
 import android.view.View;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentTransaction;
+
+import com.clostra.newnode.vpn.statistics.DataVolume;
+import com.clostra.newnode.vpn.statistics.StatisticsFragment;
+import com.clostra.newnode.vpn.statistics.TimeFrame;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 
 public class VpnActivity extends AppCompatActivity {
 
@@ -75,6 +88,7 @@ public class VpnActivity extends AppCompatActivity {
         registerReceiver(receiver, new IntentFilter(ACTION_STATE));
 
         setVpnState();
+        openStatistics();
     }
 
     @Override
@@ -105,6 +119,16 @@ public class VpnActivity extends AppCompatActivity {
 
         setVpnState();
 
+    }
+
+    private void openStatistics() {
+        Fragment statistics = new StatisticsFragment();
+        FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
+        transaction
+                .setReorderingAllowed(true)
+                .add(R.id.statistics_fragment_container, statistics)
+                .show(statistics)
+                .commit();
     }
 
     public void openInfo(View v) {

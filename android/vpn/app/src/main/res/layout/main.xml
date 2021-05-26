@@ -137,6 +137,16 @@
         app:layout_constraintTop_toBottomOf="@+id/textView" />
 
     <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/statistics_fragment_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="64dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/textView" />
+
+    <androidx.fragment.app.FragmentContainerView
         android:id="@+id/info_fragment_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -164,8 +174,6 @@
         android:layout_height="wrap_content"
         app:barrierDirection="right"
         app:constraint_referenced_ids="textView" />
-
-
 
 
 </androidx.constraintlayout.widget.ConstraintLayout>
