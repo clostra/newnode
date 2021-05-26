@@ -5,29 +5,18 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.graphics.Typeface;
 import android.graphics.drawable.TransitionDrawable;
 import android.os.Bundle;
-import android.provider.ContactsContract;
 import android.view.View;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentTransaction;
 
-import com.clostra.newnode.vpn.statistics.DataVolume;
 import com.clostra.newnode.vpn.statistics.StatisticsFragment;
-import com.clostra.newnode.vpn.statistics.TimeFrame;
-
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Calendar;
 
 public class VpnActivity extends AppCompatActivity {
 
@@ -48,8 +37,17 @@ public class VpnActivity extends AppCompatActivity {
                 stopArcAnimation();
             }
 
-            TextView t = findViewById(R.id.textView);
-            t.setText(stateString);
+            TextView status = findViewById(R.id.connection_status);
+            new BlinkAnimation(getApplicationContext(), status, () -> status.setText(stateString)).start();
+
+            TextView tapTo = findViewById(R.id.tapToConnect);
+            new BlinkAnimation(getApplicationContext(), tapTo, () -> {
+                if (stateString == R.string.connected) {
+                    tapTo.setText(R.string.tap_to_disconnect);
+                } else if (stateString == R.string.disconnected) {
+                    tapTo.setText(R.string.tap_to_connect);
+                }
+            }).start();
         }
     };
 
@@ -60,18 +58,15 @@ public class VpnActivity extends AppCompatActivity {
 
         TransitionDrawable background = (TransitionDrawable) findViewById(R.id.main_layout).getBackground();
         FadeAnimation grayCircleAnimation = new FadeAnimation(getApplicationContext(), findViewById(R.id.gray_circle));
-        FadeAnimation tapToConnectAnimation = new FadeAnimation(getApplicationContext(), findViewById(R.id.tapToConnect));
         FadeAnimation netGlobesAnimation = new FadeAnimation(getApplicationContext(), findViewById(R.id.net_globes));
 
         if (prefs.getBoolean("enabled", false)) {
             background.startTransition(1000);
             grayCircleAnimation.fadeOut();
-            tapToConnectAnimation.fadeOut();
             netGlobesAnimation.fadeIn();
         } else {
             background.reverseTransition(1000);
             grayCircleAnimation.fadeIn();
-            tapToConnectAnimation.fadeIn();
             netGlobesAnimation.fadeOut();
         }
 
