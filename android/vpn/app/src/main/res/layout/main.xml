@@ -43,7 +43,7 @@
         android:rotation="160"
         android:scaleX="0.8"
         android:scaleY="0.8"
-        android:visibility="gone"
+        android:visibility="invisible"
         app:layout_constraintBottom_toBottomOf="@+id/powerButton"
         app:layout_constraintEnd_toEndOf="@+id/powerButton"
         app:layout_constraintHorizontal_bias="0.4"
