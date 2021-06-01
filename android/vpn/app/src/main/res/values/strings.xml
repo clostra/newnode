@@ -15,11 +15,6 @@
     <string name="statistic_timeframe_all_time"><u>Max</u></string>
     <string name="statistic_direct_connections">Direct: %1$s</string>
     <string name="statistic_peer_connections">Through Peers: %1$s</string>
-    <string name="statistic_byte">&#160;B</string>
-    <string name="statistic_kilo_byte">&#160;KB</string>
-    <string name="statistic_mega_byte">&#160;MB</string>
-    <string name="statistic_giga_byte">&#160;GB</string>
-    <string name="statistic_tera_byte">&#160;TB</string>
     <string name="info">NewNode is a peer to peer mesh network which works as a personal pseudo-VPN to get around blocking or establish good internet connection when connectivity is sparse.
         \n\n
         NewNode works differently than a traditional VPN, which sends your connection to a specific server. Traditional VPNs are unfortunately quite easy to block by IP address. NewNode, instead, sends your traffic through a mesh network which can even make connections directly between nearby devices. This, along with encrypting and  disguising the traffic, makes NewNode very robust against any kind of blocking.

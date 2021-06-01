@@ -43,8 +43,6 @@ public class StatisticsFragment extends Fragment {
     private void resetTypeFaceToStatisticToggle() {
         ((TextView) layout.findViewById(R.id.statistic_timeframe_day)).setTypeface(Typeface.DEFAULT);
         ((TextView) layout.findViewById(R.id.statistic_timeframe_week)).setTypeface(Typeface.DEFAULT);
-//        ((TextView) layout.findViewById(R.id.statistic_timeframe_month)).setTypeface(Typeface.DEFAULT);
-//        ((TextView) layout.findViewById(R.id.statistic_timeframe_year)).setTypeface(Typeface.DEFAULT);
         ((TextView) layout.findViewById(R.id.statistic_timeframe_all_time)).setTypeface(Typeface.DEFAULT);
     }
 
