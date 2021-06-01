@@ -12,10 +12,9 @@ import android.os.Message;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 import android.widget.Toast;
+import java.io.IOException;
 
 import com.clostra.newnode.NewNode;
-
-import java.io.IOException;
 
 public class VpnService extends android.net.VpnService implements Handler.Callback {
     private static final String TAG = VpnService.class.getSimpleName();

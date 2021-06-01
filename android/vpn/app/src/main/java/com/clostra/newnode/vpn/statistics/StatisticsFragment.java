@@ -13,9 +13,9 @@ import androidx.fragment.app.Fragment;
 
 import com.clostra.newnode.vpn.R;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.Calendar;
+
+import static android.text.format.Formatter.formatShortFileSize;
 
 public class StatisticsFragment extends Fragment {
     public StatisticsFragment() {
@@ -84,43 +84,15 @@ public class StatisticsFragment extends Fragment {
         return new DataVolume(volume, volume / 2);
     }
 
-    public static double floor(double value) {
-        BigDecimal bd = BigDecimal.valueOf(value);
-        bd = bd.setScale(2, RoundingMode.FLOOR);
-        return bd.doubleValue();
-    }
-
-    private String dateVolumeToString (double bytes) {
-        String str;
-        long k = 1000L;
-        long m = k * k;
-        long g = k * k * k;
-        long t = k * k * k * k;
-
-        if (bytes < 100) {
-            str = floor(bytes) + getResources().getString(R.string.statistic_byte);
-        } else if (bytes < 100 * k) {
-            str = floor(bytes / k) + getResources().getString(R.string.statistic_kilo_byte);
-        } else if (bytes < 100 * m) {
-            str = floor(bytes / m) + getResources().getString(R.string.statistic_mega_byte);
-        } else if (bytes < 100 * g) {
-            str = floor(bytes / g) + getResources().getString(R.string.statistic_giga_byte);
-        } else {
-            str = floor(bytes / t) + getResources().getString(R.string.statistic_tera_byte);
-        }
-
-        return str;
-    }
-
     private void updateDataVolume(TextView view, TimeFrame timeFrame) {
         resetTypeFaceToStatisticToggle();
         view.setTypeface(Typeface.DEFAULT_BOLD);
 
         DataVolume data = getDataVolumeFromTimeFrame(timeFrame);
         ((TextView) layout.findViewById(R.id.statistic_direct_connections))
-                .setText(getResources().getString(R.string.statistic_direct_connections, dateVolumeToString(data.getDirect())));
+                .setText(getResources().getString(R.string.statistic_direct_connections, formatShortFileSize(getContext(), data.getDirect())));
 
         ((TextView) layout.findViewById(R.id.statistic_peer_connections))
-                .setText(getResources().getString(R.string.statistic_peer_connections, dateVolumeToString(data.getPeer())));
+                .setText(getResources().getString(R.string.statistic_peer_connections, formatShortFileSize(getContext(), data.getPeer())));
     }
 }
