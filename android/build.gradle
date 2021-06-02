@@ -1,17 +1,11 @@
 buildscript {
     repositories {
         google()
-        jcenter()
+        mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:4.0.+'
-        classpath 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.+'
-        classpath 'com.github.dcendents:android-maven-gradle-plugin:2.+'
+        classpath 'com.android.tools.build:gradle:4.2.+'
     }
-}
-
-plugins {
-    id "com.jfrog.bintray" version "1.8.1"
 }
 
 allprojects {
@@ -24,7 +18,7 @@ allprojects {
 apply plugin: 'com.android.library'
 
 android {
-    compileSdkVersion = 29
+    compileSdkVersion 30
 
     new File(System.getenv('NDK') + '/source.properties').eachLine { line ->
         def matcher = line =~ /Pkg.Revision = (.*)/
@@ -36,7 +30,7 @@ android {
 
     defaultConfig {
         minSdkVersion 16
-        targetSdkVersion 29
+        targetSdkVersion 30
         new File('../constants.h').eachLine { line ->
             def matcher = line =~ /VERSION "(.*)"/
             if (matcher) {
@@ -45,6 +39,8 @@ android {
             }
         }
         versionCode versionName.replace(".", "").toInteger()
+        buildConfigField "String", "VERSION_NAME", "\"$versionName\""
+        buildConfigField "int", "VERSION_CODE", "$versionCode"
         consumerProguardFiles 'lib-proguard-rules.txt'
     }
     buildTypes {
@@ -62,6 +58,3 @@ dependencies {
     implementation 'com.bugsnag:bugsnag-android:4.5.0'
     implementation 'com.google.android.gms:play-services-nearby:17.+'
 }
-
-apply from: 'maven.gradle'
-apply from: 'bintray.gradle'
