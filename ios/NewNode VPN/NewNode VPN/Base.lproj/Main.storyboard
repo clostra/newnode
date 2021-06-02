@@ -101,7 +101,7 @@
                                 <color key="textColor" name="status_text"/>
                                 <nil key="highlightedColor"/>
                             </label>
-                            <stackView opaque="NO" contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="Mjy-Nh-E93">
+                            <stackView hidden="YES" opaque="NO" contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="Mjy-Nh-E93">
                                 <rect key="frame" x="124.5" y="654" width="165" height="36"/>
                                 <subviews>
                                     <button opaque="NO" tag="1" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" lineBreakMode="middleTruncation" hasAttributedTitle="YES" translatesAutoresizingMaskIntoConstraints="NO" id="n6r-bP-hIn">
@@ -163,13 +163,13 @@
                                 </constraints>
                             </stackView>
                             <label opaque="NO" userInteractionEnabled="NO" tag="1" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Label" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="dak-OV-VDJ" userLabel="Stat1">
-                                <rect key="frame" x="183" y="694" width="48" height="24"/>
+                                <rect key="frame" x="183" y="658" width="48" height="24"/>
                                 <fontDescription key="fontDescription" type="system" pointSize="20"/>
                                 <color key="textColor" name="status_text"/>
                                 <nil key="highlightedColor"/>
                             </label>
                             <label opaque="NO" userInteractionEnabled="NO" tag="2" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Label" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="LS5-e1-LFj" userLabel="Stat2">
-                                <rect key="frame" x="183" y="722" width="48" height="24"/>
+                                <rect key="frame" x="183" y="686" width="48" height="24"/>
                                 <fontDescription key="fontDescription" type="system" pointSize="20"/>
                                 <color key="textColor" name="status_text"/>
                                 <nil key="highlightedColor"/>
@@ -199,7 +199,7 @@
                             <constraint firstItem="q3g-Dk-gCA" firstAttribute="top" secondItem="z6z-Kn-pPP" secondAttribute="bottom" id="Yzb-NX-vLf"/>
                             <constraint firstItem="Mjy-Nh-E93" firstAttribute="top" secondItem="AWj-zj-CzL" secondAttribute="bottom" constant="4" id="ZdO-H6-rhI"/>
                             <constraint firstItem="LS5-e1-LFj" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="asV-Kr-1g6"/>
-                            <constraint firstItem="dak-OV-VDJ" firstAttribute="top" secondItem="Mjy-Nh-E93" secondAttribute="bottom" constant="4" id="cnN-dt-znq"/>
+                            <constraint firstItem="dak-OV-VDJ" firstAttribute="top" secondItem="AWj-zj-CzL" secondAttribute="bottom" constant="8" id="cnN-dt-znq"/>
                             <constraint firstItem="MVi-2g-TQ4" firstAttribute="centerX" secondItem="e3n-2I-qy6" secondAttribute="centerX" id="csh-HV-PZI"/>
                             <constraint firstItem="dak-OV-VDJ" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="iIZ-Lu-ogp"/>
                             <constraint firstItem="MVi-2g-TQ4" firstAttribute="leading" secondItem="e3n-2I-qy6" secondAttribute="leading" constant="-16" id="u4L-05-dhh"/>
