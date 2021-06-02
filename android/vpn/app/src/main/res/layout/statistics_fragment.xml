@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/statistic_fragment"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_horizontal"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/statistic_header"
+        style="@style/statistic_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/statistic_header" />
+
+    <LinearLayout
+        android:id="@+id/statistic_timeframe_toggle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/statistic_timeframe_day"
+            style="@style/statistic_toggle_current"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/statistic_timeframe_day" />
+
+        <TextView
+            android:id="@+id/statistic_timeframe_week"
+            style="@style/statistic_toggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/statistic_timeframe_week" />
+
+        <TextView
+            android:id="@+id/statistic_timeframe_all_time"
+            style="@style/statistic_toggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/statistic_timeframe_all_time" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/statistic_direct_connections"
+        style="@style/statistic_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="@string/statistic_direct_connections" />
+
+    <TextView
+        android:id="@+id/statistic_peer_connections"
+        style="@style/statistic_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="@string/statistic_peer_connections" />
+</LinearLayout>
