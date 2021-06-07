@@ -121,7 +121,7 @@ public class VpnActivity extends AppCompatActivity {
         FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
         transaction
                 .setReorderingAllowed(true)
-                .add(R.id.statistics_fragment_container, statistics)
+                .add(R.id.stats_fragment_container, statistics)
                 .show(statistics)
                 .commit();
     }

@@ -381,6 +381,19 @@ ssize_t d2d_sendto(const uint8* buf, size_t len, const sockaddr_in6 *sin6)
     return r;
 }
 
+void ui_display_stats(const char *type, uint64_t direct, uint64_t peers)
+{
+    JNIEnv *env = get_env();
+    push_frame();
+    ^() {
+        jclass cNewNode = (*env)->GetObjectClass(env, newNode);
+        CATCH(return);
+        CALL_VOID(cNewNode, newNode, displayStats, Ljava/lang/String;JJ, JSTR(type), direct, peers);
+        CATCH(return);
+    }();
+    pop_frame();
+}
+
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
 {
     o_debug = level;
