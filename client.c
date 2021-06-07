@@ -22,6 +22,7 @@
 
 #include "dht/dht.h"
 
+#include "ui.h"
 #include "log.h"
 #include "lsd.h"
 #include "d2d.h"
@@ -183,6 +184,8 @@ timer *stats_report_timer;
 network *g_n;
 uint64_t g_cid;
 bool g_stats_changed;
+uint64_t g_all_peer;
+uint64_t g_all_direct;
 
 peer_array *injectors;
 peer_array *injector_proxies;
@@ -1765,6 +1768,7 @@ void stats_changed()
             return true;
         });
     }
+    ui_display_stats("process", g_all_direct, g_all_peer);
     if (stats_report_timer) {
         return;
     }
@@ -1890,9 +1894,13 @@ void bufferevent_count_bytes(network *n, const char *authority, bool from_localh
     if (bufferevent_is_utp(to)) {
         evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count->from_peer);
         evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &byte_count->to_peer);
+        evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &g_all_peer);
+        evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &g_all_peer);
     } else {
         evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count->from_direct);
         evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &byte_count->to_direct);
+        evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &g_all_direct);
+        evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &g_all_direct);
     }
 }
 
