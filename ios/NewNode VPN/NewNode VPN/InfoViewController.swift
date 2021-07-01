@@ -22,7 +22,8 @@ class InfoViewController: UIViewController {
         infoText.text = NSLocalizedString("info_text", comment: "")
         infoHeader.text = NSLocalizedString("info_title", comment: "")
         infoHeader.adjustsFontForContentSizeCategory = true
-        
+
+        // XXX: using height as a proxy for device type
         if UIScreen.main.nativeBounds.height < 1200 {
             infoText.font = UIFont.systemFont(ofSize: 14.0)
             infoHeader.font = UIFont.systemFont(ofSize: 22.0)

@@ -24,13 +24,6 @@ class ViewController: UIViewController {
     @IBOutlet var statTexts: [UILabel]!
     let monitor = NWPathMonitor()
     
-    var selectedPeriod: TimeFrame.Period = .day
-    var statistics: DataVolume = DataVolume(direct: 0, peer: 0) {
-        didSet {
-            updateStatistics()
-        }
-    }
-    
     var toggleState: Bool {
         get {
             return UserDefaults.standard.bool(forKey: "toggle")
@@ -42,7 +35,13 @@ class ViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(self.displayStats),
+            name: Notification.Name("DisplayStats"),
+            object: nil)
+
         updateLayout(animated: false)
         
         monitor.pathUpdateHandler = { path in
@@ -58,7 +57,12 @@ class ViewController: UIViewController {
             stateChanged()
         }
     }
-    
+
+    @objc private func displayStats(notification: NSNotification) {
+        let o = notification.object as! Dictionary<<#Key: Hashable#>, Any>
+        updateStatistics(direct: o.direct_bytes, peer: o.peers_bytes)
+    }
+
     func updateLayout(animated: Bool) {
         let on = toggleState
         let backgroundImage = on ? UIImage(named: "earth_globe") : UIImage(named: "gray_circle")
@@ -75,23 +79,15 @@ class ViewController: UIViewController {
                 self.netGlobes.alpha = on ? 1 : 0
             }
         }
-        
-        updatePeriod()
     }
-    
-    func updatePeriod() {
-        for button in statPeriods {
-            button.underline(bold: button.tag == selectedPeriod.rawValue)
-        }
-        updateStatistics()
-    }
-    
-    func updateStatistics() {
+
+    func updateStatistics(direct: UInt64, peer: UInt64) {
         let formatter = ByteCountFormatter()
         formatter.allowsNonnumericFormatting = false
-        
-        statTexts[0].text = NSLocalizedString("direct", comment: "") + formatter.string(fromByteCount: statistics.direct)
-        statTexts[1].text = NSLocalizedString("peers", comment: "") + formatter.string(fromByteCount: statistics.peer)
+        formatter.isAdaptive = true
+
+        statTexts[0].text = NSLocalizedString("direct", comment: "") + formatter.string(fromByteCount: direct)
+        statTexts[1].text = NSLocalizedString("peers", comment: "") + formatter.string(fromByteCount: peer)
     }
     
     @IBAction func infoTapped(_ sender: Any) {
@@ -175,14 +171,7 @@ class ViewController: UIViewController {
         stateChanged()
         updateLayout(animated: true)
     }
-    
-    @IBAction func statPeriodTapped(_ sender: UIButton) {
-        if let newPeriod = TimeFrame.Period(rawValue: sender.tag) {
-            selectedPeriod = newPeriod
-            updatePeriod()
-        }
-    }
-    
+
     @objc func foreground() {
         stateChanged()
     }
@@ -210,7 +199,7 @@ class ViewController: UIViewController {
             
             // todo: remove this sample code
             func getRandomValue() -> Int64 { Int64(pow(10.0, Double.random(in: 0...15))) }
-            self.statistics = DataVolume(direct: getRandomValue(), peer: getRandomValue())
+            //self.statistics = DataVolume(direct: getRandomValue(), peer: getRandomValue())
         }
     }
 }
