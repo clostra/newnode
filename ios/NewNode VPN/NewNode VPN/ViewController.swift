@@ -36,12 +36,6 @@ class ViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(self.displayStats),
-            name: Notification.Name("DisplayStats"),
-            object: nil)
-
         updateLayout(animated: false)
         
         monitor.pathUpdateHandler = { path in
@@ -49,6 +43,9 @@ class ViewController: UIViewController {
         }
         monitor.start(queue: .main)
         
+        NotificationCenter.default.addObserver(self, selector:#selector(displayStats), name:
+                                                Notification.Name("DisplayStats"), object: nil)
+
         NotificationCenter.default.addObserver(self, selector:#selector(foreground), name:
                                                 UIApplication.willEnterForegroundNotification, object: nil)
         
@@ -58,9 +55,9 @@ class ViewController: UIViewController {
         }
     }
 
-    @objc private func displayStats(notification: NSNotification) {
-        let o = notification.object as! Dictionary<<#Key: Hashable#>, Any>
-        updateStatistics(direct: o.direct_bytes, peer: o.peers_bytes)
+    @objc func displayStats(notification: NSNotification) {
+        let o = notification.userInfo
+        updateStatistics(direct: o?["direct_bytes"] as! UInt64, peer: o?["peers_bytes"] as! UInt64)
     }
 
     func updateLayout(animated: Bool) {
@@ -86,8 +83,8 @@ class ViewController: UIViewController {
         formatter.allowsNonnumericFormatting = false
         formatter.isAdaptive = true
 
-        statTexts[0].text = NSLocalizedString("direct", comment: "") + formatter.string(fromByteCount: direct)
-        statTexts[1].text = NSLocalizedString("peers", comment: "") + formatter.string(fromByteCount: peer)
+        statTexts[0].text = NSLocalizedString("direct", comment: "") + formatter.string(fromByteCount: Int64(direct))
+        statTexts[1].text = NSLocalizedString("peers", comment: "") + formatter.string(fromByteCount: Int64(peer))
     }
     
     @IBAction func infoTapped(_ sender: Any) {
@@ -196,10 +193,6 @@ class ViewController: UIViewController {
             } else {
                 self.spinner.stopAnimating()
             }
-            
-            // todo: remove this sample code
-            func getRandomValue() -> Int64 { Int64(pow(10.0, Double.random(in: 0...15))) }
-            //self.statistics = DataVolume(direct: getRandomValue(), peer: getRandomValue())
         }
     }
 }
@@ -226,7 +219,5 @@ func statusAsText(_ status: NEVPNStatus) -> String {
         @unknown default: return ""
         }
     }()
-    //print(resource_title)
     return NSLocalizedString(resource_title, comment: "")
 }
-
