@@ -23,6 +23,7 @@ class ViewController: UIViewController {
     @IBOutlet var statPeriods: [UIButton]!
     @IBOutlet var statTexts: [UILabel]!
     let monitor = NWPathMonitor()
+    let wormhole = MMWormhole(applicationGroupIdentifier: "group.com.newnode.vpn", optionalDirectory: nil)
     
     var toggleState: Bool {
         get {
@@ -42,22 +43,19 @@ class ViewController: UIViewController {
             self.update()
         }
         monitor.start(queue: .main)
-        
-        NotificationCenter.default.addObserver(self, selector:#selector(displayStats), name:
-                                                Notification.Name("DisplayStats"), object: nil)
+
+        wormhole.listenForMessage(withIdentifier: "DisplayStats", listener: { (message) -> Void in
+            let o = message as! NSDictionary?
+            self.updateStatistics(direct: o?["direct_bytes"] as! UInt64, peer: o?["peers_bytes"] as! UInt64)
+        })
 
         NotificationCenter.default.addObserver(self, selector:#selector(foreground), name:
                                                 UIApplication.willEnterForegroundNotification, object: nil)
-        
+
         update()
         if toggleState {
             stateChanged()
         }
-    }
-
-    @objc func displayStats(notification: NSNotification) {
-        let o = notification.userInfo
-        updateStatistics(direct: o?["direct_bytes"] as! UInt64, peer: o?["peers_bytes"] as! UInt64)
     }
 
     func updateLayout(animated: Bool) {
