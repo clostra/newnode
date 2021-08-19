@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 30
+    compileSdkVersion 31
 
     new File(System.getenv('NDK') + '/source.properties').eachLine { line ->
         def matcher = line =~ /Pkg.Revision = (.*)/
@@ -25,7 +25,7 @@ android {
     defaultConfig {
         applicationId "com.clostra.newnode.vpn"
         minSdkVersion 29
-        targetSdkVersion 30
+        targetSdkVersion 31
 
         new File('../../constants.h').eachLine { line ->
             def matcher = line =~ /VERSION "(.*)"/
