@@ -20,7 +20,7 @@ android {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation 'androidx.appcompat:appcompat:1.0.0'
+    implementation 'androidx.appcompat:appcompat:+'
     implementation 'com.android.support.constraint:constraint-layout:1.+'
 
     // include AAR directly (must include dependencies)
