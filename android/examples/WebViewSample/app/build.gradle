@@ -20,13 +20,14 @@ android {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation 'androidx.appcompat:appcompat:+'
+    implementation 'androidx.appcompat:appcompat:1.3.1'
     implementation 'com.android.support.constraint:constraint-layout:1.+'
 
     // include AAR directly (must include dependencies)
     implementation project(':newnode')
     implementation 'com.bugsnag:bugsnag-android:4.5.0'
     implementation 'com.google.android.gms:play-services-nearby:17.+'
+    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0'
 
     // use jcenter
     //implementation 'com.clostra.newnode:newnode:+'
