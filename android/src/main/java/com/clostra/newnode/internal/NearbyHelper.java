@@ -2,7 +2,11 @@ package com.clostra.newnode.internal;
 
 import android.app.Activity;
 import android.app.Application;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.BatteryManager;
 import android.os.Bundle;
 import android.util.Log;
 
@@ -43,7 +47,24 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
     String serviceName = UUID.randomUUID().toString();
 
     boolean requestPermission = true;
+    boolean batteryLow = false;
     Set<String> connections = new HashSet<>();
+
+    public class BatteryLevelReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            Log.d(TAG, "action: " + intent.getAction());
+            if (intent.getAction() == Intent.ACTION_BATTERY_LOW) {
+                batteryLow = true;
+                stopDiscovery();
+                stopAdvertising();
+            } else if (intent.getAction() == Intent.ACTION_BATTERY_OKAY) {
+                batteryLow = false;
+                startDiscovery();
+                startAdvertising();
+            }
+        }
+    }
 
     PayloadCallback payloadCallback = new PayloadCallback() {
         @Override
@@ -100,11 +121,25 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
         this.app = app;
         this.requestPermission = requestPermission;
         app.registerActivityLifecycleCallbacks(this);
+
+        IntentFilter iFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        Intent batteryStatus = app.registerReceiver(null, iFilter);
+        int level = batteryStatus != null ? batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) : -1;
+        int scale = batteryStatus != null ? batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1) : -1;
+        double batteryPct = 100 * (level / (double)scale);
+        Log.d(TAG, "batteryPct: " + batteryPct);
+        if (batteryPct < 15) {
+            batteryLow = true;
+        }
+
         startDiscovery();
         startAdvertising();
     }
 
     void startAdvertising() {
+        if (batteryLow) {
+            return;
+        }
         AdvertisingOptions.Builder advertisingOptions = new AdvertisingOptions.Builder();
         advertisingOptions.setStrategy(Strategy.P2P_CLUSTER);
         Nearby.getConnectionsClient(app).startAdvertising(serviceName, SERVICE_ID, connectionLifecycleCallback, advertisingOptions.build())
@@ -128,7 +163,14 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
         });
     }
 
+    void stopAdvertising() {
+        Nearby.getConnectionsClient(app).stopAdvertising();
+    }
+
     void startDiscovery() {
+        if (batteryLow) {
+            return;
+        }
         DiscoveryOptions.Builder discoveryOptions = new DiscoveryOptions.Builder();
         discoveryOptions.setStrategy(Strategy.P2P_CLUSTER);
         Nearby.getConnectionsClient(app).startDiscovery(SERVICE_ID, new EndpointDiscoveryCallback() {
@@ -176,6 +218,10 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
         if (connections.size() < 1) {
             startDiscovery();
         }
+    }
+
+    void stopDiscovery() {
+        Nearby.getConnectionsClient(app).stopDiscovery();
     }
 
     void sendPacket(byte[] packet, final String endpoint) {
