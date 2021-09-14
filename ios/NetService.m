@@ -22,6 +22,8 @@
     if (self != nil) {
         _n = n;
         _discovering = NSMutableSet.new;
+        // XXX: NSNetService is deprecated. Switch to NWParameters.includePeerToPeer = true
+        // https://github.com/clostra/newnode_private/issues/30
         _service = [NSNetService.alloc initWithDomain:@"local" type:ServiceType name:NSProcessInfo.processInfo.globallyUniqueString port:_n->port];
         _service.includesPeerToPeer = YES;
         _service.delegate = self;
