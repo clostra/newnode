@@ -2,6 +2,7 @@
 #include "network.h"
 #include "lsd.h"
 
+@import UIKit;
 
 #define ServiceType @"_newnode._udp."
 
@@ -20,6 +21,11 @@
 {
     self = super.init;
     if (self != nil) {
+        UIDevice.currentDevice.batteryMonitoringEnabled = true;
+        [NSNotificationCenter.defaultCenter addObserver:self
+                                               selector:@selector(batteryLevelChanged)
+                                                   name:UIDeviceBatteryLevelDidChangeNotification
+                                                 object:self];
         _n = n;
         _discovering = NSMutableSet.new;
         // XXX: NSNetService is deprecated. Switch to NWParameters.includePeerToPeer = true
@@ -32,8 +38,10 @@
         _browser.includesPeerToPeer = YES;
         _browser.delegate = self;
 
-        [_service publishWithOptions:0];
-        [_browser searchForServicesOfType:ServiceType inDomain:@"local"];
+        if (![self batteryLow]) {
+            [_service publishWithOptions:0];
+            [_browser searchForServicesOfType:ServiceType inDomain:@"local"];
+        }
     }
     return self;
 }
@@ -43,6 +51,22 @@
     // XXX: work around a 10.12 bug where delegates aren't actually weak references http://www.openradar.me/28943305
     _service.delegate = nil;
     _browser.delegate = nil;
+}
+
+- (bool)batteryLow
+{
+    return UIDevice.currentDevice.batteryLevel < 0.15;
+}
+
+- (void)batteryLevelChanged
+{
+    if ([self batteryLow]) {
+        [_service stop];
+        [_browser stop];
+    } else {
+        [_service publishWithOptions:0];
+        [_browser searchForServicesOfType:ServiceType inDomain:@"local"];
+    }
 }
 
 - (void)gotAddresses:(NSNetService *)service
