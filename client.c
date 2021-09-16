@@ -66,6 +66,7 @@ typedef struct {
     time_t last_connect_attempt;
     char via;
     uint8_t loop;
+    bool is_injector:1;
 } peer;
 
 typedef struct {
@@ -232,16 +233,6 @@ int mkpath(char *file_path)
     return 0;
 }
 
-bool peer_is_injector(peer *p)
-{
-    for (uint i = 0; i < injectors->length; i++) {
-        if (injectors->peers[i] == p) {
-            return true;
-        }
-    }
-    return false;
-}
-
 void connect_more_injectors(network *n, bool injector_preference);
 
 void pending_request_complete(pending_request *r, peer_connection *pc)
@@ -321,7 +312,7 @@ void bev_event_cb(bufferevent *bufev, short events, void *arg)
     if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
         bufferevent_free(pc->bev);
         pc->bev = NULL;
-        if (peer_is_injector(pc->peer)) {
+        if (pc->peer->is_injector) {
             injector_reachable = 0;
         }
         for (uint i = 0; i < lenof(peer_connections); i++) {
@@ -399,6 +390,7 @@ void add_address(network *n, peer_array **pa, const sockaddr *addr, socklen_t ad
     const char *label = "peer";
     if (*pa == injectors) {
         label = "injector";
+        p->is_injector = true;
     } else if (*pa == injector_proxies) {
         label = "injector proxy";
     } else {
@@ -1379,7 +1371,7 @@ void peer_verified(network *n, peer *peer)
 {
     peer->last_verified = time(NULL);
     save_peers(n);
-    if (peer_is_injector(peer)) {
+    if (peer->is_injector) {
         injector_reachable = time(NULL);
         update_injector_proxy_swarm(n);
     }
@@ -1725,7 +1717,7 @@ void peer_request_error_cb(evhttp_request_error error, void *arg)
     if (error == EVREQ_HTTP_REQUEST_CANCEL) {
         return;
     }
-    if (peer_is_injector(r->pc->peer)) {
+    if (r->pc->peer->is_injector) {
         injector_reachable = 0;
     }
     peer_request_cleanup(r, __func__);
@@ -2309,7 +2301,7 @@ void trace_error_cb(evhttp_request_error error, void *arg)
 {
     trace_request *t = (trace_request*)arg;
     debug("t:%p trace_error_cb %d %s\n", t, error, evhttp_request_error_str(error));
-    if (error != EVREQ_HTTP_REQUEST_CANCEL && peer_is_injector(t->pc->peer)) {
+    if (error != EVREQ_HTTP_REQUEST_CANCEL && t->pc->peer->is_injector) {
         injector_reachable = 0;
     }
     trace_request_cleanup(t);
