@@ -164,10 +164,7 @@ struct proxy_request {
     bool localhost:1;
 };
 
-typedef struct {
-    uint length;
-    peer *peers[];
-} peer_array;
+typedef hash_table peer_array;
 
 typedef struct {
     uint64_t from_browser;
@@ -354,20 +351,15 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
 
 peer* get_peer(peer_array *pa, const sockaddr *a, socklen_t alen)
 {
-    for (uint i = 0; i < pa->length; i++) {
-        peer *p = pa->peers[i];
-        if (a->sa_family == p->addr.ss_family && memeq(a, (const uint8_t *)&p->addr, alen)) {
-            return p;
-        }
-    }
-    return NULL;
+    const char *s = strdup(sockaddr_str(a));
+    return hash_get(pa, sockaddr_str(a));
 }
 
 void add_peer(peer_array **pa, peer *p)
 {
-    (*pa)->length++;
-    *pa = realloc(*pa, sizeof(peer_array) + (*pa)->length * sizeof(peer*));
-    (*pa)->peers[(*pa)->length - 1] = p;
+    void *old = hash_set(*pa, strdup(peer_addr_str(p)), p);
+    assert(!old);
+    assert(hash_get(*pa, peer_addr_str(p)));
 
     dht_ping_node((const sockaddr *)&p->addr, sockaddr_get_length((const sockaddr *)&p->addr));
 }
@@ -396,7 +388,7 @@ void add_address(network *n, peer_array **pa, const sockaddr *addr, socklen_t ad
     } else {
         assert(*pa == all_peers);
     }
-    debug("new %s:%p %s\n", label, *pa, peer_addr_str(p));
+    debug("new %s %s\n", label, peer_addr_str(p));
 
     if (!TAILQ_EMPTY(&pending_requests)) {
         for (uint k = 0; k < lenof(peer_connections); k++) {
@@ -1995,12 +1987,12 @@ int peer_sort_cmp(const peer_sort *pa, const peer_sort *pb)
 
 peer* select_peer(peer_array *pa, peer_filter filter)
 {
-    peer_sort best = {.peer = NULL};
+    __block peer_sort best = {.peer = NULL};
     //debug("select_peer peers:%p length:%u\n", pa, pa->length);
-    for (uint i = 0; i < pa->length; i++) {
-        peer *p = pa->peers[i];
+    hash_iter(pa, ^bool (const char *addr, void *val) {
+        peer *p = val;
         if (filter && filter(p)) {
-            continue;
+            return true;
         }
         peer_sort c;
         c.failed = p->last_connect < p->last_connect_attempt;
@@ -2018,11 +2010,12 @@ peer* select_peer(peer_array *pa, peer_filter filter)
                   c.failed, htonll(c.time_since_verified), htonll(c.last_connect_attempt), c.never_connected, c.salt, c.peer);
             debug("peer_sort_cmp:%d\n", peer_sort_cmp(&c, &best));
         }
-        if (!i || peer_sort_cmp(&c, &best) < 0) {
+        if (!best.peer || peer_sort_cmp(&c, &best) < 0) {
             //debug("better p:%p\n", p);
             best = c;
         }
-    }
+        return true;
+    });
     return best.peer;
 }
 
@@ -3069,11 +3062,13 @@ void save_peer_file(const char *s, peer_array *pa)
 {
     FILE *f = fopen(s, "wb");
     if (f) {
-        for (size_t i = 0; i < pa->length; i++) {
-            if (time(NULL) - pa->peers[i]->last_verified < 7 * 24 * 60 * 60) {
-                fwrite(pa->peers[i], sizeof(peer), 1, f);
+        hash_iter(pa, ^bool (const char *addr, void *val) {
+            peer *p = val;
+            if (time(NULL) - p->last_verified < 7 * 24 * 60 * 60) {
+                fwrite(p, sizeof(peer), 1, f);
             }
-        }
+            return true;
+        });
         fclose(f);
     }
 }
@@ -3107,7 +3102,7 @@ void load_peer_file(const char *s, peer_array **pa)
         } else if (*pa == injector_proxies) {
             label = "injector proxies";
         }
-        debug("loaded %u %s\n", (*pa)->length, label);
+        debug("loaded %zu %s\n", hash_length(*pa), label);
         fclose(f);
     }
 }
@@ -3337,9 +3332,9 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
     g_app_id = strdup(app_id);
     g_https_cb = Block_copy(https_cb);
 
-    injectors = alloc(peer_array);
-    injector_proxies = alloc(peer_array);
-    all_peers = alloc(peer_array);
+    injectors = hash_table_create();
+    injector_proxies = hash_table_create();
+    all_peers = hash_table_create();
     TAILQ_INIT(&pending_requests);
 
     // 1.1 is the version of HTTP, not newnode
