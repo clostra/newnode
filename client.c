@@ -2018,7 +2018,7 @@ peer* select_peer(peer_array *pa, peer_filter filter)
         c.last_connect_attempt = ntohll(last_connect_attempt);
         c.never_connected = !p->last_connect;
         c.loop = p->loop;
-        c.salt = randombytes_uniform(0xFF);
+        c.salt = randombytes_uniform(1);
         c.peer = p;
         if (0) {
             debug("peer %s failed:%d time_since_verified:%"PRIu64" last_connect_attempt:%"PRIu64" never_connected:%d salt:%d p:%p\n",
