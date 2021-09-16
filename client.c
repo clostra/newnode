@@ -351,7 +351,6 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
 
 peer* get_peer(peer_array *pa, const sockaddr *a, socklen_t alen)
 {
-    const char *s = strdup(sockaddr_str(a));
     return hash_get(pa, sockaddr_str(a));
 }
 
@@ -359,7 +358,6 @@ void add_peer(peer_array **pa, peer *p)
 {
     void *old = hash_set(*pa, strdup(peer_addr_str(p)), p);
     assert(!old);
-    assert(hash_get(*pa, peer_addr_str(p)));
 
     dht_ping_node((const sockaddr *)&p->addr, sockaddr_get_length((const sockaddr *)&p->addr));
 }
