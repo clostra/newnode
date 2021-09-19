@@ -15,6 +15,7 @@
 #include "log.h"
 #include "newnode.h"
 #include "d2d.h"
+#include "lsd.h"
 
 
 static int pfd[2];
@@ -231,8 +232,6 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_unregisterProxy
     (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("http_proxy"));
     (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("https_proxy"));
 }
-
-void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen);
 
 bool vpn_protect(int socket)
 {
