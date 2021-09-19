@@ -237,10 +237,13 @@ sockaddr_in6 endpoint_to_addr(JNIEnv* env, jstring endpoint)
 {
     const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
     size_t clen = strlen(cEndpoint);
-    sockaddr_in6 sin6 = {.sin6_family = AF_INET6};
-    // link-local unicast
-    sin6.sin6_addr.s6_addr[0] = 0xfe;
-    sin6.sin6_addr.s6_addr[1] = 0x80;
+    sockaddr_in6 sin6 = {
+        .sin6_family = AF_INET6,
+        // link-local unicast
+        .sin6_addr.s6_addr[0] = 0xfe,
+        .sin6_addr.s6_addr[1] = 0x80
+    };
+    assert(IN6_IS_ADDR_LINKLOCAL(&sin6.sin6_addr));
     memcpy(&sin6.sin6_addr.s6_addr[2], cEndpoint, MIN(clen, 14));
     if (clen > 14) {
         memcpy(&sin6.sin6_port, &cEndpoint[14], MIN(clen - 14, 2));
@@ -359,7 +362,7 @@ ssize_t d2d_sendto(const uint8* buf, size_t len, const sockaddr_in6 *sin6)
     JNIEnv *env = get_env();
     push_frame();
     ssize_t r = ^ssize_t() {
-        if (sin6->sin6_addr.s6_addr[0] != 0xfe || sin6->sin6_addr.s6_addr[1] != 0x80) {
+        if (!IN6_IS_ADDR_LINKLOCAL(&sin6->sin6_addr)) {
             return -1;
         }
         if (!newNode) {
