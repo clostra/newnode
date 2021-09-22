@@ -303,8 +303,7 @@ ssize_t __wrap_sendto(int socket, const void *buffer, size_t length, int flags, 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_addEndpoint(JNIEnv* env, jobject thiz, jstring endpoint)
 {
     const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
-    size_t clen = strlen(cEndpoint);
-    sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, clen);
+    sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, strlen(cEndpoint));
     timer_start(g_n, 0, ^{
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshadow"
@@ -319,8 +318,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(
 {
     jobject arrayref = (*env)->NewGlobalRef(env, array);
     const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
-    size_t clen = strlen(cEndpoint);
-    sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, clen);
+    sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, strlen(cEndpoint));
     timer_start(g_n, 0, ^{
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshadow"
