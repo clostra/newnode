@@ -3017,8 +3017,8 @@ void http_request_cb(evhttp_request *req, void *arg)
         }
 
         const char *ifnonematch = evhttp_find_header(req->input_headers, "If-None-Match");
-        if (ifnonematch) {
-            const char *msign = evhttp_find_header(temp->output_headers, "X-MSign");
+        const char *msign = evhttp_find_header(temp->output_headers, "X-MSign");
+        if (ifnonematch && msign) {
             size_t out_len = 0;
             uint8_t *content_hash = base64_decode(ifnonematch, strlen(ifnonematch), &out_len);
             if (out_len == crypto_generichash_BYTES &&
