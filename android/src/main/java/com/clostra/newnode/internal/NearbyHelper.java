@@ -103,8 +103,8 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
             if (!result.getStatus().isSuccess()) {
                 Log.d(TAG, "Connection failed. status:" + result.getStatus());
             } else {
-                connections.add(endpointId);
                 Log.d(TAG, "addEndpoint endpoint:" + endpointId);
+                connections.add(endpointId);
                 NewNode.addEndpoint(endpointId);
             }
         }
@@ -113,6 +113,7 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
         public void onDisconnected(String endpointId) {
             Log.d(TAG, "onDisconnected endpointId:" + endpointId);
             connections.remove(endpointId);
+            NewNode.removeEndpoint(endpointId);
             maybeStartDiscovery();
         }
     };
