@@ -44,5 +44,11 @@
 	<string>Launch Screen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Connect with nearby devices running NewNode.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_newnode._udp.</string>
+	</array>
 </dict>
 </plist>
