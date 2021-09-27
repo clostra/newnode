@@ -279,6 +279,7 @@ public class NewNode implements NewNodeInternal, Runnable {
 
     static native void setCacheDir(String cacheDir);
     static native void addEndpoint(String endpoint);
+    static native void removeEndpoint(String endpoint);
     static native void packetReceived(byte[] packet, String endpoint);
     static native void newnodeInit(NewNode newNode);
     static native void newnodeRun();
