@@ -314,6 +314,20 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_addEndpoint(JNI
     });
 }
 
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_removeEndpoint(JNIEnv* env, jobject thiz, jstring endpoint)
+{
+    const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
+    sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, strlen(cEndpoint));
+    timer_start(g_n, 0, ^{
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow"
+        JNIEnv *env = get_env();
+#pragma clang diagnostic pop
+        // XXX: TODO: remove endpoint
+        (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
+    });
+}
+
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(JNIEnv* env, jobject thiz, jbyteArray array, jstring endpoint)
 {
     jobject arrayref = (*env)->NewGlobalRef(env, array);
