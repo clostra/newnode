@@ -362,8 +362,8 @@ ssize_t d2d_sendto(const uint8* buf, size_t len, const sockaddr_in6 *sin6)
             return -1;
         }
         const uint8_t *a = addr_to_endpoint(sin6);
+        // need a null terminator google nearby endpoint ids happen to be C strings
         const char astr[sizeof(in6_addr) + 1] = {0};
-        // XXX: google nearby endpoint ids happen to be ascii
         memcpy((void*)astr, a, sizeof(in6_addr));
         jstring endpoint = JSTR(astr);
         CATCH(return -1);
