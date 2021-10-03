@@ -73,6 +73,7 @@ typedef struct sockaddr_storage sockaddr_storage;
 typedef enum bufferevent_flush_mode bufferevent_flush_mode;
 typedef enum bufferevent_filter_result bufferevent_filter_result;
 typedef in_port_t port_t;
+typedef struct ip ip;
 
 #include "timer.h"
 
