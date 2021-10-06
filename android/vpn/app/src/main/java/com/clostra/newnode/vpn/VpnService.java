@@ -77,8 +77,9 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
         Builder builder = new Builder();
         builder.addAddress("10.7.0.1", 32);
         builder.addAddress("2001:db8::1", 64);
-        builder.addRoute("0.0.0.0", 0);
-        builder.addRoute("::", 0);
+        // XXX: TODO: set default routes once we have packet capture
+        //builder.addRoute("0.0.0.0", 0);
+        //builder.addRoute("::", 0);
         builder.addDnsServer("8.8.8.8");
         builder.addDnsServer("1.1.1.1");
         builder.addDnsServer("2001:4860:4860::8888");
