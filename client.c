@@ -352,6 +352,11 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
     pc->n = n;
     pc->peer = p;
     pc->bev = utp_socket_create_bev(n->evbase, s);
+    if (!pc->bev) {
+        debug("utp_socket_create_bev could not allocate %s\n", peer_addr_str(p));
+        free(pc);
+        return NULL;
+    }
     utp_connect(s, (const sockaddr*)&p->addr, sockaddr_get_length((const sockaddr*)&p->addr));
     bufferevent_setcb(pc->bev, NULL, NULL, bev_event_cb, pc);
     bufferevent_enable(pc->bev, EV_READ);
