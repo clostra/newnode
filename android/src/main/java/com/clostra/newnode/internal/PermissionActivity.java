@@ -17,7 +17,7 @@ public class PermissionActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         switch (requestCode) {
         case PERMISSIONS_REQUEST_CODE:
-            if  (grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+            if  (grantResults.length == 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
                 Log.e(TAG, "Permission is not granted!");
             } else {
                 Log.e(TAG, "Permission granted!");
