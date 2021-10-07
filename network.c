@@ -223,7 +223,7 @@ bool network_make_socket(network *n)
     return true;
 }
 
-bool udp_received(network *n, uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
+bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
 {
     ddebug("udp_received(%zu, %s)\n", len, sockaddr_str(sa));
     if (utp_process_udp(n->utp, buf, len, sa, salen)) {

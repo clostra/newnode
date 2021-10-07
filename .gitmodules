@@ -1,9 +1,6 @@
 [submodule "libutp"]
 	path = libutp
 	url = https://github.com/clostra/libutp
-[submodule "Libevent"]
-	path = Libevent
-	url = https://github.com/clostra/Libevent
 [submodule "libsodium"]
 	path = libsodium
 	url = https://github.com/jedisct1/libsodium
@@ -22,3 +19,6 @@
 [submodule "libevent"]
 	path = libevent
 	url = https://github.com/clostra/libevent
+[submodule "ios/NewNode VPN/MMWormhole"]
+	path = ios/NewNode VPN/MMWormhole
+	url = https://github.com/mutualmobile/MMWormhole.git

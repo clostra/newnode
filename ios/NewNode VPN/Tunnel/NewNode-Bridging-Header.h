@@ -10,5 +10,6 @@
 #define NewNode_Bridging_Header_h
 
 #include "NewNode.h"
+#include "MMWormhole.h"
 
 #endif /* NewNode_Bridging_Header_h */

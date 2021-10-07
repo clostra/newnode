@@ -38,8 +38,21 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>We use Bluetooth</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_newnode._udp.</string>
+	</array>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2011-2014 Apple Inc.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Connect with nearby devices running NewNode.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+		<string>bluetooth-peripheral</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>Launch Screen</string>
 	<key>UIMainStoryboardFile</key>

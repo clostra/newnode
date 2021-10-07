@@ -14,6 +14,8 @@
 #include "constants.h"
 #include "log.h"
 #include "newnode.h"
+#include "d2d.h"
+#include "lsd.h"
 
 
 static int pfd[2];
@@ -209,8 +211,8 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_registerProxy(J
 
     char proxy[128];
     snprintf(proxy, sizeof(proxy), "http://127.0.0.1:%s", port);
-    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("http_proxy"), proxy);
-    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("https_proxy"), proxy);
+    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("http_proxy"), JSTR(proxy));
+    (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("https_proxy"), JSTR(proxy));
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_unregisterProxy(JNIEnv* env, jobject thiz)
@@ -229,34 +231,6 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_unregisterProxy
     (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("https.proxyPort"));
     (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("http_proxy"));
     (*env)->CallStaticObjectMethod(env, cSystem, mClearProp, JSTR("https_proxy"));
-}
-
-void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen);
-
-sockaddr_in6 endpoint_to_addr(JNIEnv* env, jstring endpoint)
-{
-    const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
-    size_t clen = strlen(cEndpoint);
-    sockaddr_in6 sin6 = {.sin6_family = AF_INET6};
-    // link-local unicast
-    sin6.sin6_addr.s6_addr[0] = 0xfe;
-    sin6.sin6_addr.s6_addr[1] = 0x80;
-    memcpy(&sin6.sin6_addr.s6_addr[2], cEndpoint, MIN(clen, 14));
-    if (clen > 14) {
-        memcpy(&sin6.sin6_port, &cEndpoint[14], MIN(clen - 14, 2));
-        assert(clen <= 16);
-    }
-    (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
-    return sin6;
-}
-
-jstring addr_to_endpoint(JNIEnv* env, const sockaddr_in6 *sin6)
-{
-    char s[17] = {0};
-    size_t addrlen = sizeof(sin6->sin6_addr.s6_addr);
-    memcpy(s, &sin6->sin6_addr.s6_addr[2], addrlen - 2);
-    memcpy(&s[addrlen - 2], &sin6->sin6_port, sizeof(sin6->sin6_port));
-    return JSTR(s);
 }
 
 bool vpn_protect(int socket)
@@ -328,16 +302,37 @@ ssize_t __wrap_sendto(int socket, const void *buffer, size_t length, int flags, 
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_addEndpoint(JNIEnv* env, jobject thiz, jstring endpoint)
 {
-    sockaddr_in6 sin6 = endpoint_to_addr(env, endpoint);
+    const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
+    sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, strlen(cEndpoint));
     timer_start(g_n, 0, ^{
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow"
+        JNIEnv *env = get_env();
+#pragma clang diagnostic pop
         add_sockaddr(g_n, (const sockaddr *)&sin6, sizeof(sin6));
+        (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
+    });
+}
+
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_removeEndpoint(JNIEnv* env, jobject thiz, jstring endpoint)
+{
+    const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
+    sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, strlen(cEndpoint));
+    timer_start(g_n, 0, ^{
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow"
+        JNIEnv *env = get_env();
+#pragma clang diagnostic pop
+        // XXX: TODO: remove endpoint
+        (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
     });
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(JNIEnv* env, jobject thiz, jbyteArray array, jstring endpoint)
 {
     jobject arrayref = (*env)->NewGlobalRef(env, array);
-    sockaddr_in6 sin6 = endpoint_to_addr(env, endpoint);
+    const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
+    sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, strlen(cEndpoint));
     timer_start(g_n, 0, ^{
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshadow"
@@ -345,8 +340,9 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(
 #pragma clang diagnostic pop
         jbyte *buf = (*env)->GetByteArrayElements(env, arrayref, NULL);
         jsize len = (*env)->GetArrayLength(env, arrayref);
-        udp_received(g_n, (uint8_t*)buf, len, (const sockaddr *)&sin6, sizeof(sin6));
+        udp_received(g_n, (const uint8_t*)buf, len, (const sockaddr *)&sin6, sizeof(sin6));
         (*env)->ReleaseByteArrayElements(env, arrayref, buf, JNI_ABORT);
+        (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
         (*env)->DeleteGlobalRef(env, arrayref);
 
         // XXX: this should be called when the read buffer is drained
@@ -354,18 +350,22 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(
     });
 }
 
-ssize_t d2d_sendto(const uint8* buf, size_t len, const sockaddr_in6 *sin6)
+ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6)
 {
     JNIEnv *env = get_env();
     push_frame();
     ssize_t r = ^ssize_t() {
-        if (sin6->sin6_addr.s6_addr[0] != 0xfe || sin6->sin6_addr.s6_addr[1] != 0x80) {
+        if (!IN6_IS_ADDR_LINKLOCAL(&sin6->sin6_addr)) {
             return -1;
         }
         if (!newNode) {
             return -1;
         }
-        jstring endpoint = addr_to_endpoint(env, sin6);
+        const uint8_t *a = addr_to_endpoint(sin6);
+        // need a null terminator google nearby endpoint ids happen to be C strings
+        const char astr[sizeof(in6_addr) + 1] = {0};
+        memcpy((void*)astr, a, sizeof(in6_addr));
+        jstring endpoint = JSTR(astr);
         CATCH(return -1);
         jbyteArray array = (*env)->NewByteArray(env, len);
         CATCH(return -1);
@@ -379,6 +379,19 @@ ssize_t d2d_sendto(const uint8* buf, size_t len, const sockaddr_in6 *sin6)
     }();
     pop_frame();
     return r;
+}
+
+void ui_display_stats(const char *type, uint64_t direct, uint64_t peers)
+{
+    JNIEnv *env = get_env();
+    push_frame();
+    ^() {
+        jclass cNewNode = (*env)->GetObjectClass(env, newNode);
+        CATCH(return);
+        CALL_VOID(cNewNode, newNode, displayStats, Ljava/lang/String;JJ, JSTR(type), direct, peers);
+        CATCH(return);
+    }();
+    pop_frame();
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)

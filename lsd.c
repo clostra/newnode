@@ -21,15 +21,33 @@ int lsd_fd = -1;
 event lsd_event;
 event route_event;
 
-bool starts_with(const char *restrict string, const char *restrict prefix)
+
+#ifdef ANDROID
+/*
+ * Find the first occurrence of find in s, where the search is limited to the
+ * first slen characters of s.
+ */
+char *
+strnstr(const char *s, const char *find, size_t slen)
 {
-    while (*prefix) {
-        if (*prefix++ != *string++) {
-            return false;
-        }
+    char c, sc;
+    size_t len;
+
+    if ((c = *find++) != '\0') {
+        len = strlen(find);
+        do {
+            do {
+                if (slen-- < 1 || (sc = *s++) == '\0')
+                    return (NULL);
+            } while (sc != c);
+            if (len > slen)
+                return (NULL);
+        } while (strncmp(s, find, len) != 0);
+        s--;
     }
-    return true;
+    return ((char *)s);
 }
+#endif
 
 void lsd_send(network *n, bool reply)
 {
@@ -81,25 +99,29 @@ void lsd_read_cb(evutil_socket_t fd, short events, void *arg)
             return;
         }
         // XXX: TODO: remove SEARCH/REPLY once we have bidirectional peer connections
-        if (starts_with((char*)packet, "NN-SEARCH ")) {
+        if (strnstr((char*)packet, "NN-SEARCH ", r) == 0) {
             lsd_send(n, true);
-        } else if (!starts_with((char*)packet, "NN-REPLY ")) {
+        } else if (strnstr((char*)packet, "NN-REPLY ", r) != 0) {
             continue;
         }
-        char *p = strstr((char*)packet, "Port: ");
-        if (p) {
-            p += strlen("Port: ");
-            char *e = strstr(p, "\r\n");
-            *e = '\0';
-            sockaddr_set_port((sockaddr*)&addr, (port_t)atoi(p));
-            if (o_debug) {
-                char host[NI_MAXHOST];
-                char serv[NI_MAXSERV];
-                getnameinfo((sockaddr *)&addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
-                debug("lsd peer %s:%s\n", host, serv);
-            }
-            add_sockaddr(n, (sockaddr *)&addr, addrlen);
+        char *p = strnstr((char*)packet, "Port: ", r);
+        if (!p) {
+            continue;
         }
+        p += strlen("Port: ");
+        char *e = strnstr(p, "\r\n", p - (char*)packet);
+        if (!e) {
+            continue;
+        }
+        *e = '\0';
+        sockaddr_set_port((sockaddr*)&addr, (port_t)atoi(p));
+        if (o_debug) {
+            char host[NI_MAXHOST];
+            char serv[NI_MAXSERV];
+            getnameinfo((sockaddr *)&addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
+            debug("lsd peer %s:%s\n", host, serv);
+        }
+        add_sockaddr(n, (sockaddr *)&addr, addrlen);
     }
 }
 

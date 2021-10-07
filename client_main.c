@@ -9,6 +9,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
+void ui_display_stats(const char *type, uint64_t direct, uint64_t peers) {}
 
 int main(int argc, char *argv[])
 {
