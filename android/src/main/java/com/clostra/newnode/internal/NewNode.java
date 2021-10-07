@@ -1,9 +1,12 @@
 package com.clostra.newnode.internal;
 
 import android.app.Application;
+import android.content.Intent;
 import android.content.res.AssetManager;
 import android.os.Build;
 import android.util.Log;
+
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import dalvik.system.PathClassLoader;
 
@@ -239,6 +242,15 @@ public class NewNode implements NewNodeInternal, Runnable {
         updateBugsnagDetails(NotifyType.ALL.getValue());
     }
 
+    void displayStats(String type, long direct, long peers) {
+        LocalBroadcastManager locationBroadcastManager = LocalBroadcastManager.getInstance(app());
+        Intent intent = new Intent("com.clostra.newnode.DISPLAY_STATS");
+        intent.putExtra("EXTRA_SCOPE", type);
+        intent.putExtra("EXTRA_DIRECT_BYTES", direct);
+        intent.putExtra("EXTRA_PEERS_BYTES", peers);
+        locationBroadcastManager.sendBroadcast(intent);
+    }
+
     void http(final String url, final long callblock) {
         new Thread(){public void run() {
             try {
@@ -267,6 +279,7 @@ public class NewNode implements NewNodeInternal, Runnable {
 
     static native void setCacheDir(String cacheDir);
     static native void addEndpoint(String endpoint);
+    static native void removeEndpoint(String endpoint);
     static native void packetReceived(byte[] packet, String endpoint);
     static native void newnodeInit(NewNode newNode);
     static native void newnodeRun();

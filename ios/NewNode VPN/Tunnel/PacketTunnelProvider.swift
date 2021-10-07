@@ -18,6 +18,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     override func startTunnel(options: [String : NSObject]?, completionHandler: @escaping (Error?) -> Void) {
         super.startTunnel(options: options, completionHandler: completionHandler)
 
+        NotificationCenter.default.addObserver(self, selector:#selector(displayStats), name:
+                                                Notification.Name("DisplayStats"), object: nil)
+
         let cachesPath = NSSearchPathForDirectoriesInDomains(.cachesDirectory, .userDomainMask, true).last!
         chdir(cachesPath)
 
@@ -60,7 +63,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             completionHandler(error)
         }
     }
-    
+
+    @objc func displayStats(notification: NSNotification) {
+        let o = notification.userInfo
+        let wormhole = MMWormhole(applicationGroupIdentifier: "group.com.newnode.vpn", optionalDirectory: nil)
+        wormhole.passMessageObject(o as NSDictionary?, identifier: "DisplayStats")
+    }
+
     override func stopTunnel(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
         // Add code here to start the process of stopping the tunnel.
         os_log("stopTunnel reason:%d", reason.rawValue)

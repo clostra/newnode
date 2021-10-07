@@ -11,37 +11,93 @@ import UIKit
 import Network
 import NetworkExtension
 
-class ViewController: UIViewController, LLSwitchDelegate {
 
-    @IBOutlet weak var toggle: LLSwitch!
+class ViewController: UIViewController {
+    
+    @IBOutlet var gradient: GradientView!
+    @IBOutlet weak var powerButton: UIButton!
+    @IBOutlet weak var spinner: SpinnerView!
+    @IBOutlet weak var netGlobes: UIImageView!
     @IBOutlet weak var label: UILabel!
-    @IBOutlet weak var spinner: UIActivityIndicatorView!
+    @IBOutlet weak var hint: UILabel!
+    @IBOutlet var statPeriods: [UIButton]!
+    @IBOutlet var statTexts: [UILabel]!
     let monitor = NWPathMonitor()
+    let wormhole = MMWormhole(applicationGroupIdentifier: "group.com.newnode.vpn", optionalDirectory: nil)
+    
+    var toggleState: Bool {
+        get {
+            return UserDefaults.standard.bool(forKey: "toggle")
+        }
+        set(newValue){
+            UserDefaults.standard.set(newValue, forKey: "toggle")
+        }
+    }
     
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        self.toggle.setOn(UserDefaults.standard.bool(forKey: "toggle"), animated: false)
-        self.toggle.delegate = self
-
+        updateLayout(animated: false)
+        
         monitor.pathUpdateHandler = { path in
             self.update()
         }
         monitor.start(queue: .main)
 
+        wormhole.listenForMessage(withIdentifier: "DisplayStats", listener: { (message) -> Void in
+            let o = message as! NSDictionary?
+            self.updateStatistics(direct: o?["direct_bytes"] as! UInt64, peer: o?["peers_bytes"] as! UInt64)
+        })
+
         NotificationCenter.default.addObserver(self, selector:#selector(foreground), name:
-            UIApplication.willEnterForegroundNotification, object: nil)
+                                                UIApplication.willEnterForegroundNotification, object: nil)
 
         update()
-        if UserDefaults.standard.bool(forKey: "toggle") {
+        if toggleState {
             stateChanged()
         }
     }
 
+    func updateLayout(animated: Bool) {
+        let on = toggleState
+        let backgroundImage = on ? UIImage(named: "earth_globe") : UIImage(named: "gray_circle")
+        powerButton.setBackgroundImage(backgroundImage, for: .normal)
+        
+        gradient.startColor = on ? UIColor(named:"gradient_on1")! : UIColor(named:"gradient_off1")!
+        gradient.endColor = on ? UIColor(named:"gradient_on2")! : UIColor(named:"gradient_off2")!
+        
+        hint.text = NSLocalizedString(on ? "hint_connected" : "hint_disconnected", comment: "")
+        
+        if animated {
+            netGlobes.alpha = on ? 0 : 1
+            UIView.animate(withDuration: 0.5) {
+                self.netGlobes.alpha = on ? 1 : 0
+            }
+        }
+    }
+
+    func updateStatistics(direct: UInt64, peer: UInt64) {
+        let formatter = ByteCountFormatter()
+        formatter.allowsNonnumericFormatting = false
+        formatter.isAdaptive = true
+
+        statTexts[0].text = NSLocalizedString("direct", comment: "") + formatter.string(fromByteCount: Int64(direct))
+        statTexts[1].text = NSLocalizedString("peers", comment: "") + formatter.string(fromByteCount: Int64(peer))
+    }
+    
+    @IBAction func infoTapped(_ sender: Any) {
+        let storyboard = UIStoryboard(name: "Main", bundle: nil)
+        let infoVC = storyboard.instantiateViewController(identifier: "InfoViewController")
+        
+        infoVC.modalPresentationStyle = .overCurrentContext
+        infoVC.modalTransitionStyle = .crossDissolve
+        present(infoVC, animated: true, completion: nil)
+    }
+    
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
-
+    
     func waitForStop(_ manager: NETunnelProviderManager) {
         manager.loadFromPreferences(completionHandler: { (error: Error?) in
             self.update()
@@ -53,11 +109,11 @@ class ViewController: UIViewController, LLSwitchDelegate {
             }
         })
     }
-
+    
     func enforceState(_ manager: NETunnelProviderManager) {
         os_log("manager.connection.status:%@ toggle:%@",
-               String(manager.connection.status.rawValue), String(UserDefaults.standard.bool(forKey: "toggle")))
-        if UserDefaults.standard.bool(forKey: "toggle") {
+               String(manager.connection.status.rawValue), String(toggleState))
+        if toggleState {
             do {
                 os_log("starting...")
                 try manager.connection.startVPNTunnel()
@@ -72,7 +128,7 @@ class ViewController: UIViewController, LLSwitchDelegate {
             self.waitForStop(manager)
         }
     }
-
+    
     func stateChanged() {
         NETunnelProviderManager.loadAllFromPreferences { (managers: [NETunnelProviderManager]?, error: Error?) in
             guard let managers = managers else {
@@ -102,18 +158,19 @@ class ViewController: UIViewController, LLSwitchDelegate {
             self.update()
         }
     }
-
-    func didTap(_ llSwitch: LLSwitch) {
-        os_log("didTapLLSwitch on:%@ changing to:%@",
-               String(self.toggle.on), String(!self.toggle.on))
-        UserDefaults.standard.set(!self.toggle.on, forKey: "toggle")
-        stateChanged()
-    }
     
+    @IBAction func toggleTapped() {
+        let oldToggleState = toggleState
+        os_log("didTapSwitch %@ -> %@", String(oldToggleState), String(!oldToggleState))
+        toggleState = !oldToggleState
+        stateChanged()
+        updateLayout(animated: true)
+    }
+
     @objc func foreground() {
         stateChanged()
     }
-
+    
     func update() {
         NETunnelProviderManager.loadAllFromPreferences { (managers: [NETunnelProviderManager]?, error: Error?) in
             guard let managers = managers else {
@@ -125,26 +182,40 @@ class ViewController: UIViewController, LLSwitchDelegate {
                 let manager = managers.first!
                 status = manager.connection.status
             }
-            self.label.text = { switch status {
-                case .invalid: return "Not Configured"
-                case .disconnected: return "Not Connected"
-                case .connecting: return "Connecting..."
-                case .connected: return "Connected"
-                case .reasserting: return "Reconnecting..."
-                case .disconnecting: return "Disconnecting..."
-                @unknown default: return "Unknown"
-            }}()
-
-            switch status {
-            case .connecting: fallthrough
-            case .reasserting: fallthrough
-            case .disconnecting: self.spinner.startAnimating()
-            case .invalid: fallthrough
-            case .disconnected: fallthrough
-            case .connected: fallthrough
-            @unknown default: self.spinner.stopAnimating()
+            
+            self.updateLayout(animated: false)
+            self.label.text = statusAsText(status)
+            
+            if isTransitionalStatus(status) {
+                self.spinner.startAnimating()
+            } else {
+                self.spinner.stopAnimating()
             }
         }
     }
 }
 
+
+func isTransitionalStatus(_ status: NEVPNStatus) -> Bool {
+    switch status {
+    case .connecting, .reasserting, .disconnecting:
+        return true
+    default:
+        return false
+    }
+}
+
+func statusAsText(_ status: NEVPNStatus) -> String {
+    let resource_title: String = {
+        switch status {
+        case .invalid: return "invalid"
+        case .disconnected: return "disconnected"
+        case .connecting: return "connecting"
+        case .connected: return "connected"
+        case .reasserting: return "reconnecting"
+        case .disconnecting: return "disconnecting"
+        @unknown default: return ""
+        }
+    }()
+    return NSLocalizedString(resource_title, comment: "")
+}

@@ -76,3 +76,13 @@ NetService *ns = nil;
 }
 
 @end
+
+void ui_display_stats(const char *type, uint64_t direct, uint64_t peers)
+{
+    @autoreleasepool {
+        [NSNotificationCenter.defaultCenter
+            postNotificationName:@"DisplayStats"
+                          object:nil
+                        userInfo:@{@"scope": @(type), @"direct_bytes": @(direct), @"peers_bytes": @(peers)}];
+    }
+}

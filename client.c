@@ -22,6 +22,7 @@
 
 #include "dht/dht.h"
 
+#include "ui.h"
 #include "log.h"
 #include "lsd.h"
 #include "d2d.h"
@@ -65,6 +66,7 @@ typedef struct {
     time_t last_connect_attempt;
     char via;
     uint8_t loop;
+    bool is_injector:1;
 } peer;
 
 typedef struct {
@@ -162,10 +164,7 @@ struct proxy_request {
     bool localhost:1;
 };
 
-typedef struct {
-    uint length;
-    peer *peers[];
-} peer_array;
+typedef hash_table peer_array;
 
 typedef struct {
     uint64_t from_browser;
@@ -183,6 +182,8 @@ timer *stats_report_timer;
 network *g_n;
 uint64_t g_cid;
 bool g_stats_changed;
+uint64_t g_all_peer;
+uint64_t g_all_direct;
 
 peer_array *injectors;
 peer_array *injector_proxies;
@@ -227,16 +228,6 @@ int mkpath(char *file_path)
         *p = '/';
     }
     return 0;
-}
-
-bool peer_is_injector(peer *p)
-{
-    for (uint i = 0; i < injectors->length; i++) {
-        if (injectors->peers[i] == p) {
-            return true;
-        }
-    }
-    return false;
 }
 
 void connect_more_injectors(network *n, bool injector_preference);
@@ -318,7 +309,7 @@ void bev_event_cb(bufferevent *bufev, short events, void *arg)
     if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
         bufferevent_free(pc->bev);
         pc->bev = NULL;
-        if (peer_is_injector(pc->peer)) {
+        if (pc->peer->is_injector) {
             injector_reachable = 0;
         }
         for (uint i = 0; i < lenof(peer_connections); i++) {
@@ -365,20 +356,13 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
 
 peer* get_peer(peer_array *pa, const sockaddr *a, socklen_t alen)
 {
-    for (uint i = 0; i < pa->length; i++) {
-        peer *p = pa->peers[i];
-        if (a->sa_family == p->addr.ss_family && memeq(a, (const uint8_t *)&p->addr, alen)) {
-            return p;
-        }
-    }
-    return NULL;
+    return hash_get(pa, sockaddr_str(a));
 }
 
 void add_peer(peer_array **pa, peer *p)
 {
-    (*pa)->length++;
-    *pa = realloc(*pa, sizeof(peer_array) + (*pa)->length * sizeof(peer*));
-    (*pa)->peers[(*pa)->length - 1] = p;
+    void *old = hash_set(*pa, strdup(peer_addr_str(p)), p);
+    assert(!old);
 
     dht_ping_node((const sockaddr *)&p->addr, sockaddr_get_length((const sockaddr *)&p->addr));
 }
@@ -401,12 +385,13 @@ void add_address(network *n, peer_array **pa, const sockaddr *addr, socklen_t ad
     const char *label = "peer";
     if (*pa == injectors) {
         label = "injector";
+        p->is_injector = true;
     } else if (*pa == injector_proxies) {
         label = "injector proxy";
     } else {
         assert(*pa == all_peers);
     }
-    debug("new %s:%p %s\n", label, *pa, peer_addr_str(p));
+    debug("new %s %s\n", label, peer_addr_str(p));
 
     if (!TAILQ_EMPTY(&pending_requests)) {
         for (uint k = 0; k < lenof(peer_connections); k++) {
@@ -1381,7 +1366,7 @@ void peer_verified(network *n, peer *peer)
 {
     peer->last_verified = time(NULL);
     save_peers(n);
-    if (peer_is_injector(peer)) {
+    if (peer->is_injector) {
         injector_reachable = time(NULL);
         update_injector_proxy_swarm(n);
     }
@@ -1727,7 +1712,7 @@ void peer_request_error_cb(evhttp_request_error error, void *arg)
     if (error == EVREQ_HTTP_REQUEST_CANCEL) {
         return;
     }
-    if (peer_is_injector(r->pc->peer)) {
+    if (r->pc->peer->is_injector) {
         injector_reachable = 0;
     }
     peer_request_cleanup(r, __func__);
@@ -1770,6 +1755,7 @@ void stats_changed()
             return true;
         });
     }
+    ui_display_stats("process", g_all_direct, g_all_peer);
     if (stats_report_timer) {
         return;
     }
@@ -1793,7 +1779,7 @@ void stats_changed()
             byte_counts byte_count = *b;
             bzero(b, sizeof(*b));
 
-            __auto_type report = ^(const char *type, uint64_t count, void (^cb)(void)) {
+            __auto_type report = ^(const char *type, uint64_t count, void (^failure)(void)) {
                 if (!count) {
                     return;
                 }
@@ -1814,13 +1800,13 @@ void stats_changed()
                          g_app_name,
                          g_app_id,
                          g_cid);
-                cb = Block_copy(cb);
+                failure = Block_copy(failure);
                 g_https_cb(url, ^(bool success) {
                     timer_start(g_n, 0, ^{
                         if (!success) {
-                            cb();
+                            failure();
                         }
-                        Block_release(cb);
+                        Block_release(failure);
                         if (g_stats_changed) {
                             stats_changed();
                         }
@@ -1895,9 +1881,13 @@ void bufferevent_count_bytes(network *n, const char *authority, bool from_localh
     if (bufferevent_is_utp(to)) {
         evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count->from_peer);
         evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &byte_count->to_peer);
+        evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &g_all_peer);
+        evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &g_all_peer);
     } else {
         evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count->from_direct);
         evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &byte_count->to_direct);
+        evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &g_all_direct);
+        evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &g_all_direct);
     }
 }
 
@@ -2000,12 +1990,12 @@ int peer_sort_cmp(const peer_sort *pa, const peer_sort *pb)
 
 peer* select_peer(peer_array *pa, peer_filter filter)
 {
-    peer_sort best = {.peer = NULL};
+    __block peer_sort best = {.peer = NULL};
     //debug("select_peer peers:%p length:%u\n", pa, pa->length);
-    for (uint i = 0; i < pa->length; i++) {
-        peer *p = pa->peers[i];
+    hash_iter(pa, ^bool (const char *addr, void *val) {
+        peer *p = val;
         if (filter && filter(p)) {
-            continue;
+            return true;
         }
         peer_sort c;
         c.failed = p->last_connect < p->last_connect_attempt;
@@ -2023,11 +2013,12 @@ peer* select_peer(peer_array *pa, peer_filter filter)
                   c.failed, htonll(c.time_since_verified), htonll(c.last_connect_attempt), c.never_connected, c.salt, c.peer);
             debug("peer_sort_cmp:%d\n", peer_sort_cmp(&c, &best));
         }
-        if (!i || peer_sort_cmp(&c, &best) < 0) {
+        if (!best.peer || peer_sort_cmp(&c, &best) < 0) {
             //debug("better p:%p\n", p);
             best = c;
         }
-    }
+        return true;
+    });
     return best.peer;
 }
 
@@ -2306,7 +2297,7 @@ void trace_error_cb(evhttp_request_error error, void *arg)
 {
     trace_request *t = (trace_request*)arg;
     debug("t:%p trace_error_cb %d %s\n", t, error, evhttp_request_error_str(error));
-    if (error != EVREQ_HTTP_REQUEST_CANCEL && peer_is_injector(t->pc->peer)) {
+    if (error != EVREQ_HTTP_REQUEST_CANCEL && t->pc->peer->is_injector) {
         injector_reachable = 0;
     }
     trace_request_cleanup(t);
@@ -3031,8 +3022,8 @@ void http_request_cb(evhttp_request *req, void *arg)
         }
 
         const char *ifnonematch = evhttp_find_header(req->input_headers, "If-None-Match");
-        if (ifnonematch) {
-            const char *msign = evhttp_find_header(temp->output_headers, "X-MSign");
+        const char *msign = evhttp_find_header(temp->output_headers, "X-MSign");
+        if (ifnonematch && msign) {
             size_t out_len = 0;
             uint8_t *content_hash = base64_decode(ifnonematch, strlen(ifnonematch), &out_len);
             if (out_len == crypto_generichash_BYTES &&
@@ -3074,11 +3065,13 @@ void save_peer_file(const char *s, peer_array *pa)
 {
     FILE *f = fopen(s, "wb");
     if (f) {
-        for (size_t i = 0; i < pa->length; i++) {
-            if (time(NULL) - pa->peers[i]->last_verified < 7 * 24 * 60 * 60) {
-                fwrite(pa->peers[i], sizeof(peer), 1, f);
+        hash_iter(pa, ^bool (const char *addr, void *val) {
+            peer *p = val;
+            if (time(NULL) - p->last_verified < 7 * 24 * 60 * 60) {
+                fwrite(p, sizeof(peer), 1, f);
             }
-        }
+            return true;
+        });
         fclose(f);
     }
 }
@@ -3112,7 +3105,7 @@ void load_peer_file(const char *s, peer_array **pa)
         } else if (*pa == injector_proxies) {
             label = "injector proxies";
         }
-        debug("loaded %u %s\n", (*pa)->length, label);
+        debug("loaded %zu %s\n", hash_length(*pa), label);
         fclose(f);
     }
 }
@@ -3342,9 +3335,9 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
     g_app_id = strdup(app_id);
     g_https_cb = Block_copy(https_cb);
 
-    injectors = alloc(peer_array);
-    injector_proxies = alloc(peer_array);
-    all_peers = alloc(peer_array);
+    injectors = hash_table_create();
+    injector_proxies = hash_table_create();
+    all_peers = hash_table_create();
     TAILQ_INIT(&pending_requests);
 
     // 1.1 is the version of HTTP, not newnode

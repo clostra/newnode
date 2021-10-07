@@ -106,12 +106,12 @@ LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-apple/ios-simulators/include
 LIBSODIUM=libsodium/libsodium-apple/ios-simulators/lib/libsodium.a
 BASEDIR="${XCODEDIR}/Platforms/iPhoneSimulator.platform/Developer"
 SDK="${BASEDIR}/SDKs/iPhoneSimulator.sdk"
-IOS_SIMULATOR_VERSION_MIN=9.3.0
+IOS_SIMULATOR_VERSION_MIN=11
 
 ARCH=x86_64
 CFLAGS="-arch $ARCH -isysroot ${SDK} -mios-simulator-version-min=${IOS_SIMULATOR_VERSION_MIN}"
 LDFLAGS="-arch $ARCH"
-TRIPLE=x86_64-apple-darwin10
+TRIPLE=x86_64-apple-darwin
 build_apple
 
 
@@ -119,23 +119,17 @@ LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-apple/ios/include
 LIBSODIUM=libsodium/libsodium-apple/ios/lib/libsodium.a
 BASEDIR="${XCODEDIR}/Platforms/iPhoneOS.platform/Developer"
 SDK="${BASEDIR}/SDKs/iPhoneOS.sdk"
-IOS_VERSION_MIN=9.3.0
-
-ARCH=armv7
-CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -mios-version-min=${IOS_VERSION_MIN} -fembed-bitcode"
-LDFLAGS="-arch $ARCH"
-TRIPLE=armv7-apple-darwin10
-build_apple
+IOS_VERSION_MIN=11
 
 ARCH=arm64
 CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -mios-version-min=${IOS_VERSION_MIN} -fembed-bitcode"
 LDFLAGS="-arch $ARCH"
-TRIPLE=arm-apple-darwin10
+TRIPLE=arm-apple-darwin
 build_apple
 
-rm -rf fat-apple-darwin10
-mkdir fat-apple-darwin10
-lipo -create armv7-apple-darwin10/libnewnode.a arm-apple-darwin10/libnewnode.a -output fat-apple-darwin10/libnewnode.a
+rm -rf fat-apple-darwin
+mkdir fat-apple-darwin
+lipo -create arm-apple-darwin/libnewnode.a -output fat-apple-darwin/libnewnode.a
 
 
 LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-apple/catalyst/include
@@ -162,7 +156,7 @@ cp ios/Framework/NewNode-iOS.h $FRAMEWORK/Headers/NewNode.h
 VERSION=`grep "VERSION " constants.h | sed -n 's/.*"\(.*\)"/\1/p'`
 sed "s/\$(CURRENT_PROJECT_VERSION)/$VERSION/" ios/Framework/Info.plist > $FRAMEWORK/Info.plist
 LIPO_ARGS=""
-for triple in x86_64-apple-darwin10 arm-apple-darwin10 armv7-apple-darwin10; do
+for triple in x86_64-apple-darwin arm-apple-darwin; do
     LIPO_ARGS+=" $triple/libnewnode.dylib"
 done
 lipo -create -output $FRAMEWORK/NewNode $LIPO_ARGS
@@ -175,7 +169,7 @@ du -ch $FRAMEWORK.dSYM
 XCFRAMEWORK="NewNode.xcframework"
 rm -rf $XCFRAMEWORK || true
 XCFRAMEWORK_ARGS=""
-for triple in x86_64-apple-darwin10 fat-apple-darwin10 x86_64-apple-ios; do
+for triple in x86_64-apple-darwin fat-apple-darwin x86_64-apple-ios; do
   XCFRAMEWORK_ARGS+=" -library $triple/libnewnode.a"
   XCFRAMEWORK_ARGS+=" -headers Headers"
 done

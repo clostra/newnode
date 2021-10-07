@@ -1,8 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 29
-    buildToolsVersion "29.0.3"
+    compileSdkVersion 31
 
     new File(System.getenv('NDK') + '/source.properties').eachLine { line ->
         def matcher = line =~ /Pkg.Revision = (.*)/
@@ -26,7 +25,7 @@ android {
     defaultConfig {
         applicationId "com.clostra.newnode.vpn"
         minSdkVersion 29
-        targetSdkVersion 29
+        targetSdkVersion 31
 
         new File('../../constants.h').eachLine { line ->
             def matcher = line =~ /VERSION "(.*)"/
@@ -36,11 +35,6 @@ android {
             }
         }
         versionCode versionName.replace(".", "").toInteger()
-    }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
     }
 
     buildTypes {
@@ -53,10 +47,14 @@ android {
 }
 
 dependencies {
+    implementation 'androidx.appcompat:appcompat:1.3.1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.0.4'
+
     // include AAR directly (must include dependencies)
     implementation project(':newnode')
     implementation 'com.bugsnag:bugsnag-android:4.5.0'
     implementation 'com.google.android.gms:play-services-nearby:17.+'
+    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0'
 
     // use jcenter
     //implementation 'com.clostra.newnode:newnode:+'
