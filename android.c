@@ -304,13 +304,9 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_addEndpoint(JNI
 {
     const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
     sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, strlen(cEndpoint));
+    (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
     timer_start(g_n, 0, ^{
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wshadow"
-        JNIEnv *env = get_env();
-#pragma clang diagnostic pop
         add_sockaddr(g_n, (const sockaddr *)&sin6, sizeof(sin6));
-        (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
     });
 }
 
@@ -318,13 +314,9 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_removeEndpoint(
 {
     const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
     sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, strlen(cEndpoint));
+    (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
     timer_start(g_n, 0, ^{
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wshadow"
-        JNIEnv *env = get_env();
-#pragma clang diagnostic pop
         // XXX: TODO: remove endpoint
-        (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
     });
 }
 
@@ -333,6 +325,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(
     jobject arrayref = (*env)->NewGlobalRef(env, array);
     const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
     sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, strlen(cEndpoint));
+    (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
     timer_start(g_n, 0, ^{
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshadow"
@@ -342,7 +335,6 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(
         jsize len = (*env)->GetArrayLength(env, arrayref);
         udp_received(g_n, (const uint8_t*)buf, len, (const sockaddr *)&sin6, sizeof(sin6));
         (*env)->ReleaseByteArrayElements(env, arrayref, buf, JNI_ABORT);
-        (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
         (*env)->DeleteGlobalRef(env, arrayref);
 
         // XXX: this should be called when the read buffer is drained
