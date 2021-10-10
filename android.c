@@ -77,6 +77,14 @@ void start_stdio_thread()
 #define push_frame() (*env)->PushLocalFrame(env, 16)
 #define pop_frame() (*env)->PopLocalFrame(env, NULL);
 
+
+void jvm_frame(JNIEnv* env, void (^c)())
+{
+    push_frame();
+    c();
+    pop_frame();
+}
+
 enum notify_type {
     ALL = 1,
     USER = 2,
@@ -155,8 +163,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
 #pragma clang diagnostic ignored "-Wshadow"
         JNIEnv *env = get_env();
 #pragma clang diagnostic pop
-        push_frame();
-        ^() {
+        jvm_frame(env, ^{
             if (!newNode) {
                 cb(false);
                 return;
@@ -173,8 +180,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
                 Block_release(cbc);
                 return;
             );
-        }();
-        pop_frame();
+        });
     });
 }
 
@@ -376,14 +382,12 @@ ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6)
 void ui_display_stats(const char *type, uint64_t direct, uint64_t peers)
 {
     JNIEnv *env = get_env();
-    push_frame();
-    ^() {
+    jvm_frame(env, ^{
         jclass cNewNode = (*env)->GetObjectClass(env, newNode);
         CATCH(return);
         CALL_VOID(cNewNode, newNode, displayStats, Ljava/lang/String;JJ, JSTR(type), direct, peers);
         CATCH(return);
-    }();
-    pop_frame();
+    });
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
