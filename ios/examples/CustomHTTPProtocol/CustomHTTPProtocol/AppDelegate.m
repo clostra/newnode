@@ -45,6 +45,8 @@
  
  */
 
+@import NewNode;
+
 #import "AppDelegate.h"
 
 #import "WebViewController.h"
@@ -125,7 +127,9 @@ static NSTimeInterval sAppStartTime;            // since reference date
     [((UINavigationController *) self.window.rootViewController) pushViewController:webViewController animated:NO];
 
 	[self.window makeKeyAndVisible];
-    
+
+    NSLog(@"newnode: %@", NewNode.connectionProxyDictionary);
+
     return YES;
 }
 
