@@ -264,8 +264,9 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
                 break;
 #endif
             }
-            debug("%s recvfrom error %d %s\n", __func__, errno, strerror(errno));
-            if (errno == ENOTCONN) {
+            int err = errno;
+            debug("%s recvfrom error %d %s\n", __func__, err, strerror(err));
+            if (err == ENOTCONN) {
                 // recreate socket
                 debug("%s recreating socket\n", __func__);
                 event_del(&n->udp_event);
