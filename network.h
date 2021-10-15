@@ -42,6 +42,14 @@ typedef struct network network;
 #endif
 #endif
 
+#ifndef IN6_IS_ADDR_UNIQUE_LOCAL
+/*
+ * Unique Local IPv6 Unicast Addresses (per RFC 4193)
+ */
+#define IN6_IS_ADDR_UNIQUE_LOCAL(a) \
+    (((a)->s6_addr[0] == 0xfc) || ((a)->s6_addr[0] == 0xfd))
+#endif
+
 typedef struct event_base event_base;
 typedef struct evdns_base evdns_base;
 typedef struct event event;
