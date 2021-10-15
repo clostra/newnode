@@ -353,14 +353,14 @@ ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6)
     JNIEnv *env = get_env();
     push_frame();
     ssize_t r = ^ssize_t() {
-        if (!IN6_IS_ADDR_LINKLOCAL(&sin6->sin6_addr)) {
+        if (!IN6_IS_ADDR_UNIQUE_LOCAL(&sin6->sin6_addr)) {
             return -1;
         }
         if (!newNode) {
             return -1;
         }
         const uint8_t *a = addr_to_endpoint(sin6);
-        // need a null terminator google nearby endpoint ids happen to be C strings
+        // need a null terminator; google nearby endpoint ids happen to be C strings
         const char astr[sizeof(in6_addr) + 1] = {0};
         memcpy((void*)astr, a, sizeof(in6_addr));
         jstring endpoint = JSTR(astr);
