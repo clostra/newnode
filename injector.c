@@ -99,10 +99,11 @@ void request_cleanup(proxy_request *p)
 void request_done_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("p:%p (%.2fms) request_done_cb %p\n", p, pdelta(p), req);
     if (!req) {
+        debug("p:%p request_done_cb %p\n", p, req);
         return;
     }
+    debug("p:%p (%.2fms) request_done_cb %p\n", p, pdelta(p), req);
     p->req = NULL;
     if (p->server_req && p->server_req->evcon) {
         evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
