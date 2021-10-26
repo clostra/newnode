@@ -200,8 +200,6 @@ int header_cb(evhttp_request *req, void *arg)
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p (%.2fms) header_cb %d %s\n", p, pdelta(p), req->response_code, req->response_code_line);
 
-    int klass = req->response_code / 100;
-
     const char *response_header_whitelist[] = hashed_headers;
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
         copy_header(req, p->server_req, response_header_whitelist[i]);
