@@ -211,6 +211,9 @@ bool network_make_socket(network *n)
         n->dht = NULL;
     }
     n->dht = dht_setup(n);
+    timer_start(n, 0, ^{
+        dht_restore(n->dht);
+    });
 
     sockaddr_storage ss;
     socklen_t ss_len = sizeof(ss);
