@@ -391,6 +391,10 @@ void connect_request(network *n, evhttp_request *req)
     char buf[2048];
     snprintf(buf, sizeof(buf), "https://%s", evhttp_request_get_uri(req));
     evhttp_uri *uri = evhttp_uri_parse(buf);
+    if (!uri) {
+        evhttp_send_error(req, 400, "Invalid Authority");
+        return;
+    }
     const char *host = evhttp_uri_get_host(uri);
     if (!host) {
         evhttp_uri_free(uri);
