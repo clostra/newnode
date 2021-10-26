@@ -80,7 +80,11 @@ dht* dht_setup(network *n)
     uint8_t myid[20];
     randombytes_buf(myid, sizeof(myid));
     dht_init(d->n->fd, d->n->fd, myid, NULL);
+    return d;
+}
 
+void dht_restore(dht *d)
+{
     FILE *f = fopen("dht.dat", "rb");
     if (f) {
         fseek(f, 0, SEEK_END);
@@ -118,8 +122,6 @@ dht* dht_setup(network *n)
     dht_add_bootstrap(d, "router.utorrent.com", 6881);
     dht_add_bootstrap(d, "router.bittorrent.com", 6881);
     dht_add_bootstrap(d, "dht.libtorrent.org", 25401);
-
-    return d;
 }
 
 void dht_save(dht *d)
