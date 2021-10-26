@@ -306,32 +306,36 @@ ssize_t __wrap_sendto(int socket, const void *buffer, size_t length, int flags, 
     return __real_sendto(socket, buffer, length, flags, dest_addr, dest_len);
 }
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_addEndpoint(JNIEnv* env, jobject thiz, jstring endpoint)
+sockaddr_in6 jbyteArray_to_addr(JNIEnv* env, jbyteArray je)
 {
-    const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
-    sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, strlen(cEndpoint));
-    (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
+    jbyte *buf = (*env)->GetByteArrayElements(env, je, NULL);
+    jsize len = (*env)->GetArrayLength(env, je);
+    endpoint e = {0};
+    memcpy(&e, buf, MIN((size_t)len, sizeof(e)));
+    (*env)->ReleaseByteArrayElements(env, je, buf, JNI_ABORT);
+    return endpoint_to_addr(&e);
+}
+
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_addEndpoint(JNIEnv* env, jobject thiz, jbyteArray endpoint)
+{
+    const sockaddr_in6 sin6 = jbyteArray_to_addr(env, endpoint);
     timer_start(g_n, 0, ^{
         add_sockaddr(g_n, (const sockaddr *)&sin6, sizeof(sin6));
     });
 }
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_removeEndpoint(JNIEnv* env, jobject thiz, jstring endpoint)
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_removeEndpoint(JNIEnv* env, jobject thiz, jbyteArray endpoint)
 {
-    const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
-    sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, strlen(cEndpoint));
-    (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
+    const sockaddr_in6 sin6 = jbyteArray_to_addr(env, endpoint);
     timer_start(g_n, 0, ^{
         // XXX: TODO: remove endpoint
     });
 }
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(JNIEnv* env, jobject thiz, jbyteArray array, jstring endpoint)
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(JNIEnv* env, jobject thiz, jbyteArray array, jbyteArray endpoint)
 {
     jobject arrayref = (*env)->NewGlobalRef(env, array);
-    const char* cEndpoint = (*env)->GetStringUTFChars(env, endpoint, NULL);
-    sockaddr_in6 sin6 = endpoint_to_addr((const uint8_t*)cEndpoint, strlen(cEndpoint));
-    (*env)->ReleaseStringUTFChars(env, endpoint, cEndpoint);
+    const sockaddr_in6 sin6 = jbyteArray_to_addr(env, endpoint);
     timer_start(g_n, 0, ^{
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshadow"
@@ -359,11 +363,10 @@ ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6)
         if (!newNode) {
             return -1;
         }
-        const uint8_t *a = addr_to_endpoint(sin6);
-        // need a null terminator; google nearby endpoint ids happen to be C strings
-        const char astr[sizeof(in6_addr) + 1] = {0};
-        memcpy((void*)astr, a, sizeof(in6_addr));
-        jstring endpoint = JSTR(astr);
+        const endpoint e = addr_to_endpoint(sin6);
+        jbyteArray jendpoint = (*env)->NewByteArray(env, sizeof(endpoint));
+        CATCH(return -1);
+        (*env)->SetByteArrayRegion(env, jendpoint, 0, sizeof(endpoint), (const jbyte *)&e);
         CATCH(return -1);
         jbyteArray array = (*env)->NewByteArray(env, len);
         CATCH(return -1);
@@ -371,7 +374,7 @@ ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6)
         CATCH(return -1);
         jclass cNewNode = (*env)->GetObjectClass(env, newNode);
         CATCH(return -1);
-        CALL_VOID(cNewNode, newNode, sendPacket, [BLjava/lang/String;, array, endpoint);
+        CALL_VOID(cNewNode, newNode, sendPacket, [B[B, array, jendpoint);
         CATCH(return -1);
         return len;
     }();

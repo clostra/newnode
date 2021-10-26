@@ -28,6 +28,7 @@ import com.google.android.gms.nearby.connection.Strategy;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Formatter;
 import java.util.HashSet;
 import java.util.Set;
@@ -73,7 +74,8 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
             if (payload.getType() == Payload.Type.BYTES) {
                 byte[] packet = payload.asBytes();
                 //Log.d(TAG, "packetReceived:" + packet.length + " endpoint:" + endpointId);
-                NewNode.packetReceived(packet, endpointId);
+                byte[] endpoint = endpointId.getBytes(StandardCharsets.UTF_8);
+                NewNode.packetReceived(packet, endpoint);
             }
         }
 
@@ -105,7 +107,8 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
             } else {
                 Log.d(TAG, "addEndpoint endpoint:" + endpointId);
                 connections.add(endpointId);
-                NewNode.addEndpoint(endpointId);
+                byte[] endpoint = endpointId.getBytes(StandardCharsets.UTF_8);
+                NewNode.addEndpoint(endpoint);
             }
         }
 
@@ -113,7 +116,8 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
         public void onDisconnected(String endpointId) {
             Log.d(TAG, "onDisconnected endpointId:" + endpointId);
             connections.remove(endpointId);
-            NewNode.removeEndpoint(endpointId);
+            byte[] endpoint = endpointId.getBytes(StandardCharsets.UTF_8);
+            NewNode.removeEndpoint(endpoint);
             maybeStartDiscovery();
         }
     };
@@ -225,13 +229,14 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
         Nearby.getConnectionsClient(app).stopDiscovery();
     }
 
-    void sendPacket(byte[] packet, final String endpoint) {
-        //Log.d(TAG, "sendPacket:" + packet.length + " max:" + Nearby.getConnectionsClient(app).MAX_BYTES_DATA_SIZE + " endpoint:" + endpoint);
-        Nearby.getConnectionsClient(app).sendPayload(endpoint, Payload.fromBytes(packet))
+    void sendPacket(byte[] packet, byte[] endpoint) {
+        final String endpointId = new String(endpoint, StandardCharsets.UTF_8);
+        //Log.d(TAG, "sendPacket:" + packet.length + " max:" + Nearby.getConnectionsClient(app).MAX_BYTES_DATA_SIZE + " endpoint:" + endpointId);
+        Nearby.getConnectionsClient(app).sendPayload(endpointId, Payload.fromBytes(packet))
         .addOnFailureListener(new OnFailureListener() {
             @Override
             public void onFailure(Exception e) {
-                Log.d(TAG, "sendPayload endpoint:" + endpoint + " failed:" + e);
+                Log.d(TAG, "sendPayload endpoint:" + endpointId + " failed:" + e);
             }
         });
     }

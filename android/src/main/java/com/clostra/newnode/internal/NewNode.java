@@ -218,7 +218,7 @@ public class NewNode implements NewNodeInternal, Runnable {
         }
     }
 
-    void sendPacket(byte[] packet, String endpoint) {
+    void sendPacket(byte[] packet, byte[] endpoint) {
         if (nearbyHelper != null) {
             nearbyHelper.sendPacket(packet, endpoint);
         }
@@ -278,9 +278,9 @@ public class NewNode implements NewNodeInternal, Runnable {
     }
 
     static native void setCacheDir(String cacheDir);
-    static native void addEndpoint(String endpoint);
-    static native void removeEndpoint(String endpoint);
-    static native void packetReceived(byte[] packet, String endpoint);
+    static native void addEndpoint(byte[] endpoint);
+    static native void removeEndpoint(byte[] endpoint);
+    static native void packetReceived(byte[] packet, byte[] endpoint);
     static native void newnodeInit(NewNode newNode);
     static native void newnodeRun();
     static native void registerProxy();
