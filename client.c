@@ -2580,13 +2580,14 @@ void connect_other_read_cb(bufferevent *bev, void *ctx)
     c->dont_free = true;
     connect_proxy_cancel(c);
     connect_direct_cancel(c);
-    char authority[128];
-    snprintf(authority, sizeof(authority), "%s", c->authority);
-    char *sep = strchr(authority, ':');
+    char *sep = strchr(c->authority, ':');
     if (sep) {
         *sep = '\0';
     }
-    bufferevent_count_bytes(c->n, authority, bufferevent_is_localhost(server), server, bev);
+    bufferevent_count_bytes(c->n, c->authority, bufferevent_is_localhost(server), server, bev);
+    if (sep) {
+        *sep = ':';
+    }
     c->dont_free = false;
     connect_cleanup(c);
     bev_splice(server, bev);
@@ -3166,7 +3167,7 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
     connect_req *c = alloc(connect_req);
     c->n = n;
     c->server_bev = bev;
-    char authority[1024];
+    char authority[NI_MAXHOST + strlen(":") + strlen("65535")];
     snprintf(authority, sizeof(authority), "%s:%u", host, port);
     c->authority = strdup(authority);
 
