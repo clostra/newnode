@@ -23,7 +23,7 @@ event lsd_event;
 event route_event;
 
 
-#ifdef ANDROID
+#ifndef __APPLE__
 /*
  * Find the first occurrence of find in s, where the search is limited to the
  * first slen characters of s.
