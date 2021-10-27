@@ -4,8 +4,8 @@
 #include "network.h"
 #include "d2d.h"
 
-
-#if (!defined ANDROID && !defined __APPLE__)
+// XXX: TARGET_OS_IOS is not quite right, since macOS can use d2d as well.
+#if (!defined ANDROID && (!defined TARGET_OS_IOS || !TARGET_OS_IOS))
 ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6)
 {
     return -1;

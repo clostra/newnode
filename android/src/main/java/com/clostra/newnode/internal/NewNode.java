@@ -1,9 +1,11 @@
 package com.clostra.newnode.internal;
 
+import android.app.Activity;
 import android.app.Application;
 import android.content.Intent;
 import android.content.res.AssetManager;
 import android.os.Build;
+import android.os.Bundle;
 import android.util.Log;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
@@ -40,13 +42,14 @@ import java.util.zip.GZIPInputStream;
 
 
 
-public class NewNode implements NewNodeInternal, Runnable {
+public class NewNode implements NewNodeInternal, Runnable, Application.ActivityLifecycleCallbacks {
     public static String VERSION = BuildConfig.VERSION_NAME;
 
     static Thread t;
     //static Thread updateThread;
     static boolean requestPermission = true;
     static NearbyHelper nearbyHelper;
+    static Bluetooth bluetooth;
     static Client bugsnagClient;
 
     static {
@@ -201,7 +204,9 @@ public class NewNode implements NewNodeInternal, Runnable {
             t = new Thread(this, "newnode");
             t.start();
             Log.e("newnode", "version " + VERSION + " started");
-            nearbyHelper = new NearbyHelper(app(), requestPermission);
+            nearbyHelper = new NearbyHelper(app());
+            bluetooth = new Bluetooth();
+            app().registerActivityLifecycleCallbacks(this);
         }
 
         registerProxy();
@@ -213,14 +218,14 @@ public class NewNode implements NewNodeInternal, Runnable {
 
     public void setRequestDiscoveryPermission(boolean enabled) {
         requestPermission = enabled;
-        if (nearbyHelper != null) {
-            nearbyHelper.requestPermission = requestPermission;
-        }
     }
 
     void sendPacket(byte[] packet, byte[] endpoint) {
         if (nearbyHelper != null) {
             nearbyHelper.sendPacket(packet, endpoint);
+        }
+        if (bluetooth != null) {
+            bluetooth.sendPacket(packet, endpoint);
         }
     }
 
@@ -276,6 +281,32 @@ public class NewNode implements NewNodeInternal, Runnable {
             }
         }
     }
+
+    @Override
+    public void onActivityResumed(Activity activity) {}
+
+    @Override
+    public void onActivityCreated(Activity activity, Bundle bundle) {}
+
+    @Override
+    public void onActivityDestroyed(Activity activity) {}
+
+    @Override
+    public void onActivitySaveInstanceState(Activity activity, Bundle bundle) {}
+
+    @Override
+    public void onActivityStarted(Activity activity) {
+        Log.e("newnode", "onActivityStarted");
+        if (requestPermission && !(activity instanceof PermissionActivity)) {
+            activity.startActivity(new Intent(activity, PermissionActivity.class));
+        }
+    }
+
+    @Override
+    public void onActivityStopped(Activity activity) {}
+
+    @Override
+    public void onActivityPaused(Activity activity) {}
 
     static native void setCacheDir(String cacheDir);
     static native void addEndpoint(byte[] endpoint);

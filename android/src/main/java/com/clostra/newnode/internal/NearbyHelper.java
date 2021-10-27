@@ -37,7 +37,7 @@ import java.util.UUID;
 
 public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
 
-    static final String TAG = "NearbyHelper";
+    static final String TAG = NearbyHelper.class.getSimpleName();
 
     static final String SERVICE_ID = "com.clostra.newnode.internal.SERVICE_ID";
 
@@ -46,8 +46,6 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
 
     Application app;
     String serviceName = UUID.randomUUID().toString();
-
-    boolean requestPermission = true;
     boolean batteryLow = false;
     Set<String> connections = new HashSet<>();
 
@@ -122,9 +120,8 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
         }
     };
 
-    public NearbyHelper(Application app, boolean requestPermission) {
+    public NearbyHelper(Application app) {
         this.app = app;
-        this.requestPermission = requestPermission;
         app.registerActivityLifecycleCallbacks(this);
 
         IntentFilter iFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
@@ -258,12 +255,7 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
     public void onActivitySaveInstanceState(Activity activity, Bundle bundle) {}
 
     @Override
-    public void onActivityStarted(Activity activity) {
-        Log.e(TAG, "onActivityStarted");
-        if (requestPermission && !(activity instanceof PermissionActivity)) {
-            activity.startActivity(new Intent(activity, PermissionActivity.class));
-        }
-    }
+    public void onActivityStarted(Activity activity) {}
 
     @Override
     public void onActivityStopped(Activity activity) {}
