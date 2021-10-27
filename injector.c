@@ -99,10 +99,11 @@ void request_cleanup(proxy_request *p)
 void request_done_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("p:%p (%.2fms) request_done_cb %p\n", p, pdelta(p), req);
     if (!req) {
+        debug("p:%p request_done_cb %p\n", p, req);
         return;
     }
+    debug("p:%p (%.2fms) request_done_cb %p\n", p, pdelta(p), req);
     p->req = NULL;
     if (p->server_req && p->server_req->evcon) {
         evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
@@ -199,8 +200,6 @@ int header_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     debug("p:%p (%.2fms) header_cb %d %s\n", p, pdelta(p), req->response_code, req->response_code_line);
-
-    int klass = req->response_code / 100;
 
     const char *response_header_whitelist[] = hashed_headers;
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
@@ -393,6 +392,10 @@ void connect_request(network *n, evhttp_request *req)
     char buf[2048];
     snprintf(buf, sizeof(buf), "https://%s", evhttp_request_get_uri(req));
     evhttp_uri *uri = evhttp_uri_parse(buf);
+    if (!uri) {
+        evhttp_send_error(req, 400, "Invalid Authority");
+        return;
+    }
     const char *host = evhttp_uri_get_host(uri);
     if (!host) {
         evhttp_uri_free(uri);
