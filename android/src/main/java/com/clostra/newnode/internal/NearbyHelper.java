@@ -28,7 +28,7 @@ import com.google.android.gms.nearby.connection.Strategy;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
 import java.util.Formatter;
 import java.util.HashSet;
 import java.util.Set;
@@ -45,22 +45,23 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
     Strategy STRATEGY = Strategy.P2P_STAR;
 
     Application app;
+    static NearbyHelper nearbyHelper;
     String serviceName = UUID.randomUUID().toString();
-    boolean batteryLow = false;
+    static boolean batteryLow = false;
     Set<String> connections = new HashSet<>();
 
-    public class BatteryLevelReceiver extends BroadcastReceiver {
+    public static class BatteryLevelReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
             Log.d(TAG, "action: " + intent.getAction());
             if (intent.getAction() == Intent.ACTION_BATTERY_LOW) {
                 batteryLow = true;
-                stopDiscovery();
-                stopAdvertising();
+                nearbyHelper.stopDiscovery();
+                nearbyHelper.stopAdvertising();
             } else if (intent.getAction() == Intent.ACTION_BATTERY_OKAY) {
                 batteryLow = false;
-                startDiscovery();
-                startAdvertising();
+                nearbyHelper.startDiscovery();
+                nearbyHelper.startAdvertising();
             }
         }
     }
@@ -72,7 +73,7 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
             if (payload.getType() == Payload.Type.BYTES) {
                 byte[] packet = payload.asBytes();
                 //Log.d(TAG, "packetReceived:" + packet.length + " endpoint:" + endpointId);
-                byte[] endpoint = endpointId.getBytes(StandardCharsets.UTF_8);
+                byte[] endpoint = endpointId.getBytes(Charset.forName("UTF-8"));
                 NewNode.packetReceived(packet, endpoint);
             }
         }
@@ -105,7 +106,7 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
             } else {
                 Log.d(TAG, "addEndpoint endpoint:" + endpointId);
                 connections.add(endpointId);
-                byte[] endpoint = endpointId.getBytes(StandardCharsets.UTF_8);
+                byte[] endpoint = endpointId.getBytes(Charset.forName("UTF-8"));
                 NewNode.addEndpoint(endpoint);
             }
         }
@@ -114,7 +115,7 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
         public void onDisconnected(String endpointId) {
             Log.d(TAG, "onDisconnected endpointId:" + endpointId);
             connections.remove(endpointId);
-            byte[] endpoint = endpointId.getBytes(StandardCharsets.UTF_8);
+            byte[] endpoint = endpointId.getBytes(Charset.forName("UTF-8"));
             NewNode.removeEndpoint(endpoint);
             maybeStartDiscovery();
         }
@@ -122,6 +123,7 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
 
     public NearbyHelper(Application app) {
         this.app = app;
+        nearbyHelper = this;
         app.registerActivityLifecycleCallbacks(this);
 
         IntentFilter iFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
@@ -227,7 +229,7 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
     }
 
     void sendPacket(byte[] packet, byte[] endpoint) {
-        final String endpointId = new String(endpoint, StandardCharsets.UTF_8);
+        final String endpointId = new String(endpoint, Charset.forName("UTF-8"));
         //Log.d(TAG, "sendPacket:" + packet.length + " max:" + Nearby.getConnectionsClient(app).MAX_BYTES_DATA_SIZE + " endpoint:" + endpointId);
         Nearby.getConnectionsClient(app).sendPayload(endpointId, Payload.fromBytes(packet))
         .addOnFailureListener(new OnFailureListener() {

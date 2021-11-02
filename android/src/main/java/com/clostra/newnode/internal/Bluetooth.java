@@ -45,7 +45,7 @@ import java.util.Map;
 import java.util.UUID;
 
 
-@RequiresApi(21)
+@RequiresApi(29)
 public class Bluetooth {
     static final String TAG = Bluetooth.class.getSimpleName();
 
