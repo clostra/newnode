@@ -205,7 +205,9 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
             t.start();
             Log.e("newnode", "version " + VERSION + " started");
             nearbyHelper = new NearbyHelper(app());
-            bluetooth = new Bluetooth();
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                bluetooth = new Bluetooth();
+            }
             app().registerActivityLifecycleCallbacks(this);
         }
 
@@ -224,7 +226,7 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
         if (nearbyHelper != null) {
             nearbyHelper.sendPacket(packet, endpoint);
         }
-        if (bluetooth != null) {
+        if (bluetooth != null && android.os.Build.VERSION.SDK_INT >= 29) {
             bluetooth.sendPacket(packet, endpoint);
         }
     }
