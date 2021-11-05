@@ -72,7 +72,7 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
     private void connect() {
         NewNode.init();
 
-        mConfigureIntent = PendingIntent.getActivity(this, 0, new Intent(this, VpnActivity.class), PendingIntent.FLAG_UPDATE_CURRENT);
+        mConfigureIntent = PendingIntent.getActivity(this, 0, new Intent(this, VpnActivity.class), PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
 
         Builder builder = new Builder();
         builder.addAddress("10.7.0.1", 32);
