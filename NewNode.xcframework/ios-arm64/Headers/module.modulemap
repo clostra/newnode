@@ -1,0 +1,4 @@
+module NewNode {
+    header "NewNode.h"
+    export *
+}
