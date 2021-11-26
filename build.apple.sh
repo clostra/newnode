@@ -163,18 +163,18 @@ strip -x $FRAMEWORK/NewNode
 du -ch $FRAMEWORK
 du -ch $FRAMEWORK.dSYM
 
-mkdir -p XCFrameworkHeaders
-cp ios/Framework/NewNode-iOS.h XCFrameworkHeaders/NewNode.h
+headers=$(mktemp -d)
+cp ios/Framework/NewNode-iOS.h $headers/NewNode.h
 echo 'module NewNode {
     header "NewNode.h"
     export *
-}' > XCFrameworkHeaders/module.modulemap
+}' > $headers/module.modulemap
 XCFRAMEWORK="NewNode.xcframework"
 rm -rf $XCFRAMEWORK || true
 XCFRAMEWORK_ARGS=""
 for triple in x86_64-apple-darwin fat-apple-darwin x86_64-apple-ios; do
   XCFRAMEWORK_ARGS+=" -library $triple/libnewnode.a"
-  XCFRAMEWORK_ARGS+=" -headers XCFrameworkHeaders"
+  XCFRAMEWORK_ARGS+=" -headers $headers"
 done
 xcodebuild -create-xcframework ${XCFRAMEWORK_ARGS} -output $XCFRAMEWORK
-rm -rf XCFrameworkHeaders
+rm -rf $headers
