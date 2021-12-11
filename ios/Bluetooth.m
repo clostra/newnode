@@ -104,8 +104,9 @@ static Bluetooth *gBluetooth = nil;
     _peers[nsuuid].channel = channel;
     const endpoint e = [self UUIDToEndpoint:nsuuid];
     const sockaddr_in6 sin6 = endpoint_to_addr(&e);
-    timer_start(_n, 0, ^{
-        add_sockaddr(_n, (const sockaddr *)&sin6, sizeof(sin6));
+    network *n = _n;
+    network_async(n, ^{
+        add_sockaddr(n, (const sockaddr *)&sin6, sizeof(sin6));
     });
 
     channel.inputStream.delegate = peer;
@@ -428,13 +429,13 @@ static Bluetooth *gBluetooth = nil;
         memcpy((void*)b, _inputBuffer.bytes, len);
         [_inputBuffer replaceBytesInRange:NSMakeRange(0, len) withBytes:nil length:0];
         _hasLengthPrefix = false;
-        timer_start(n, 0, ^{
+        network_async(n, ^{
             udp_received(n, b, len, (const sockaddr *)&sin6, sizeof(sin6));
             free(b);
         });
     }
 
-    timer_start(n, 0, ^{
+    network_async(n, ^{
         utp_issue_deferred_acks(n->utp);
     });
 }

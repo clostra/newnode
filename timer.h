@@ -6,11 +6,10 @@
 #include <event2/event_struct.h>
 
 typedef struct timer timer;
+typedef void (^timer_callback)(void);
 
 #include "network.h"
 
-
-typedef void (^timer_callback)(void);
 
 struct timer {
     event event;
