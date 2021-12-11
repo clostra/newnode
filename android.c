@@ -136,7 +136,7 @@ JNIEnv* get_env()
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_callback(JNIEnv* env, jobject thiz, jlong callblock, jint value)
 {
-    timer_start(g_n, 0, ^{
+    network_async(g_n, ^{
         https_complete_callback cb = (https_complete_callback)callblock;
         cb(value == 200);
         Block_release(cb);
@@ -319,7 +319,7 @@ sockaddr_in6 jbyteArray_to_addr(JNIEnv* env, jbyteArray je)
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_addEndpoint(JNIEnv* env, jobject thiz, jbyteArray endpoint)
 {
     const sockaddr_in6 sin6 = jbyteArray_to_addr(env, endpoint);
-    timer_start(g_n, 0, ^{
+    network_async(g_n, ^{
         add_sockaddr(g_n, (const sockaddr *)&sin6, sizeof(sin6));
     });
 }
@@ -327,7 +327,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_addEndpoint(JNI
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_removeEndpoint(JNIEnv* env, jobject thiz, jbyteArray endpoint)
 {
     const sockaddr_in6 sin6 = jbyteArray_to_addr(env, endpoint);
-    timer_start(g_n, 0, ^{
+    network_async(g_n, ^{
         // XXX: TODO: remove endpoint
     });
 }
@@ -336,7 +336,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(
 {
     jobject arrayref = (*env)->NewGlobalRef(env, array);
     const sockaddr_in6 sin6 = jbyteArray_to_addr(env, endpoint);
-    timer_start(g_n, 0, ^{
+    network_async(g_n, ^{
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshadow"
         JNIEnv *env = get_env();

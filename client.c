@@ -1802,7 +1802,7 @@ void stats_changed()
                          g_cid);
                 failure = Block_copy(failure);
                 g_https_cb(url, ^(bool success) {
-                    timer_start(g_n, 0, ^{
+                    network_async(g_n, ^{
                         if (!success) {
                             failure();
                         }
@@ -3418,7 +3418,7 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
     g_socks_port = *socks_port;
     printf("listening on TCP: %s:%d,%d\n", "127.0.0.1", *http_port, *socks_port);
 
-    timer_start(n, 0, ^{
+    network_async(n, ^{
         load_peers(n);
 
         // for local debugging

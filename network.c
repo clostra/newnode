@@ -211,7 +211,7 @@ bool network_make_socket(network *n)
         n->dht = NULL;
     }
     n->dht = dht_setup(n);
-    timer_start(n, 0, ^{
+    network_async(n, ^{
         dht_restore(n->dht);
     });
 
@@ -721,6 +721,11 @@ network* network_setup(char *address, port_t port)
     dht_schedule(n, 0);
 
     return n;
+}
+
+void network_async(network *n, timer_callback cb)
+{
+    timer_start(n, 0, cb);
 }
 
 void sigterm_cb(evutil_socket_t sig, short events, void *ctx)
