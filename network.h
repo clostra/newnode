@@ -33,7 +33,7 @@ typedef struct network network;
 #define memdup(m, len) memcpy(malloc(len), m, len)
 
 #ifndef IN_LOOPBACK
-#define	IN_LOOPBACK(a) ((((long int) (a)) & 0xff000000) == 0x7f000000)
+#define IN_LOOPBACK(a) ((((long int) (a)) & 0xff000000) == 0x7f000000)
 #endif
 
 #ifdef __APPLE__
