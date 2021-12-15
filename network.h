@@ -33,13 +33,21 @@ typedef struct network network;
 #define memdup(m, len) memcpy(malloc(len), m, len)
 
 #ifndef IN_LOOPBACK
-#define	IN_LOOPBACK(a) ((((long int) (a)) & 0xff000000) == 0x7f000000)
+#define IN_LOOPBACK(a) ((((long int) (a)) & 0xff000000) == 0x7f000000)
 #endif
 
 #ifdef __APPLE__
 #ifndef SO_RECV_ANYIF
 #define SO_RECV_ANYIF 0x1104    /* unrestricted inbound processing */
 #endif
+#endif
+
+#ifndef IN6_IS_ADDR_UNIQUE_LOCAL
+/*
+ * Unique Local IPv6 Unicast Addresses (per RFC 4193)
+ */
+#define IN6_IS_ADDR_UNIQUE_LOCAL(a) \
+    (((a)->s6_addr[0] == 0xfc) || ((a)->s6_addr[0] == 0xfd))
 #endif
 
 typedef struct event_base event_base;
@@ -111,7 +119,9 @@ bool bufferevent_is_localhost(const bufferevent *bev);
 
 int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
 bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
+
 network* network_setup(char *address, port_t port);
+void network_async(network *n, timer_callback cb);
 int network_loop(network *n);
 
 

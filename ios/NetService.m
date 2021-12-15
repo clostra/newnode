@@ -73,7 +73,7 @@
 {
     NSLog(@"gotAddresses:%@ %@:%ld %@", service, service.hostName, (long)service.port, service.addresses);
     network *n = _n;
-    timer_start(n, 0, ^{
+    network_async(n, ^{
         for (NSData *addr in service.addresses) {
             add_sockaddr(n, (const sockaddr *)addr.bytes, (socklen_t)addr.length);
         }

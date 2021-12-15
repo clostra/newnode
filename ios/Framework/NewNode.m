@@ -1,15 +1,18 @@
 #include "newnode.h"
 #include "constants.h"
 #include "log.h"
+#import "NetService.h"
+#import "Bluetooth.h"
+#import "NewNode-iOS.h"
 #define BSG_KSLogger_Level TRACE
 #define BSG_LOG_LEVEL BSG_LOGLEVEL_DEBUG
-#import "NetService.h"
-#import "NewNode-iOS.h"
 #import <BugsnagStatic/Bugsnag.h>
+
 
 port_t http_port;
 port_t socks_port;
-NetService *ns = nil;
+NetService *ns;
+Bluetooth *bt;
 
 @implementation NewNode
 
@@ -44,6 +47,7 @@ NetService *ns = nil;
         NSLog(@"Error: NewNode could not be initialized");
     }
     ns = [NetService.alloc initWithNetwork:n];
+    bt = [Bluetooth.alloc initWithNetwork:n];
     newnode_thread(n);
 }
 
