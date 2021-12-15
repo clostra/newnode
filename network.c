@@ -211,6 +211,9 @@ bool network_make_socket(network *n)
         n->dht = NULL;
     }
     n->dht = dht_setup(n);
+    network_async(n, ^{
+        dht_restore(n->dht);
+    });
 
     sockaddr_storage ss;
     socklen_t ss_len = sizeof(ss);
@@ -264,8 +267,9 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
                 break;
 #endif
             }
-            debug("%s recvfrom error %d %s\n", __func__, errno, strerror(errno));
-            if (errno == ENOTCONN) {
+            int err = errno;
+            debug("%s recvfrom error %d %s\n", __func__, err, strerror(err));
+            if (err == ENOTCONN) {
                 // recreate socket
                 debug("%s recreating socket\n", __func__);
                 event_del(&n->udp_event);
@@ -717,6 +721,11 @@ network* network_setup(char *address, port_t port)
     dht_schedule(n, 0);
 
     return n;
+}
+
+void network_async(network *n, timer_callback cb)
+{
+    timer_start(n, 0, cb);
 }
 
 void sigterm_cb(evutil_socket_t sig, short events, void *ctx)

@@ -87,6 +87,7 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
         builder.setSession("NewNode");
         String proxyHost = System.getProperty("proxyHost");
         int proxyPort = Integer.parseInt(System.getProperty("proxyPort"));
+        Log.d(TAG, "proxy: " + proxyHost + ":" + proxyPort);
         builder.setHttpProxy(ProxyInfo.buildDirectProxy(proxyHost, proxyPort));
         Log.i(TAG, "builder:" + builder);
         fd = builder.establish();
