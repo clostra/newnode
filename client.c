@@ -354,17 +354,17 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
     return pc;
 }
 
-peer* get_peer(peer_array *pa, const sockaddr *a, socklen_t alen)
+peer* get_peer(peer_array *pa, const sockaddr *a)
 {
     return hash_get(pa, sockaddr_str(a));
 }
 
-void add_peer(peer_array **pa, peer *p)
+peer* add_peer(peer_array **pa, const sockaddr *a, create_fn c)
 {
-    void *old = hash_set(*pa, strdup(peer_addr_str(p)), p);
-    assert(!old);
-
-    dht_ping_node((const sockaddr *)&p->addr, sockaddr_get_length((const sockaddr *)&p->addr));
+    return (peer*)hash_get_or_insert(*pa, sockaddr_str(a), ^void* {
+        dht_ping_node((const sockaddr *)a, sockaddr_get_length(a));
+        return c();
+    });
 }
 
 void add_address(network *n, peer_array **pa, const sockaddr *addr, socklen_t addrlen)
@@ -374,13 +374,16 @@ void add_address(network *n, peer_array **pa, const sockaddr *addr, socklen_t ad
         return;
     }
 
-    peer *p = get_peer(*pa, addr, addrlen);
-    if (p) {
+    __block bool inserted = false;
+    peer *p = add_peer(pa, addr, ^void* {
+        inserted = true;
+        peer *p = alloc(peer);
+        memcpy(&p->addr, addr, addrlen);
+        return p;
+    });
+    if (!inserted) {
         return;
     }
-    p = alloc(peer);
-    memcpy(&p->addr, addr, addrlen);
-    add_peer(pa, p);
 
     const char *label = "peer";
     if (*pa == injectors) {
@@ -2929,7 +2932,7 @@ void http_request_cb(evhttp_request *req, void *arg)
     char port_s[6];
     snprintf(port_s, sizeof(port_s), "%u", e_port);
     getaddrinfo(e_host, port_s, &hints, &res);
-    peer *peer = get_peer(all_peers, res->ai_addr, res->ai_addrlen);
+    peer *peer = get_peer(all_peers, res->ai_addr);
     freeaddrinfo(res);
 
     const char *via = evhttp_find_header(req->input_headers, "Via");
@@ -3097,7 +3100,9 @@ void load_peer_file(const char *s, peer_array **pa)
         peer p;
         while (fread(&p, sizeof(p), 1, f) == 1) {
             if (p.addr.ss_family == AF_INET || p.addr.ss_family == AF_INET6) {
-                add_peer(pa, memdup(&p, sizeof(p)));
+                add_peer(pa, (const sockaddr *)&p.addr, ^{
+                    return memdup(&p, sizeof(p));
+                });
             }
         }
         const char *label = "peers";
