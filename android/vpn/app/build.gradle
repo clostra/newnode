@@ -27,7 +27,6 @@ android {
         minSdkVersion 29
         targetSdkVersion 31
 
-        /*
         new File('../../constants.h').eachLine { line ->
             def matcher = line =~ /VERSION "(.*)"/
             if (matcher) {
@@ -35,8 +34,6 @@ android {
                 return true
             }
         }
-        */
-        versionName "2.0.0"
         versionCode versionName.replace(".", "").toInteger()
     }
 
