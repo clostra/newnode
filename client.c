@@ -377,9 +377,9 @@ void add_address(network *n, peer_array **pa, const sockaddr *addr, socklen_t ad
     __block bool inserted = false;
     peer *p = add_peer(pa, addr, ^void* {
         inserted = true;
-        peer *p = alloc(peer);
-        memcpy(&p->addr, addr, addrlen);
-        return p;
+        peer *np = alloc(peer);
+        memcpy(&np->addr, addr, addrlen);
+        return np;
     });
     if (!inserted) {
         return;
