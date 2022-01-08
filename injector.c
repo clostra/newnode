@@ -536,7 +536,8 @@ int main(int argc, char *argv[])
             o_debug++;
             break;
         default:
-            die("Unhandled argument: %c\n", c);
+            log_error("Unhandled argument: %c\n", c);
+            return 1;
         }
     }
 
@@ -547,12 +548,14 @@ int main(int argc, char *argv[])
 #ifndef injector_sk
     FILE *f = fopen("injector_sk", "rb");
     if (!f) {
-        die("no injector_sk\n");
+        log_error("no injector_sk\n");
+        return 2;
     }
     fseek(f, 0, SEEK_END);
     long fsize = ftell(f);
     if (fsize != sizeof(sk)) {
-        die("wrong size injector_sk\n");
+        log_error("wrong size injector_sk\n");
+        return 3;
     }
     fseek(f, 0, SEEK_SET);
     fread(sk, fsize, 1, f);

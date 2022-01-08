@@ -28,7 +28,8 @@ int main(int argc, char *argv[])
             o_debug++;
             break;
         default:
-            die("Unhandled argument: %c\n", c);
+            log_error("Unhandled argument: %c\n", c);
+            return 1;
         }
     }
 
