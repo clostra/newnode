@@ -2,12 +2,6 @@ package com.clostra.newnode.internal;
 
 import android.app.Activity;
 import android.app.Application;
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-import android.os.BatteryManager;
-import android.os.Bundle;
 import android.util.Log;
 
 import com.google.android.gms.common.api.ApiException;
@@ -35,8 +29,7 @@ import java.util.Set;
 import java.util.UUID;
 
 
-public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
-
+public class NearbyHelper {
     static final String TAG = NearbyHelper.class.getSimpleName();
 
     static final String SERVICE_ID = "com.clostra.newnode.internal.SERVICE_ID";
@@ -44,27 +37,10 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
     // XXX: maybe use P2P_CLUSTER. better connectivity, but slower
     Strategy STRATEGY = Strategy.P2P_STAR;
 
-    Application app;
     static NearbyHelper nearbyHelper;
+    Application app;
     String serviceName = UUID.randomUUID().toString();
-    static boolean batteryLow = false;
     Set<String> connections = new HashSet<>();
-
-    public static class BatteryLevelReceiver extends BroadcastReceiver {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            Log.d(TAG, "action: " + intent.getAction());
-            if (intent.getAction() == Intent.ACTION_BATTERY_LOW) {
-                batteryLow = true;
-                nearbyHelper.stopDiscovery();
-                nearbyHelper.stopAdvertising();
-            } else if (intent.getAction() == Intent.ACTION_BATTERY_OKAY) {
-                batteryLow = false;
-                nearbyHelper.startDiscovery();
-                nearbyHelper.startAdvertising();
-            }
-        }
-    }
 
     PayloadCallback payloadCallback = new PayloadCallback() {
         @Override
@@ -121,29 +97,12 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
         }
     };
 
-    public NearbyHelper(Application app) {
-        this.app = app;
+    public NearbyHelper() {
+        app = NewNode.app();
         nearbyHelper = this;
-        app.registerActivityLifecycleCallbacks(this);
-
-        IntentFilter iFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-        Intent batteryStatus = app.registerReceiver(null, iFilter);
-        int level = batteryStatus != null ? batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) : -1;
-        int scale = batteryStatus != null ? batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1) : -1;
-        double batteryPct = 100 * (level / (double)scale);
-        Log.d(TAG, "batteryPct: " + batteryPct);
-        if (batteryPct < 15) {
-            batteryLow = true;
-        }
-
-        startDiscovery();
-        startAdvertising();
     }
 
     void startAdvertising() {
-        if (batteryLow) {
-            return;
-        }
         AdvertisingOptions.Builder advertisingOptions = new AdvertisingOptions.Builder();
         advertisingOptions.setStrategy(Strategy.P2P_CLUSTER);
         Nearby.getConnectionsClient(app).startAdvertising(serviceName, SERVICE_ID, connectionLifecycleCallback, advertisingOptions.build())
@@ -172,9 +131,6 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
     }
 
     void startDiscovery() {
-        if (batteryLow) {
-            return;
-        }
         DiscoveryOptions.Builder discoveryOptions = new DiscoveryOptions.Builder();
         discoveryOptions.setStrategy(Strategy.P2P_CLUSTER);
         Nearby.getConnectionsClient(app).startDiscovery(SERVICE_ID, new EndpointDiscoveryCallback() {
@@ -239,29 +195,4 @@ public class NearbyHelper implements Application.ActivityLifecycleCallbacks {
             }
         });
     }
-
-    @Override
-    public void onActivityResumed(Activity activity) {
-        Log.e(TAG, "onActivityResumed");
-        startDiscovery();
-        startAdvertising();
-    }
-
-    @Override
-    public void onActivityCreated(Activity activity, Bundle bundle) {}
-
-    @Override
-    public void onActivityDestroyed(Activity activity) {}
-
-    @Override
-    public void onActivitySaveInstanceState(Activity activity, Bundle bundle) {}
-
-    @Override
-    public void onActivityStarted(Activity activity) {}
-
-    @Override
-    public void onActivityStopped(Activity activity) {}
-
-    @Override
-    public void onActivityPaused(Activity activity) {}
 }
