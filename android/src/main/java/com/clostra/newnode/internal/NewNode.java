@@ -2,9 +2,14 @@ package com.clostra.newnode.internal;
 
 import android.app.Activity;
 import android.app.Application;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.res.AssetManager;
+import android.os.BatteryManager;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Bundle;
 import android.util.Log;
 
@@ -42,7 +47,8 @@ import java.util.zip.GZIPInputStream;
 
 
 
-public class NewNode implements NewNodeInternal, Runnable {
+public class NewNode implements NewNodeInternal, Runnable, Application.ActivityLifecycleCallbacks {
+    static final String TAG = NearbyHelper.class.getSimpleName();
     public static String VERSION = BuildConfig.VERSION_NAME;
 
     static Thread t;
@@ -51,6 +57,7 @@ public class NewNode implements NewNodeInternal, Runnable {
     static NearbyHelper nearbyHelper;
     static Bluetooth bluetooth;
     static Client bugsnagClient;
+    static boolean batteryLow = false;
 
     static {
         Application app = app();
@@ -66,22 +73,22 @@ public class NewNode implements NewNodeInternal, Runnable {
                 }
                 String v2 = m.group(1);
                 if (VERSION.compareTo(v2) < 0) {
-                    Log.d("newnode", "loading "+f.getName());
+                    Log.d(TAG, "loading "+f.getName());
                     System.load(f.getAbsolutePath());
                     VERSION = v2;
                     break;
                 }
             } catch (Exception e) {
-                Log.e("newnode", "", e);
+                Log.e(TAG, "", e);
             }
         }
         // XXX: might not work in a classes.dex
         if (VERSION.equals(BuildConfig.VERSION_NAME)) {
             try {
-                Log.d("newnode", "loading built-in newnode");
+                Log.d(TAG, "loading built-in newnode");
                 System.loadLibrary("newnode");
             } catch (UnsatisfiedLinkError e) {
-                Log.e("newnode", "", e);
+                Log.e(TAG, "", e);
             }
         }
         /*
@@ -90,7 +97,7 @@ public class NewNode implements NewNodeInternal, Runnable {
                 try {
                     update();
                 } catch(Exception e) {
-                    Log.e("newnode", "", e);
+                    Log.e(TAG, "", e);
                 }
                 try {
                     sleep((long) (1 + Math.random() * (24 * 60 * 60 * 1000)));
@@ -128,7 +135,7 @@ public class NewNode implements NewNodeInternal, Runnable {
         gis.close();
         File updated = new File(app.getFilesDir(), output);
         if (tmp.renameTo(updated)) {
-            Log.e("newnode", "Updated to " + output + ", will take effect on restart");
+            Log.e(TAG, "Updated to " + output + ", will take effect on restart");
             return true;
         }
         return false;
@@ -169,7 +176,7 @@ public class NewNode implements NewNodeInternal, Runnable {
                     break;
                 }
             } catch (Exception e) {
-                Log.e("newnode", "", e);
+                Log.e(TAG, "", e);
             }
         }
         for (String abi : abis()) {
@@ -185,7 +192,7 @@ public class NewNode implements NewNodeInternal, Runnable {
                         return;
                     }
                 } catch (Exception e) {
-                    Log.e("newnode", "", e);
+                    Log.e(TAG, "", e);
                 }
             }
         }
@@ -199,16 +206,29 @@ public class NewNode implements NewNodeInternal, Runnable {
     public void init() {
         if (t == null) {
             bugsnagClientInit();
-            setCacheDir(app().getCacheDir().getAbsolutePath());
+
+            IntentFilter iFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            Intent batteryStatus = app().registerReceiver(null, iFilter);
+            int level = batteryStatus != null ? batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) : -1;
+            int scale = batteryStatus != null ? batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1) : -1;
+            double batteryPct = 100 * (level / (double)scale);
+            Log.d(TAG, "batteryPct: " + batteryPct);
+            if (batteryPct < 15) {
+                batteryLow = true;
+            }
+
             setRequestDiscoveryPermission(requestPermission);
+            setCacheDir(app().getCacheDir().getAbsolutePath());
             newnodeInit(this);
             t = new Thread(this, "newnode");
             t.start();
-            Log.e("newnode", "version " + VERSION + " started");
-            nearbyHelper = new NearbyHelper(app());
+            Log.e(TAG, "version " + VERSION + " started");
+            nearbyHelper = new NearbyHelper();
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 bluetooth = new Bluetooth();
             }
+            app().registerActivityLifecycleCallbacks(this);
+            startNearby();
         }
 
         registerProxy();
@@ -272,13 +292,23 @@ public class NewNode implements NewNodeInternal, Runnable {
                 connection.connect();
                 callback(callblock, connection.getResponseCode());
             } catch (Exception e) {
-                Log.e("newnode", "", e);
+                Log.e(TAG, "", e);
                 callback(callblock, 0);
             }
         }}.start();
     }
 
-    static void restartNearby() {
+    static void stopNearby() {
+        nearbyHelper.stopDiscovery();
+        nearbyHelper.stopAdvertising();
+        bluetooth.stopAdvertising();
+        bluetooth.stopScan();
+    }
+
+    static void startNearby() {
+        if (batteryLow) {
+            return;
+        }
         nearbyHelper.startDiscovery();
         nearbyHelper.startAdvertising();
         bluetooth.bluetoothOn();
@@ -294,6 +324,44 @@ public class NewNode implements NewNodeInternal, Runnable {
             }
         }
     }
+
+    public static class BatteryLevelReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            Log.d(TAG, "action: " + intent.getAction());
+            if (intent.getAction() == Intent.ACTION_BATTERY_LOW) {
+                batteryLow = true;
+                stopNearby();
+            } else if (intent.getAction() == Intent.ACTION_BATTERY_OKAY) {
+                batteryLow = false;
+                startNearby();
+            }
+        }
+    }
+
+    @Override
+    public void onActivityResumed(Activity activity) {
+        startNearby();
+    }
+
+    @Override
+    public void onActivityCreated(Activity activity, Bundle bundle) {}
+
+    @Override
+    public void onActivityDestroyed(Activity activity) {}
+
+    @Override
+    public void onActivitySaveInstanceState(Activity activity, Bundle bundle) {}
+
+    @Override
+    public void onActivityStarted(Activity activity) {
+    }
+
+    @Override
+    public void onActivityStopped(Activity activity) {}
+
+    @Override
+    public void onActivityPaused(Activity activity) {}
 
     static native void setCacheDir(String cacheDir);
     static native void addEndpoint(byte[] endpoint);

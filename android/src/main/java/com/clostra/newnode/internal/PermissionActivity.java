@@ -31,7 +31,7 @@ public class PermissionActivity extends Activity {
                     }
                 }
             }
-            NewNode.restartNearby();
+            NewNode.startNearby();
             finish();
             break;
         }
