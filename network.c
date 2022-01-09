@@ -741,6 +741,10 @@ void sigterm_cb(evutil_socket_t sig, short events, void *ctx)
 
 int network_loop(network *n)
 {
+    if (!n) {
+        return 1;
+    }
+
     event *sigterm = evsignal_new(n->evbase, SIGTERM, sigterm_cb, n->evbase);
     event_add(sigterm, NULL);
 

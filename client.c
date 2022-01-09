@@ -3357,6 +3357,9 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
         fclose(f);
     }
     network *n = network_setup("::", port_pref);
+    if (!n) {
+        return n;
+    }
 
     port_pref = n->port;
     f = fopen("port.dat", "wb");
