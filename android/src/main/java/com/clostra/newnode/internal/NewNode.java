@@ -42,7 +42,7 @@ import java.util.zip.GZIPInputStream;
 
 
 
-public class NewNode implements NewNodeInternal, Runnable, Application.ActivityLifecycleCallbacks {
+public class NewNode implements NewNodeInternal, Runnable {
     public static String VERSION = BuildConfig.VERSION_NAME;
 
     static Thread t;
@@ -198,8 +198,9 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
 
     public void init() {
         if (t == null) {
-            setCacheDir(app().getCacheDir().getAbsolutePath());
             bugsnagClientInit();
+            setCacheDir(app().getCacheDir().getAbsolutePath());
+            setRequestDiscoveryPermission(requestPermission);
             newnodeInit(this);
             t = new Thread(this, "newnode");
             t.start();
@@ -208,7 +209,6 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 bluetooth = new Bluetooth();
             }
-            app().registerActivityLifecycleCallbacks(this);
         }
 
         registerProxy();
@@ -220,6 +220,11 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
 
     public void setRequestDiscoveryPermission(boolean enabled) {
         requestPermission = enabled;
+        if (requestPermission) {
+            Intent intent = new Intent(app(), PermissionActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            app().startActivity(intent);
+        }
     }
 
     void sendPacket(byte[] packet, byte[] endpoint) {
@@ -273,6 +278,12 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
         }}.start();
     }
 
+    static void restartNearby() {
+        nearbyHelper.startDiscovery();
+        nearbyHelper.startAdvertising();
+        bluetooth.bluetoothOn();
+    }
+
     static class BugsnagObserver implements Observer {
         @Override
         public void update(Observable observable, Object arg) {
@@ -283,32 +294,6 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
             }
         }
     }
-
-    @Override
-    public void onActivityResumed(Activity activity) {}
-
-    @Override
-    public void onActivityCreated(Activity activity, Bundle bundle) {}
-
-    @Override
-    public void onActivityDestroyed(Activity activity) {}
-
-    @Override
-    public void onActivitySaveInstanceState(Activity activity, Bundle bundle) {}
-
-    @Override
-    public void onActivityStarted(Activity activity) {
-        Log.e("newnode", "onActivityStarted");
-        if (requestPermission && !(activity instanceof PermissionActivity)) {
-            activity.startActivity(new Intent(activity, PermissionActivity.class));
-        }
-    }
-
-    @Override
-    public void onActivityStopped(Activity activity) {}
-
-    @Override
-    public void onActivityPaused(Activity activity) {}
 
     static native void setCacheDir(String cacheDir);
     static native void addEndpoint(byte[] endpoint);
