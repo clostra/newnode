@@ -284,7 +284,11 @@ public class Bluetooth {
         ScanSettings.Builder settingsBuilder = new ScanSettings.Builder();
         settingsBuilder.setScanMode(ScanSettings.SCAN_MODE_LOW_POWER);
 
-        bluetoothAdapter().getBluetoothLeScanner().startScan(filters, settingsBuilder.build(), scanCallback);
+        try {
+            bluetoothAdapter().getBluetoothLeScanner().startScan(filters, settingsBuilder.build(), scanCallback);
+        } catch (Exception e) {
+            Log.e(TAG, "startScan", e);
+        }
     }
 
     public void stopScan() {
