@@ -492,13 +492,13 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
     }
 
     if (event == DHT_EVENT_VALUES) {
-        debug("dht_event_callback num_peers:%zu\n", num_peers);
+        ddebug("dht_event_callback num_peers:%zu\n", num_peers);
         add_v4_addresses(n, peer_list, peers, num_peers);
     } else if (event == DHT_EVENT_VALUES6) {
-        debug("dht_event_callback v6 num_peers:%zu\n", num_peers);
+        ddebug("dht_event_callback v6 num_peers:%zu\n", num_peers);
         add_v6_addresses(n, peer_list, peers, num_peers);
     } else {
-        debug("dht_event_callback event:%d\n", event);
+        ddebug("dht_event_callback event:%d\n", event);
     }
 
     if (o_debug >= 2) {
