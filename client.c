@@ -394,7 +394,7 @@ void add_address(network *n, peer_array **pa, const sockaddr *addr, socklen_t ad
     } else {
         assert(*pa == all_peers);
     }
-    debug("new %s %s\n", label, peer_addr_str(p));
+    ddebug("new %s %s\n", label, peer_addr_str(p));
 
     if (!TAILQ_EMPTY(&pending_requests)) {
         for (uint k = 0; k < lenof(peer_connections); k++) {
