@@ -55,7 +55,20 @@ public class Bluetooth {
     Map<String,DataOutputStream> peers = new ConcurrentHashMap<String,DataOutputStream>();
     BluetoothGattServer gattServer;
 
+    AdvertiseCallback advertiseCallback = new AdvertiseCallback() {
+        @Override
+        public void onStartSuccess(AdvertiseSettings settingsInEffect) {
+            Log.d(TAG, "onStartSuccess settingsInEffect:" + settingsInEffect);
+        }
+
+        @Override
+        public void onStartFailure(int errorCode) {
+            Log.e(TAG, "onStartFailure errorCode:" + errorCode);
+        }
+    };
+
     ScanCallback scanCallback = new ScanCallback() {
+        @Override
         public void onScanResult(int callbackType, ScanResult result) {
             BluetoothDevice device = result.getDevice();
             Log.d(TAG, "onScanResult " + device);
@@ -69,6 +82,7 @@ public class Bluetooth {
             device.connectGatt(NewNode.app(), false, gattCallback);
         }
 
+        @Override
         public void onBatchScanResults(List<ScanResult> results) {
             Log.d(TAG, "onBatchScanResults results:" + results);
             for (ScanResult result : results) {
@@ -76,6 +90,7 @@ public class Bluetooth {
             }
         }
 
+        @Override
         public void onScanFailed(int errorCode) {
             Log.e(TAG, "onScanFailed errorCode:" + errorCode);
         }
@@ -109,12 +124,12 @@ public class Bluetooth {
         IntentFilter f = new IntentFilter();
         f.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
         NewNode.app().registerReceiver(broadcastReceiver, f);
-        if (bluetoothAdapter().isEnabled()) {
-            bluetoothOn();
-        }
     }
 
     void bluetoothOn() {
+        if (!bluetoothAdapter().isEnabled()) {
+            return;
+        }
         startServer();
         startScan();
     }
@@ -212,17 +227,8 @@ public class Bluetooth {
         scanResponseBuilder.addServiceUuid(new ParcelUuid(serviceUUID));
 
         BluetoothLeAdvertiser advertiser = bluetoothAdapter().getBluetoothLeAdvertiser();
-        advertiser.startAdvertising(settingsBuilder.build(), advertiseDataBuilder.build(), scanResponseBuilder.build(),
-                                    new AdvertiseCallback() {
-            @Override
-            public void onStartSuccess(AdvertiseSettings settingsInEffect) {
-                Log.i(TAG, "onStartSuccess called " + settingsInEffect);
-            }
-            @Override
-            public void onStartFailure(int errorCode) {
-                Log.i(TAG, "onStartFailure " + errorCode);
-            }
-        });
+        advertiser.startAdvertising(settingsBuilder.build(), advertiseDataBuilder.build(),
+                                    scanResponseBuilder.build(), advertiseCallback);
 
         BluetoothGattCharacteristic l2cap = new BluetoothGattCharacteristic(UUID.fromString(CBUUIDL2CAPPSMCharacteristicString),
                                                                             BluetoothGattCharacteristic.PROPERTY_READ,
@@ -288,6 +294,13 @@ public class Bluetooth {
             bluetoothAdapter().getBluetoothLeScanner().startScan(filters, settingsBuilder.build(), scanCallback);
         } catch (Exception e) {
             Log.e(TAG, "startScan", e);
+        }
+    }
+
+    public void stopAdvertising() {
+        Log.d(TAG, "stopAdvertising");
+        if (bluetoothAdapter().getBluetoothLeAdvertiser() != null) {
+            bluetoothAdapter().getBluetoothLeAdvertiser().stopAdvertising(advertiseCallback);
         }
     }
 
