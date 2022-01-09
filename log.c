@@ -28,22 +28,6 @@ void bugsnag_log(const char *fmt, ...)
 }
 #endif
 
-void die(const char *fmt, ...)
-{
-    va_list ap;
-    fflush(stdout);
-    va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
-    va_end(ap);
-    assert(0);
-}
-
-void pdie(const char *err)
-{
-    debug("%s: (%d) %s\n", err, errno, strerror(errno));
-    assert(0);
-}
-
 void hexdump(const void *addr, size_t len)
 {
     unsigned char buff[33];

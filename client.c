@@ -394,7 +394,7 @@ void add_address(network *n, peer_array **pa, const sockaddr *addr, socklen_t ad
     } else {
         assert(*pa == all_peers);
     }
-    debug("new %s %s\n", label, peer_addr_str(p));
+    ddebug("new %s %s\n", label, peer_addr_str(p));
 
     if (!TAILQ_EMPTY(&pending_requests)) {
         for (uint k = 0; k < lenof(peer_connections); k++) {
@@ -492,13 +492,13 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
     }
 
     if (event == DHT_EVENT_VALUES) {
-        debug("dht_event_callback num_peers:%zu\n", num_peers);
+        ddebug("dht_event_callback num_peers:%zu\n", num_peers);
         add_v4_addresses(n, peer_list, peers, num_peers);
     } else if (event == DHT_EVENT_VALUES6) {
-        debug("dht_event_callback v6 num_peers:%zu\n", num_peers);
+        ddebug("dht_event_callback v6 num_peers:%zu\n", num_peers);
         add_v6_addresses(n, peer_list, peers, num_peers);
     } else {
-        debug("dht_event_callback event:%d\n", event);
+        ddebug("dht_event_callback event:%d\n", event);
     }
 
     if (o_debug >= 2) {
@@ -3357,6 +3357,9 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
         fclose(f);
     }
     network *n = network_setup("::", port_pref);
+    if (!n) {
+        return n;
+    }
 
     port_pref = n->port;
     f = fopen("port.dat", "wb");

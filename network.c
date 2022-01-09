@@ -153,12 +153,14 @@ bool network_make_socket(network *n)
     snprintf(port_s, sizeof(port_s), "%u", n->port);
     int error = getaddrinfo(n->address, port_s, &hints, &res);
     if (error) {
-        die("getaddrinfo: %s\n", gai_strerror(error));
+        log_error("%s getaddrinfo: %s\n", __func__, gai_strerror(error));
+        return false;
     }
 
     n->fd = socket(res->ai_addr->sa_family, SOCK_DGRAM, IPPROTO_UDP);
     if (n->fd < 0) {
-        pdie("socket");
+        log_errno("socket");
+        return false;
     }
 
     int udp_sndbuf = 1048576;
@@ -167,7 +169,8 @@ bool network_make_socket(network *n)
 #ifdef __linux__
     int on = 1;
     if (setsockopt(n->fd, SOL_IP, IP_RECVERR, &on, sizeof(on)) != 0) {
-        pdie("setsockopt");
+        log_errno("setsockopt");
+        return false;
     }
 #endif
 
@@ -179,16 +182,18 @@ bool network_make_socket(network *n)
     port_t port = n->port;
     for (;;) {
         if (bind(n->fd, res->ai_addr, res->ai_addrlen) != 0) {
-            debug("bind fail %d %s\n", errno, strerror(errno));
             if (port == 0) {
-                pdie("bind");
+                log_errno("bind");
+                return false;
             }
+            debug("bind fail %d %s\n", errno, strerror(errno));
             freeaddrinfo(res);
             port = 0;
             snprintf(port_s, sizeof(port_s), "%u", port);
             error = getaddrinfo(n->address, port_s, &hints, &res);
             if (error) {
-                die("getaddrinfo: %s\n", gai_strerror(error));
+                log_error("%s getaddrinfo: %s\n", __func__, gai_strerror(error));
+                return false;
             }
             continue;
         }
@@ -201,7 +206,7 @@ bool network_make_socket(network *n)
 
     event_assign(&n->udp_event, n->evbase, n->fd, EV_READ|EV_PERSIST, udp_read, n);
     if (event_add(&n->udp_event, NULL) < 0) {
-        fprintf(stderr, "event_add udp_read failed\n");
+        log_error("%s event_add udp_read failed\n", __func__);
         return false;
     }
 
@@ -218,7 +223,8 @@ bool network_make_socket(network *n)
     sockaddr_storage ss;
     socklen_t ss_len = sizeof(ss);
     if (getsockname(n->fd, (sockaddr *)&ss, &ss_len) != 0) {
-        pdie("getsockname");
+        log_errno("getsockname");
+        return false;
     }
     n->port = sockaddr_get_port((const sockaddr *)&ss);
     printf("listening on UDP: %s\n", sockaddr_str((const sockaddr*)&ss));
@@ -735,6 +741,10 @@ void sigterm_cb(evutil_socket_t sig, short events, void *ctx)
 
 int network_loop(network *n)
 {
+    if (!n) {
+        return 1;
+    }
+
     event *sigterm = evsignal_new(n->evbase, SIGTERM, sigterm_cb, n->evbase);
     event_add(sigterm, NULL);
 
