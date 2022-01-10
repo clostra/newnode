@@ -223,7 +223,11 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
             t = new Thread(this, "newnode");
             t.start();
             Log.e(TAG, "version " + VERSION + " started");
-            nearbyHelper = new NearbyHelper();
+            try {
+                nearbyHelper = new NearbyHelper();
+            } catch (NoClassDefFoundError e) {
+                Log.e(TAG, "NearbyHelper", e);
+            }
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 bluetooth = new Bluetooth();
             }
@@ -251,7 +255,7 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
         if (nearbyHelper != null) {
             nearbyHelper.sendPacket(packet, endpoint);
         }
-        if (bluetooth != null && android.os.Build.VERSION.SDK_INT >= 29) {
+        if (bluetooth != null) {
             bluetooth.sendPacket(packet, endpoint);
         }
     }
@@ -299,19 +303,27 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
     }
 
     static void stopNearby() {
-        nearbyHelper.stopDiscovery();
-        nearbyHelper.stopAdvertising();
-        bluetooth.stopAdvertising();
-        bluetooth.stopScan();
+        if (nearbyHelper != null) {
+            nearbyHelper.stopDiscovery();
+            nearbyHelper.stopAdvertising();
+        }
+        if (bluetooth != null) {
+            bluetooth.stopAdvertising();
+            bluetooth.stopScan();
+        }
     }
 
     static void startNearby() {
         if (batteryLow) {
             return;
         }
-        nearbyHelper.startDiscovery();
-        nearbyHelper.startAdvertising();
-        bluetooth.bluetoothOn();
+        if (nearbyHelper != null) {
+            nearbyHelper.startDiscovery();
+            nearbyHelper.startAdvertising();
+        }
+        if (bluetooth != null) {
+            bluetooth.bluetoothOn();
+        }
     }
 
     static class BugsnagObserver implements Observer {
