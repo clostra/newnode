@@ -52,9 +52,9 @@ dependencies {
 
     // include AAR directly (must include dependencies)
     implementation project(':newnode')
-    implementation 'com.bugsnag:bugsnag-android:4.5.0'
-    implementation 'com.google.android.gms:play-services-nearby:17.+'
+    implementation 'com.bugsnag:bugsnag-android:4.7.0'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0'
+    implementation 'com.google.android.gms:play-services-nearby:18.+'
 
     // use jcenter
     //implementation 'com.clostra.newnode:newnode:+'
