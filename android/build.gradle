@@ -56,6 +56,6 @@ android {
 
 dependencies {
     implementation 'com.bugsnag:bugsnag-android:4.7.0'
-    implementation 'com.google.android.gms:play-services-nearby:17.+'
+    implementation 'com.google.android.gms:play-services-nearby:18.+'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0'
 }

@@ -9,6 +9,7 @@ import com.google.android.gms.nearby.Nearby;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
+import com.google.android.gms.nearby.connection.ConnectionOptions;
 import com.google.android.gms.nearby.connection.ConnectionResolution;
 import com.google.android.gms.nearby.connection.ConnectionsClient;
 import com.google.android.gms.nearby.connection.ConnectionsStatusCodes;
@@ -105,6 +106,7 @@ public class NearbyHelper {
     void startAdvertising() {
         AdvertisingOptions.Builder advertisingOptions = new AdvertisingOptions.Builder();
         advertisingOptions.setStrategy(Strategy.P2P_CLUSTER);
+        advertisingOptions.setDisruptiveUpgrade(false);
         Nearby.getConnectionsClient(app).startAdvertising(serviceName, SERVICE_ID, connectionLifecycleCallback, advertisingOptions.build())
         .addOnSuccessListener(new OnSuccessListener<Void>() {
             @Override
@@ -144,7 +146,10 @@ public class NearbyHelper {
                 } else {
                     Log.d(TAG, "endpoint available: " + info.getEndpointName());
                     Nearby.getConnectionsClient(app).stopDiscovery();
-                    Nearby.getConnectionsClient(app).requestConnection(serviceName, endpointId, connectionLifecycleCallback)
+                    ConnectionOptions.Builder connectionOptions = new ConnectionOptions.Builder();
+                    connectionOptions.setDisruptiveUpgrade(false);
+                    Nearby.getConnectionsClient(app).requestConnection(serviceName, endpointId,
+                        connectionLifecycleCallback, connectionOptions.build())
                     .addOnFailureListener(new OnFailureListener() {
                         @Override
                         public void onFailure(Exception e) {
