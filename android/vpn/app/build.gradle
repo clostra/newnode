@@ -56,6 +56,6 @@ dependencies {
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0'
     implementation 'com.google.android.gms:play-services-nearby:18.+'
 
-    // use jcenter
+    // use mavenCentral
     //implementation 'com.clostra.newnode:newnode:+'
 }
