@@ -4,14 +4,18 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:4.2.+'
+        classpath 'com.android.tools.build:gradle:7.0.4'
     }
+}
+
+plugins {
+  id 'com.vanniktech.maven.publish' version '0.18.0'
 }
 
 allprojects {
     repositories {
-        maven { url 'https://maven.google.com' }
-        maven { url 'https://plugins.gradle.org/m2/' }
+        google()
+        mavenCentral()
     }
 }
 
@@ -54,8 +58,16 @@ android {
     }
 }
 
+allprojects {
+    plugins.withId("com.vanniktech.maven.publish") {
+        mavenPublish {
+            version = android.defaultConfig.versionName
+        }
+    }
+}
+
 dependencies {
     implementation 'com.bugsnag:bugsnag-android:4.7.0'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0'
-    implementation 'com.google.android.gms:play-services-nearby:18.+'
+    implementation 'com.google.android.gms:play-services-nearby:18.0.2'
 }
