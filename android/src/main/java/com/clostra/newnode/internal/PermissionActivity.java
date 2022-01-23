@@ -2,12 +2,16 @@ package com.clostra.newnode.internal;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.pm.ApplicationInfo;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.ContextThemeWrapper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -48,17 +52,45 @@ public class PermissionActivity extends Activity {
             Manifest.permission.BLUETOOTH_CONNECT,
             Manifest.permission.BLUETOOTH_SCAN,
         };
+        boolean locationDisclosure = false;
         List<String> permissionsToRequest = new ArrayList<>();
         for (String permission : permissions) {
             if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
                 Log.d(TAG, "requesting " + permission);
                 permissionsToRequest.add(permission);
+                if (permission == Manifest.permission.ACCESS_COARSE_LOCATION ||
+                    permission == Manifest.permission.ACCESS_FINE_LOCATION) {
+                    locationDisclosure = true;
+                }
             }
         }
-        if (permissionsToRequest.size() > 0) {
-            ActivityCompat.requestPermissions(this,
-                permissionsToRequest.toArray(new String[permissionsToRequest.size()]),
-                PERMISSIONS_REQUEST_CODE);
+        if (permissionsToRequest.size() == 0) {
+            return;
+        }
+        if (locationDisclosure) {
+            DialogInterface.OnClickListener dialogClickListener = new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    switch (which){
+                    case DialogInterface.BUTTON_POSITIVE:
+                        ActivityCompat.requestPermissions(PermissionActivity.this,
+                            permissionsToRequest.toArray(new String[permissionsToRequest.size()]),
+                            PERMISSIONS_REQUEST_CODE);
+                        break;
+                    case DialogInterface.BUTTON_NEGATIVE:
+                        break;
+                    }
+                }
+            };
+
+            ApplicationInfo applicationInfo = getApplicationInfo();
+            int stringId = applicationInfo.labelRes;
+            String appName = stringId == 0 ? applicationInfo.nonLocalizedLabel.toString() : getString(stringId);
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(new ContextThemeWrapper(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert));
+            builder.setMessage(appName + " finds and connects to nearby devices in the background using current location.")
+                .setPositiveButton(android.R.string.ok, dialogClickListener)
+                .setNegativeButton(android.R.string.cancel, dialogClickListener).show();
         }
     }
 }
