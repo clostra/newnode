@@ -3,6 +3,7 @@ package com.clostra.newnode.internal;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.pm.ApplicationInfo;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import android.content.DialogInterface;
@@ -10,6 +11,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.ContextThemeWrapper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -75,16 +77,18 @@ public class PermissionActivity extends Activity {
                             permissionsToRequest.toArray(new String[permissionsToRequest.size()]),
                             PERMISSIONS_REQUEST_CODE);
                         break;
-
                     case DialogInterface.BUTTON_NEGATIVE:
-                        //No button clicked
                         break;
                     }
                 }
             };
 
-            AlertDialog.Builder builder = new AlertDialog.Builder(this);
-            builder.setMessage("This app uses current location to find nearby connections  in the background")
+            ApplicationInfo applicationInfo = getApplicationInfo();
+            int stringId = applicationInfo.labelRes;
+            String appName = stringId == 0 ? applicationInfo.nonLocalizedLabel.toString() : getString(stringId);
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(new ContextThemeWrapper(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert));
+            builder.setMessage(appName + " finds and connects to nearby devices in the background using current location.")
                 .setPositiveButton(android.R.string.ok, dialogClickListener)
                 .setNegativeButton(android.R.string.cancel, dialogClickListener).show();
         }
