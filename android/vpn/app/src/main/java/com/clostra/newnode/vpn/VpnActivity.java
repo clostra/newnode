@@ -15,6 +15,7 @@ import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentTransaction;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.clostra.newnode.vpn.statistics.StatisticsFragment;
 
@@ -80,7 +81,9 @@ public class VpnActivity extends AppCompatActivity {
         outerRotate = AnimationUtils.loadAnimation(getApplicationContext(), R.anim.outer_rotate);
         innerRotate = AnimationUtils.loadAnimation(getApplicationContext(), R.anim.inner_rotate);
 
-        registerReceiver(receiver, new IntentFilter(ACTION_STATE));
+        LocalBroadcastManager locationBroadcastManager = LocalBroadcastManager.getInstance(this);
+        IntentFilter intentFilter = new IntentFilter(ACTION_STATE);
+        locationBroadcastManager.registerReceiver(receiver, intentFilter);
 
         setVpnState();
         openStatistics();
@@ -89,14 +92,16 @@ public class VpnActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(receiver);
+        LocalBroadcastManager locationBroadcastManager = LocalBroadcastManager.getInstance(this);
+        locationBroadcastManager.unregisterReceiver(receiver);
     }
 
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (result == RESULT_OK) {
-            sendBroadcast(new Intent(this, VpnActivity.class).setAction(VpnActivity.ACTION_STATE).putExtra("state", R.string.connecting));
+            LocalBroadcastManager locationBroadcastManager = LocalBroadcastManager.getInstance(this);
+            locationBroadcastManager.sendBroadcast(new Intent(VpnActivity.ACTION_STATE).putExtra("state", R.string.connecting));
             startService(getServiceIntent().setAction(VpnService.ACTION_CONNECT));
         }
     }
