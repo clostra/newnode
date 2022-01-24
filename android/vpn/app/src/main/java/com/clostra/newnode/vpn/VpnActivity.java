@@ -96,7 +96,7 @@ public class VpnActivity extends AppCompatActivity {
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (result == RESULT_OK) {
-            sendBroadcast(new Intent(VpnActivity.ACTION_STATE).putExtra("state", R.string.connecting));
+            sendBroadcast(new Intent(this, VpnActivity.class).setAction(VpnActivity.ACTION_STATE).putExtra("state", R.string.connecting));
             startService(getServiceIntent().setAction(VpnService.ACTION_CONNECT));
         }
     }
