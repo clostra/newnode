@@ -62,7 +62,7 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
 
     @Override
     public boolean handleMessage(Message message) {
-        sendBroadcast(new Intent(VpnActivity.ACTION_STATE).putExtra("state", message.what));
+        sendBroadcast(new Intent(this, VpnActivity.class).setAction(VpnActivity.ACTION_STATE).putExtra("state", message.what));
         if (message.what != R.string.disconnected) {
             updateForegroundNotification(message.what);
         }
