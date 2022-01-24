@@ -12,6 +12,9 @@ import android.os.Message;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 import android.widget.Toast;
+
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+
 import java.io.IOException;
 
 import com.clostra.newnode.NewNode;
@@ -62,7 +65,8 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
 
     @Override
     public boolean handleMessage(Message message) {
-        sendBroadcast(new Intent(this, VpnActivity.class).setAction(VpnActivity.ACTION_STATE).putExtra("state", message.what));
+        LocalBroadcastManager locationBroadcastManager = LocalBroadcastManager.getInstance(this);
+        locationBroadcastManager.sendBroadcast(new Intent(VpnActivity.ACTION_STATE).putExtra("state", message.what));
         if (message.what != R.string.disconnected) {
             updateForegroundNotification(message.what);
         }
