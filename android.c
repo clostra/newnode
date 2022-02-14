@@ -310,7 +310,7 @@ sockaddr_in6 jbyteArray_to_addr(JNIEnv* env, jbyteArray je)
 {
     jbyte *buf = (*env)->GetByteArrayElements(env, je, NULL);
     jsize len = (*env)->GetArrayLength(env, je);
-    endpoint e = {0};
+    endpoint e = {.port = 0};
     memcpy(&e, buf, MIN((size_t)len, sizeof(e)));
     (*env)->ReleaseByteArrayElements(env, je, buf, JNI_ABORT);
     return endpoint_to_addr(&e);
