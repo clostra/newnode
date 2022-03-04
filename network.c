@@ -596,6 +596,14 @@ uint64_t us_clock()
     return (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
 }
 
+void network_set_log_level(int level)
+{
+    o_debug = level;
+    if (o_debug) {
+        event_enable_debug_logging(o_debug ? EVENT_DBG_ALL : EVENT_DBG_NONE);
+    }
+}
+
 void network_free(network *n)
 {
     utp_destroy(n->utp);

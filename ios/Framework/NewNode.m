@@ -76,7 +76,7 @@ Bluetooth *bt;
 
 + (void)setLogLevel:(int)level
 {
-    o_debug = level;
+    network_set_log_level(level);
 }
 
 @end

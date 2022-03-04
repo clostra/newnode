@@ -3335,7 +3335,7 @@ void socks_error_cb(evconnlistener *lis, void *ptr)
 
 network* client_init(const char *app_name, const char *app_id, port_t *http_port, port_t *socks_port, https_callback https_cb)
 {
-    //o_debug = 1;
+    //network_set_log_level(1);
 
     g_app_name = strdup(app_name);
     g_app_id = strdup(app_id);

@@ -147,7 +147,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
 {
     newNode = (*env)->NewGlobalRef(env, newNodeObj);
 
-    o_debug = 1;
+    network_set_log_level(1);
 
     char app_id[64] = {0};
     FILE *cmdline = fopen("/proc/self/cmdline", "r");
@@ -395,7 +395,7 @@ void ui_display_stats(const char *type, uint64_t direct, uint64_t peers)
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
 {
-    o_debug = level;
+    network_set_log_level(level);
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeRun(JNIEnv* env, jobject thiz)
