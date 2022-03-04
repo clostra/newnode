@@ -3326,11 +3326,18 @@ void socks_accept_cb(evconnlistener *listener, evutil_socket_t nfd, sockaddr *pe
     bufferevent_enable(bev, EV_READ|EV_WRITE);
 }
 
-void socks_error_cb(evconnlistener *lis, void *ptr)
+void http_listener_error_cb(evconnlistener *listener, void *ptr)
 {
     network *n = ptr;
     int err = EVUTIL_SOCKET_ERROR();
-    debug("%s %d (%s)\n", __func__, err, evutil_socket_error_to_string(err));
+    debug("%s %p %d (%s)\n", __func__, listener, err, evutil_socket_error_to_string(err));
+}
+
+void socks_listener_error_cb(evconnlistener *listener, void *ptr)
+{
+    network *n = ptr;
+    int err = EVUTIL_SOCKET_ERROR();
+    debug("%s %p %d (%s)\n", __func__, listener, err, evutil_socket_error_to_string(err));
 }
 
 network* client_init(const char *app_name, const char *app_id, port_t *http_port, port_t *socks_port, https_callback https_cb)
@@ -3392,6 +3399,9 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
         *socks_port = 0;
         return NULL;
     }
+    evconnlistener *http_listener = evhttp_bound_socket_get_listener(bound);
+    evconnlistener_set_error_cb(http_listener, http_listener_error_cb);
+
     evutil_socket_t fd = evhttp_bound_socket_get_fd(bound);
     sockaddr_storage ss;
     socklen_t sslen = sizeof(ss);
@@ -3416,7 +3426,7 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
         *socks_port = 0;
         return NULL;
     }
-    evconnlistener_set_error_cb(listener, socks_error_cb);
+    evconnlistener_set_error_cb(listener, socks_listener_error_cb);
     fd = evconnlistener_get_fd(listener);
     sslen = sizeof(ss);
     getsockname(fd, (sockaddr *)&ss, &sslen);
