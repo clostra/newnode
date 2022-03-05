@@ -179,7 +179,7 @@ typedef struct {
 
 hash_table *byte_count_per_authority;
 timer *stats_report_timer;
-network *g_n;
+static network *g_n;
 uint64_t g_cid;
 bool g_stats_changed;
 uint64_t g_all_peer;
@@ -195,8 +195,7 @@ char via_tag[] = "1.1 _.newnode";
 time_t injector_reachable;
 time_t last_request;
 timer *saving_peers;
-uint16_t g_http_port;
-uint16_t g_socks_port;
+uint16_t g_port;
 const char *g_app_name;
 const char *g_app_id;
 https_callback g_https_cb;
@@ -2968,7 +2967,7 @@ void http_request_cb(evhttp_request *req, void *arg)
         evbuffer *body = evbuffer_new();
         evbuffer_add_printf(body, "function FindProxyForURL(url, host) {return \""
                             "PROXY 127.0.0.1:%d; SOCKS 127.0.0.1:%d; DIRECT"
-                            "\";}", g_http_port, g_socks_port);
+                            "\";}", g_port, g_port);
         evhttp_send_reply(req, 200, "OK", body);
         evbuffer_free(body);
         return;
@@ -3317,7 +3316,7 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
     }
 }
 
-void socks_accept_cb(evconnlistener *listener, evutil_socket_t nfd, sockaddr *peer_sa, int peer_socklen, void *arg)
+void socks_accept_cb(evutil_socket_t nfd, sockaddr *peer_sa, int peer_socklen, void *arg)
 {
     network *n = arg;
     bufferevent *bev = bufferevent_socket_new(n->evbase, nfd, BEV_OPT_CLOSE_ON_FREE);
@@ -3326,21 +3325,48 @@ void socks_accept_cb(evconnlistener *listener, evutil_socket_t nfd, sockaddr *pe
     bufferevent_enable(bev, EV_READ|EV_WRITE);
 }
 
-void http_listener_error_cb(evconnlistener *listener, void *ptr)
+void accept_read_rb(evutil_socket_t fd, short what, void *arg)
+{
+    network *n = arg;
+    //debug("%s fd:%d what:0x%x\n", __func__, fd, what);
+    char buf[1] = {0};
+    ssize_t r = recv(fd, buf, sizeof(buf), MSG_PEEK);
+    if (r < 0) {
+        //log_errno("recv");
+        evutil_closesocket(fd);
+        return;
+    }
+    sockaddr_storage ss;
+    socklen_t len = sizeof(ss);
+    getpeername(fd, (sockaddr *)&ss, &len);
+    if (buf[0] == 0x05) {
+        //debug("%s fd:%d type:socks5\n", __func__, fd);
+        socks_accept_cb(fd, (sockaddr *)&ss, len, n);
+        return;
+    }
+    //debug("%s fd:%d type:http\n", __func__, fd);
+    evhttp_get_request(n->http, fd, (sockaddr *)&ss, len);
+}
+
+void accept_cb(evconnlistener *listener, evutil_socket_t nfd, sockaddr *peer_sa, int peer_socklen, void *arg)
+{
+    network *n = arg;
+    evutil_make_socket_closeonexec(nfd);
+    evutil_make_socket_nonblocking(nfd);
+    event *e = event_new(n->evbase, nfd, EV_READ, accept_read_rb, n);
+    debug("%s fd:%d e:%p\n", __func__, nfd, e);
+    timeval tv = {.tv_sec = 30};
+    event_add(e, &tv);
+}
+
+void listener_error_cb(evconnlistener *listener, void *ptr)
 {
     network *n = ptr;
     int err = EVUTIL_SOCKET_ERROR();
     debug("%s %p %d (%s)\n", __func__, listener, err, evutil_socket_error_to_string(err));
 }
 
-void socks_listener_error_cb(evconnlistener *listener, void *ptr)
-{
-    network *n = ptr;
-    int err = EVUTIL_SOCKET_ERROR();
-    debug("%s %p %d (%s)\n", __func__, listener, err, evutil_socket_error_to_string(err));
-}
-
-network* client_init(const char *app_name, const char *app_id, port_t *http_port, port_t *socks_port, https_callback https_cb)
+network* client_init(const char *app_name, const char *app_id, port_t *port, https_callback https_cb)
 {
     //network_set_log_level(1);
 
@@ -3389,52 +3415,44 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
     }
 
     evhttp_set_allowed_methods(n->http,
-                               EVHTTP_REQ_GET | EVHTTP_REQ_POST | EVHTTP_REQ_HEAD | EVHTTP_REQ_PUT | EVHTTP_REQ_DELETE |
-                               EVHTTP_REQ_OPTIONS | EVHTTP_REQ_TRACE | EVHTTP_REQ_CONNECT | EVHTTP_REQ_PATCH);
-    evhttp_set_gencb(n->http, http_request_cb, n);
-    evhttp_bound_socket *bound = evhttp_bind_socket_with_handle(n->http, "127.0.0.1", *http_port);
-    if (!bound) {
-        fprintf(stderr, "could not bind http port %d\n", *http_port);
-        *http_port = 0;
-        *socks_port = 0;
-        return NULL;
-    }
-    evconnlistener *http_listener = evhttp_bound_socket_get_listener(bound);
-    evconnlistener_set_error_cb(http_listener, http_listener_error_cb);
+                               EVHTTP_REQ_GET |
+                               EVHTTP_REQ_POST |
+                               EVHTTP_REQ_HEAD |
+                               EVHTTP_REQ_PUT |
+                               EVHTTP_REQ_DELETE |
+                               EVHTTP_REQ_OPTIONS |
+                               EVHTTP_REQ_TRACE |
+                               EVHTTP_REQ_CONNECT |
+                               EVHTTP_REQ_PATCH);
 
-    evutil_socket_t fd = evhttp_bound_socket_get_fd(bound);
-    sockaddr_storage ss;
-    socklen_t sslen = sizeof(ss);
-    getsockname(fd, (sockaddr *)&ss, &sslen);
-    *http_port = sockaddr_get_port((sockaddr *)&ss);
+    evhttp_set_gencb(n->http, http_request_cb, n);
 
     sockaddr_in sin = {
         .sin_family = AF_INET,
         .sin_addr.s_addr = inet_addr("127.0.0.1"),
-        .sin_port = htons(*socks_port),
+        .sin_port = htons(*port),
 #ifdef __APPLE__
         .sin_len = sizeof(sin)
 #endif
     };
-    evconnlistener *listener = evconnlistener_new_bind(n->evbase, socks_accept_cb, n,
+    evconnlistener *listener = evconnlistener_new_bind(n->evbase, accept_cb, n,
         LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_CLOSE_ON_FREE, 128,
         (sockaddr *)&sin, sizeof(sin));
     if (!listener) {
-        fprintf(stderr, "could not bind socks port %d\n", *socks_port);
-        evhttp_del_accept_socket(n->http, bound);
-        *http_port = 0;
-        *socks_port = 0;
+        fprintf(stderr, "could not bind port %d\n", *port);
+        network_free(n);
+        *port = 0;
         return NULL;
     }
-    evconnlistener_set_error_cb(listener, socks_listener_error_cb);
-    fd = evconnlistener_get_fd(listener);
-    sslen = sizeof(ss);
+    evconnlistener_set_error_cb(listener, listener_error_cb);
+    evutil_socket_t fd = evconnlistener_get_fd(listener);
+    sockaddr_storage ss;
+    socklen_t sslen = sizeof(ss);
     getsockname(fd, (sockaddr *)&ss, &sslen);
-    *socks_port = sockaddr_get_port((sockaddr *)&ss);
+    *port = sockaddr_get_port((sockaddr *)&ss);
 
-    g_http_port = *http_port;
-    g_socks_port = *socks_port;
-    printf("listening on TCP: %s:%d,%d\n", "127.0.0.1", *http_port, *socks_port);
+    g_port = *port;
+    printf("listening on TCP: %s:%d\n", "127.0.0.1", *port);
 
     network_async(n, ^{
         load_peers(n);
@@ -3480,9 +3498,9 @@ network* client_init(const char *app_name, const char *app_id, port_t *http_port
     return n;
 }
 
-network* newnode_init(const char *app_name, const char *app_id, port_t *http_port, port_t *socks_port, https_callback https_cb)
+network* newnode_init(const char *app_name, const char *app_id, port_t *port, https_callback https_cb)
 {
-    return client_init(app_name, app_id, http_port, socks_port, https_cb);
+    return client_init(app_name, app_id, port, https_cb);
 }
 
 int newnode_run(network *n)
@@ -3495,4 +3513,9 @@ void newnode_thread(network *n)
     thread(^{
         newnode_run(n);
     });
+}
+
+port_t newnode_get_port(network *n)
+{
+    return g_port;
 }

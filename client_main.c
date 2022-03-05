@@ -33,9 +33,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    port_t http_port = atoi(port_s);
-    port_t socks_port = http_port + 1;
-    network *n = newnode_init("client", "com.newnode.client", &http_port, &socks_port, ^(const char *url, https_complete_callback cb) {
+    port_t port = atoi(port_s);
+    network *n = newnode_init("client", "com.newnode.client", &port, ^(const char *url, https_complete_callback cb) {
         debug("https: %s\n", url);
         cb(true);
     });

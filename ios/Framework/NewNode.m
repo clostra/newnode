@@ -9,10 +9,9 @@
 #import <BugsnagStatic/Bugsnag.h>
 
 
-port_t http_port;
-port_t socks_port;
 NetService *ns;
 Bluetooth *bt;
+network *g_n;
 
 @implementation NewNode
 
@@ -36,36 +35,39 @@ Bluetooth *bt;
     }
     NSString *appId = NSBundle.mainBundle.infoDictionary[@"CFBundleIdentifier"];
 
-    network *n = newnode_init(appName.UTF8String, appId.UTF8String, &http_port, &socks_port, ^(const char *url, https_complete_callback cb) {
+    port_t port = 0;
+    g_n = newnode_init(appName.UTF8String, appId.UTF8String, &port, ^(const char *url, https_complete_callback cb) {
         debug("https: %s\n", url);
         [[NSURLSession.sharedSession downloadTaskWithURL:[NSURL URLWithString:@(url)]
                                        completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
             cb(!!error);
         }] resume];
     });
-    if (!http_port || !socks_port) {
+    if (!g_n) {
         NSLog(@"Error: NewNode could not be initialized");
+        return;
     }
-    ns = [NetService.alloc initWithNetwork:n];
-    bt = [Bluetooth.alloc initWithNetwork:n];
-    newnode_thread(n);
+    ns = [NetService.alloc initWithNetwork:g_n];
+    bt = [Bluetooth.alloc initWithNetwork:g_n];
+    newnode_thread(g_n);
 }
 
 + (NSDictionary*)connectionProxyDictionary
 {
-    if (!http_port || !socks_port) {
+    port_t port = newnode_get_port(g_n);
+    if (!port) {
         return @{};
     }
     return @{
         @"HTTPEnable": @1,
         @"HTTPProxy": @"127.0.0.1",
-        @"HTTPPort": @(http_port),
+        @"HTTPPort": @(port),
         @"HTTPSEnable": @1,
         @"HTTPSProxy": @"127.0.0.1",
-        @"HTTPSPort": @(http_port),
+        @"HTTPSPort": @(port),
         @"SOCKSEnable": @1,
         @"SOCKSProxy": @"127.0.0.1",
-        @"SOCKSPort": @(socks_port)
+        @"SOCKSPort": @(port)
     };
 }
 

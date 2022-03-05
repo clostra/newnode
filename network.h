@@ -124,6 +124,6 @@ network* network_setup(char *address, port_t port);
 void network_async(network *n, timer_callback cb);
 int network_loop(network *n);
 void network_set_log_level(int level);
-
+void network_free(network *n);
 
 #endif // __NETWORK_H__
