@@ -180,6 +180,7 @@ typedef struct {
 hash_table *byte_count_per_authority;
 timer *stats_report_timer;
 static network *g_n;
+evconnlistener *g_listener;
 uint64_t g_cid;
 bool g_stats_changed;
 uint64_t g_all_peer;
@@ -3366,6 +3367,37 @@ void listener_error_cb(evconnlistener *listener, void *ptr)
     debug("%s %p %d (%s)\n", __func__, listener, err, evutil_socket_error_to_string(err));
 }
 
+port_t recreate_listener(network *n, port_t port)
+{
+    sockaddr_in sin = {
+        .sin_family = AF_INET,
+        .sin_addr.s_addr = inet_addr("127.0.0.1"),
+        .sin_port = htons(port),
+#ifdef __APPLE__
+        .sin_len = sizeof(sin)
+#endif
+    };
+    if (g_listener) {
+        evconnlistener_free(g_listener);
+    }
+    g_listener = evconnlistener_new_bind(n->evbase, accept_cb, n,
+        LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_CLOSE_ON_FREE, 128,
+        (sockaddr *)&sin, sizeof(sin));
+    if (!g_listener) {
+        fprintf(stderr, "could not bind port %d\n", port);
+        g_port = 0;
+        return g_port;
+    }
+    evconnlistener_set_error_cb(g_listener, listener_error_cb);
+    evutil_socket_t fd = evconnlistener_get_fd(g_listener);
+    sockaddr_storage ss;
+    socklen_t sslen = sizeof(ss);
+    getsockname(fd, (sockaddr *)&ss, &sslen);
+    g_port = sockaddr_get_port((sockaddr *)&ss);
+    printf("listening on TCP: %s:%d\n", "127.0.0.1", g_port);
+    return g_port;
+}
+
 network* client_init(const char *app_name, const char *app_id, port_t *port, https_callback https_cb)
 {
     //network_set_log_level(1);
@@ -3427,32 +3459,18 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
 
     evhttp_set_gencb(n->http, http_request_cb, n);
 
-    sockaddr_in sin = {
-        .sin_family = AF_INET,
-        .sin_addr.s_addr = inet_addr("127.0.0.1"),
-        .sin_port = htons(*port),
-#ifdef __APPLE__
-        .sin_len = sizeof(sin)
-#endif
-    };
-    evconnlistener *listener = evconnlistener_new_bind(n->evbase, accept_cb, n,
-        LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_EXEC|LEV_OPT_CLOSE_ON_FREE, 128,
-        (sockaddr *)&sin, sizeof(sin));
-    if (!listener) {
-        fprintf(stderr, "could not bind port %d\n", *port);
+    *port = recreate_listener(n, *port);
+    if (!*port) {
         network_free(n);
-        *port = 0;
         return NULL;
     }
-    evconnlistener_set_error_cb(listener, listener_error_cb);
-    evutil_socket_t fd = evconnlistener_get_fd(listener);
-    sockaddr_storage ss;
-    socklen_t sslen = sizeof(ss);
-    getsockname(fd, (sockaddr *)&ss, &sslen);
-    *port = sockaddr_get_port((sockaddr *)&ss);
 
-    g_port = *port;
-    printf("listening on TCP: %s:%d\n", "127.0.0.1", *port);
+    network_set_recreate_sockets(n, ^{
+        if (!recreate_listener(n, g_port)) {
+            // try again with 0 port
+            recreate_listener(n, g_port);
+        }
+    });
 
     network_async(n, ^{
         load_peers(n);
@@ -3468,7 +3486,7 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
             .sin_addr.s_addr = inet_addr("52.88.7.21"),
             .sin_port = htons(9000),
 #ifdef __APPLE__
-            .sin_len = sizeof(sin)
+            .sin_len = sizeof(iin)
 #endif
         };
         add_sockaddr(n, (sockaddr *)&iin, sizeof(iin));

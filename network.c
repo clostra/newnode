@@ -238,12 +238,15 @@ void network_recreate_sockets(network *n)
     event_del(&n->udp_event);
     evutil_closesocket(n->fd);
     network_make_socket(n);
-    // XXX: TODO: recreate http and socks listeners too
-    /*
-    if (n->client_recreate_sockets) {
-        n->client_recreate_sockets();
+    if (n->recreate_sockets_cb) {
+        n->recreate_sockets_cb();
     }
-    */
+}
+
+void network_set_recreate_sockets(network *n, recreate_sockets_callback recreate_sockets_cb)
+{
+    Block_release(n->recreate_sockets_cb);
+    n->recreate_sockets_cb = Block_copy(recreate_sockets_cb);
 }
 
 bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
