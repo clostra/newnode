@@ -232,6 +232,20 @@ bool network_make_socket(network *n)
     return true;
 }
 
+void network_recreate_sockets(network *n)
+{
+    debug("%s recreating sockets\n", __func__);
+    event_del(&n->udp_event);
+    evutil_closesocket(n->fd);
+    network_make_socket(n);
+    // XXX: TODO: recreate http and socks listeners too
+    /*
+    if (n->client_recreate_sockets) {
+        n->client_recreate_sockets();
+    }
+    */
+}
+
 bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
 {
     ddebug("udp_received(%zu, %s)\n", len, sockaddr_str(sa));
@@ -274,13 +288,12 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
 #endif
             }
             int err = errno;
-            debug("%s recvfrom error %d %s\n", __func__, err, strerror(err));
+            debug("%s recvfrom error fd:%d %d %s\n", __func__, n->fd, err, strerror(err));
             if (err == ENOTCONN) {
-                // recreate socket
-                debug("%s recreating socket\n", __func__);
-                event_del(&n->udp_event);
-                evutil_closesocket(n->fd);
-                network_make_socket(n);
+                // ENOTCONN indicates the socket has been reclaimed on iOS
+                // https://developer.apple.com/library/archive/technotes/tn2277/_index.html#//apple_ref/doc/uid/DTS40010841-CH1-SUBSECTION9
+                // we use this as a canary to indicate all sockets need to be recreated
+                network_recreate_sockets(n);
             }
             break;
         }
