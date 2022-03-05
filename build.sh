@@ -11,7 +11,7 @@ if [ ! -d native ]; then
     ./autogen.sh
     ./configure --disable-shared --disable-openssl --prefix=$(pwd)/native
     make clean
-    make -j3
+    make -j`nproc`
     make install
 fi
 cd ..
@@ -25,8 +25,8 @@ if [ ! -d native ]; then
     mkdir -p native
     ./configure --enable-minimal --disable-shared --prefix=$(pwd)/native
     make clean
-    make -j3 check
-    make -j3 install
+    make -j`nproc` check
+    make -j`nproc` install
 fi
 cd ..
 LIBSODIUM_CFLAGS=-Ilibsodium/native/include
@@ -34,7 +34,7 @@ LIBSODIUM=libsodium/native/lib/libsodium.a
 
 
 cd libutp
-test -f libutp.a || (make clean && OPT=-O2 CPPFLAGS="-fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" make -j3 libutp.a)
+test -f libutp.a || (make clean && OPT=-O2 CPPFLAGS="-fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" make -j`nproc` libutp.a)
 cd ..
 LIBUTP_CFLAGS=-Ilibutp
 LIBUTP=libutp/libutp.a

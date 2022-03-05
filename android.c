@@ -22,8 +22,6 @@ static int pfd[2];
 static JavaVM *g_jvm;
 static jobject bugsnagClient;
 static jobject newNode;
-static port_t http_port;
-static port_t socks_port;
 static network *g_n;
 
 void* stdio_thread(void *useradata)
@@ -147,7 +145,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
 {
     newNode = (*env)->NewGlobalRef(env, newNodeObj);
 
-    o_debug = 1;
+    network_set_log_level(1);
 
     char app_id[64] = {0};
     FILE *cmdline = fopen("/proc/self/cmdline", "r");
@@ -158,7 +156,8 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
     }
     // XXX: TODO: use real app name
     const char *app_name = app_id;
-    g_n = newnode_init(app_name, app_id, &http_port, &socks_port, ^(const char* url, https_complete_callback cb) {
+    port_t newnode_port = 0;
+    g_n = newnode_init(app_name, app_id, &newnode_port, ^(const char* url, https_complete_callback cb) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshadow"
         JNIEnv *env = get_env();
@@ -193,7 +192,8 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setCacheDir(JNI
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_registerProxy(JNIEnv* env, jobject thiz)
 {
-    if (!http_port || !socks_port) {
+    port_t newnode_port = newnode_get_port(g_n);
+    if (!newnode_port) {
         return;
     }
 
@@ -203,11 +203,10 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_registerProxy(J
     CATCH(return);
 
     char port[6];
-    snprintf(port, sizeof(port), "%u", socks_port);
+    snprintf(port, sizeof(port), "%u", newnode_port);
     (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("socksProxyHost"), JSTR("127.0.0.1"));
     (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("socksProxyPort"), JSTR(port));
 
-    snprintf(port, sizeof(port), "%u", http_port);
     (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("proxyHost"), JSTR("127.0.0.1"));
     (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("proxyPort"), JSTR(port));
     (*env)->CallStaticObjectMethod(env, cSystem, mSetProp, JSTR("http.proxyHost"), JSTR("127.0.0.1"));
@@ -395,7 +394,7 @@ void ui_display_stats(const char *type, uint64_t direct, uint64_t peers)
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
 {
-    o_debug = level;
+    network_set_log_level(level);
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeRun(JNIEnv* env, jobject thiz)

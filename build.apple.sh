@@ -8,8 +8,9 @@ function build_apple {
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
         ./configure --disable-shared --disable-openssl --host=$TRIPLE --prefix=$(pwd)/$TRIPLE CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS"
+        echo "#define HAVE_WORKING_KQUEUE 1" >> $(pwd)/config.h
         make clean
-        make -j3
+        make -j`nproc`
         make install
     fi
     cd ..
@@ -20,7 +21,7 @@ function build_apple {
     cd libutp
     if [ ! -f $TRIPLE/libutp.a ]; then
         make clean
-        OPT=-O2 CPPFLAGS=$CFLAGS make -j3 libutp.a
+        OPT=-O2 CPPFLAGS=$CFLAGS make -j`nproc` libutp.a
         mkdir $TRIPLE
         mv libutp.a $TRIPLE
     fi

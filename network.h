@@ -86,6 +86,8 @@ typedef struct ip ip;
 #include "timer.h"
 
 
+typedef void (^recreate_sockets_callback)(void);
+
 struct network {
     event_base *evbase;
     evdns_base *evdns;
@@ -97,6 +99,7 @@ struct network {
     dht *dht;
     timer *dht_timer;
     evhttp *http;
+    recreate_sockets_callback recreate_sockets_cb;
 };
 
 uint64_t us_clock();
@@ -121,8 +124,10 @@ int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, sockl
 bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
 
 network* network_setup(char *address, port_t port);
+void network_set_recreate_sockets(network *n, recreate_sockets_callback recreate_sockets_cb);
 void network_async(network *n, timer_callback cb);
 int network_loop(network *n);
-
+void network_set_log_level(int level);
+void network_free(network *n);
 
 #endif // __NETWORK_H__

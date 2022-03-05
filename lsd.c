@@ -74,7 +74,9 @@ void lsd_send(network *n, bool reply)
 #endif
         };
         if (sendto(lsd_fd, buf, len, 0, (sockaddr *)&addr, sizeof(addr)) == -1) {
-            if (errno == ENETDOWN || errno == ENETUNREACH) {
+            if (errno == ENETDOWN ||
+                errno == ENETUNREACH ||
+                errno == ENOBUFS) {
                 return;
             }
             fprintf(stderr, "lsd error %d %s\n", errno, strerror(errno));

@@ -232,6 +232,23 @@ bool network_make_socket(network *n)
     return true;
 }
 
+void network_recreate_sockets(network *n)
+{
+    debug("%s recreating sockets\n", __func__);
+    event_del(&n->udp_event);
+    evutil_closesocket(n->fd);
+    network_make_socket(n);
+    if (n->recreate_sockets_cb) {
+        n->recreate_sockets_cb();
+    }
+}
+
+void network_set_recreate_sockets(network *n, recreate_sockets_callback recreate_sockets_cb)
+{
+    Block_release(n->recreate_sockets_cb);
+    n->recreate_sockets_cb = Block_copy(recreate_sockets_cb);
+}
+
 bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
 {
     ddebug("udp_received(%zu, %s)\n", len, sockaddr_str(sa));
@@ -274,13 +291,12 @@ void udp_read(evutil_socket_t fd, short events, void *arg)
 #endif
             }
             int err = errno;
-            debug("%s recvfrom error %d %s\n", __func__, err, strerror(err));
+            debug("%s recvfrom error fd:%d %d %s\n", __func__, n->fd, err, strerror(err));
             if (err == ENOTCONN) {
-                // recreate socket
-                debug("%s recreating socket\n", __func__);
-                event_del(&n->udp_event);
-                evutil_closesocket(n->fd);
-                network_make_socket(n);
+                // ENOTCONN indicates the socket has been reclaimed on iOS
+                // https://developer.apple.com/library/archive/technotes/tn2277/_index.html#//apple_ref/doc/uid/DTS40010841-CH1-SUBSECTION9
+                // we use this as a canary to indicate all sockets need to be recreated
+                network_recreate_sockets(n);
             }
             break;
         }
@@ -594,6 +610,14 @@ uint64_t us_clock()
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
+}
+
+void network_set_log_level(int level)
+{
+    o_debug = level;
+    if (o_debug) {
+        event_enable_debug_logging(o_debug ? EVENT_DBG_ALL : EVENT_DBG_NONE);
+    }
 }
 
 void network_free(network *n)
