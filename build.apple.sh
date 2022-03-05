@@ -9,7 +9,7 @@ function build_apple {
         ./autogen.sh
         ./configure --disable-shared --disable-openssl --host=$TRIPLE --prefix=$(pwd)/$TRIPLE CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS"
         make clean
-        make -j3
+        make -j`nproc`
         make install
     fi
     cd ..
@@ -20,7 +20,7 @@ function build_apple {
     cd libutp
     if [ ! -f $TRIPLE/libutp.a ]; then
         make clean
-        OPT=-O2 CPPFLAGS=$CFLAGS make -j3 libutp.a
+        OPT=-O2 CPPFLAGS=$CFLAGS make -j`nproc` libutp.a
         mkdir $TRIPLE
         mv libutp.a $TRIPLE
     fi
