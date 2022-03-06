@@ -3652,8 +3652,15 @@ network* newnode_init(const char *app_name, const char *app_id, port_t *port, ht
     return client_init(app_name, app_id, port, https_cb);
 }
 
+#if TEST_STALL_DETECTOR
+#include "stall_detector.h"
+#endif
+
 int newnode_run(network *n)
 {
+#if TEST_STALL_DETECTOR
+    stall_detector(n->evbase);
+#endif
     return network_loop(n);
 }
 
