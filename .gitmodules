@@ -22,3 +22,6 @@
 [submodule "ios/NewNode VPN/MMWormhole"]
 	path = ios/NewNode VPN/MMWormhole
 	url = https://github.com/mutualmobile/MMWormhole.git
+[submodule "parson"]
+	path = parson
+	url = https://github.com/kgabis/parson
