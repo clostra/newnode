@@ -36,8 +36,13 @@ import java.io.InputStreamReader;
 import java.lang.ClassLoader;
 import java.lang.reflect.Method;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.List;
+import java.util.Map;
 import java.util.Arrays;
 import java.util.Observable;
 import java.util.Observer;
@@ -287,6 +292,31 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
         locationBroadcastManager.sendBroadcast(intent);
     }
 
+    void dnsPrefetch(final String hostname, final int result_index, final int result_id) {
+        try {
+            new Thread() { public void run() {
+                try {
+                    Log.i("newnode", String.format("dnsPrefetch(hostname:%s, result_index:%d, result_id:%d)",
+                                                   hostname, result_index, result_id));
+                    InetAddress[] addrs = InetAddress.getAllByName(hostname);
+                    String[] addresses = new String[addrs.length];
+                    for (int i = 0; i < addrs.length; ++i)
+                        addresses[i] = addrs[i].getHostAddress();
+                    storeDnsPrefetchResult(result_index, result_id, hostname, addresses);
+                }
+                catch (java.net.UnknownHostException e) {
+                    Log.i ("newnode", String.format("dnsPrefetch: unknown host %s", hostname), e);
+                }
+                catch (Exception e) {
+                    Log.i ("newnode", "dnsPrefetch inner thread", e);
+                }
+            }}.start();
+        }
+        catch (Exception e) {
+            Log.i ("newnode", "dnsPrefetch", e);
+        }
+    }
+
     void http(final String url, final long callblock) {
         new Thread(){public void run() {
             try {
@@ -386,4 +416,5 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
     static native void updateBugsnagDetails(int notifyType);
     public native void callback(long callblock, int value);
     public native void setLogLevel(int level);
+    public native void storeDnsPrefetchResult(int result_index, int result_id, String host, String[] addresses);
 }

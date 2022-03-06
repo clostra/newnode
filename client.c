@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
+#include <ctype.h>
 #include <inttypes.h>
 #include <pthread.h>
 #include <sys/socket.h>
@@ -20,8 +21,11 @@
 #include <event2/listener.h>
 #include <event2/bufferevent.h>
 
+#include <parson.h>
+
 #include "dht/dht.h"
 
+#include "features.h"
 #include "ui.h"
 #include "log.h"
 #include "lsd.h"
@@ -38,6 +42,8 @@
 #include "bev_splice.h"
 #include "hash_table.h"
 #include "utp_bufferevent.h"
+#include "dns_prefetch.h"
+#include "g_https_cb.h"
 
 #ifdef ANDROID
 #include <sys/system_properties.h>
@@ -179,12 +185,14 @@ typedef struct {
 
 hash_table *byte_count_per_authority;
 timer *stats_report_timer;
-static network *g_n;
+network *g_n;
 evconnlistener *g_listener;
 uint64_t g_cid;
 bool g_stats_changed;
 uint64_t g_all_peer;
 uint64_t g_all_direct;
+
+bool g_have_ipv6 = false;                // can communicate directly with public IPv6 addresses
 
 peer_array *injectors;
 peer_array *injector_proxies;
@@ -1744,6 +1752,19 @@ void peer_request_done_cb(evhttp_request *req, void *arg)
     peer_request_cleanup(r, __func__);
 }
 
+https_request *https_request_alloc(size_t bufsize, unsigned int flags, unsigned timeout)
+{
+    https_request *result = alloc(https_request);
+
+    if (bufsize > 0) {
+        result->buf = malloc(bufsize);
+    }
+    result->bufsize = bufsize;
+    result->flags = flags;
+    result->timeout_sec = timeout;
+    return result;
+}
+
 typedef struct stats_queue_entry {
     char *url;
     time_t notbefore;
@@ -2565,7 +2586,35 @@ typedef struct {
     int attempts;
 
     bool dont_free:1;
+
+    char *host;                 // just hostname, no port #
+    int64_t dns_prefetch_key;
 } connect_req;
+
+char *make_ip_addr_list(nn_addrinfo *p)
+{
+    static char result[10240];
+    char *ptr = result;
+
+    if (p == NULL) {
+        return NULL;
+    }
+    while (p) {
+        const char *a = sockaddr_str_addronly(p->ai_addr);
+        size_t l = strlen(a);
+        if ((ptr - result) + l + 2 < sizeof(result)) {
+            memcpy(ptr, a, l);
+            ptr += l;
+            if (p->ai_next) {
+                *ptr++ = ',';
+            }
+        }
+        p = p->ai_next;
+    }
+    *ptr++ = '\0';
+    assert((ptr - result) < (int) sizeof(result));
+    return result;
+}
 
 void free_write_cb(bufferevent *bev, void *ctx)
 {
@@ -2628,6 +2677,9 @@ void connect_cleanup(connect_req *c)
     }
     assert(!c->server_req);
     assert(!c->server_bev);
+    if (c->dns_prefetch_key > 0) {
+        dns_prefetch_free(c->dns_prefetch_key);
+    }
     if (c->pending_bev) {
         bufferevent_free(c->pending_bev);
         c->pending_bev = NULL;
@@ -2641,6 +2693,7 @@ void connect_cleanup(connect_req *c)
         c->pc = NULL;
     }
     free(c->authority);
+    free(c->host);
     free(c);
 }
 
@@ -2999,12 +3052,141 @@ void connect_peer(connect_req *c, bool injector_preference)
     });
 }
 
+// Return whether a request probably failed because of blocking.
+// Blocked requests are cached, other failures are not cached.
+
+bool likely_blocked(https_result *result)
+{
+    switch (result->https_error) {
+        // Note: a DNS error might or might not be indicative of
+        // blocking but a lot of DNS errors are temporary.  So they
+        // shouldn't be cached as if they were blocking.
+    case HTTPS_TLS_ERROR:
+    case HTTPS_TLS_CERT_ERROR:
+    case HTTPS_SOCKET_IO_ERROR:
+    case HTTPS_TIMEOUT_ERROR:
+    case HTTPS_BLOCKING_ERROR:
+        return true;
+    default:
+        return false;
+    }
+}
+
+char *https_strerror(https_result *result)
+{
+    static char buf[100];
+
+    if (result == NULL) {
+        return "";
+    }
+    switch (result->https_error) {
+    case HTTPS_NO_ERROR: return "no error";
+    case HTTPS_DNS_ERROR: return "DNS error";
+    case HTTPS_HTTP_ERROR: return "HTTP error";
+    case HTTPS_TLS_ERROR: return "TLS error";
+    case HTTPS_TLS_CERT_ERROR: return "TLS certificate error";
+    case HTTPS_SOCKET_IO_ERROR: return "socket i/o error";
+    case HTTPS_TIMEOUT_ERROR: return "timeout error";
+    case HTTPS_PARAMETER_ERROR: return "parameter error";
+    case HTTPS_SYSCALL_ERROR: return "syscall error";
+    case HTTPS_GENERIC_ERROR: return "generic error";
+    case HTTPS_BLOCKING_ERROR: return "blocking error";
+    case HTTPS_RESOURCE_EXHAUSTED: return "resource exhausted";
+    default:
+        snprintf(buf, sizeof(buf), "unknown error %d", result->https_error);
+        return buf;
+    }
+}
+
+void
+bufferevent_socket_connect_address(struct bufferevent *bev, struct sockaddr *address, int addrlen,
+                                   uint16_t port)
+{
+    struct sockaddr_in v4addr;
+    struct sockaddr_in6 v6addr;
+
+    switch (address->sa_family) {
+    case AF_INET:
+        memcpy(&v4addr, address, addrlen);
+        v4addr.sin_port = htons(port);
+        bufferevent_socket_connect(bev, (struct sockaddr *) &v4addr, addrlen);
+        break;
+    case AF_INET6:
+        memcpy(&v6addr, address, addrlen);
+        v6addr.sin6_port = htons(port);
+        bufferevent_socket_connect(bev, (struct sockaddr *) &v6addr, addrlen);
+        break;
+    default:
+        debug("%s: unrecognized family %d\n", __func__, address->sa_family);
+        break;
+    }
+}
+
+// this can be used instead of bufferevent_socket_connect_hostname()
+// (except that port number is wired to 443)
+// it will use a prefetched DNS lookup if one is available
+void
+bufferevent_socket_connect_prefetched_address(connect_req *c, struct evdns_base *dns_base)
+{
+    struct evutil_addrinfo *res;
+    nn_addrinfo *nna;
+
+    debug("%s c:%p host:%s\n", __func__, c, c->host);
+    // trust addresses that we've prefetched ourselves (when
+    // available) over addresses sent to us via CONNECT request
+
+    nna = dns_prefetch_addrinfo(c->dns_prefetch_key);
+    if (nna != NULL) {
+        nn_addrinfo *g = choose_addr(nna);
+
+        if (g) {
+            debug("c:%p %s: host:%s attempting direct connect to prefetched addr %s\n",
+                  c, __func__, c->host, sockaddr_str_addronly(g->ai_addr));
+            bufferevent_socket_connect_address(c->direct, g->ai_addr, g->ai_addrlen, 443);
+            return;
+        }
+    }
+
+    if (newnode_evdns_cache_lookup(dns_base, c->host, NULL, 443, &res) == 0) {
+        struct evutil_addrinfo *p;
+        nn_addrinfo *result;
+        nn_addrinfo *g;
+
+        debug("c:%p %s: host:%s found in evdns cache\n", c, __func__, c->host);
+        result = copy_nn_addrinfo_from_evutil_addrinfo(res);
+        g = choose_addr(result);
+        if (g && result && g->ai_addr) {
+            debug("%s choose_addr(%s) returned %s\n", __func__, make_ip_addr_list(result),
+                  sockaddr_str_addronly(g->ai_addr));
+        }
+        if (g && g->ai_addr) {
+            debug("c:%p %s host:%s attempting direct connect to evdns cached addr %s\n",
+                  c, __func__, c->host, sockaddr_str_addronly(g->ai_addr));
+            bufferevent_socket_connect_address(c->direct, g->ai_addr, g->ai_addrlen, 443);
+            dns_prefetch_freeaddrinfo(result);
+            return;
+        }
+        dns_prefetch_freeaddrinfo(result);
+    }
+
+    // if we don't have any IP addresses for the origin server yet,
+    // fall back to bufferevent_socket_connect_hostname which will
+    // look them up.
+    //
+    // XXX apparently evdns can hang up too long waiting for an AAAA
+    //     response so just specify AF_INET for now.
+    debug("%s using bufferevent_socket_connect_hostname host:%s\n", __func__, c->host);
+    bufferevent_socket_connect_hostname(c->direct, dns_base, AF_INET, c->host, 443);
+}
+
 void connect_request(network *n, evhttp_request *req)
 {
     char buf[2048];
     snprintf(buf, sizeof(buf), "https://%s", evhttp_request_get_uri(req));
     evhttp_uri *uri = evhttp_uri_parse(buf);
     const char *host = evhttp_uri_get_host(uri);
+    int dns_prefetch_key;
+
     if (!host) {
         evhttp_uri_free(uri);
         evhttp_send_error(req, 400, "Invalid Host");
@@ -3023,6 +3205,15 @@ void connect_request(network *n, evhttp_request *req)
     c->n = n;
     c->server_req = req;
     c->authority = strdup(evhttp_request_get_uri(c->server_req));
+    c->host = strdup(host);
+    if ((dns_prefetch_key = dns_prefetch_alloc()) >= 0) {
+        dns_prefetch(dns_prefetch_key, host, n->evdns);
+        c->dns_prefetch_key = dns_prefetch_key;
+        debug("dns_prefetch_key = %lld index:%d id:%u\n",
+              (long long) dns_prefetch_key,
+              dns_prefetch_index(dns_prefetch_key),
+              dns_prefetch_id(dns_prefetch_key));
+    }
 
     evhttp_connection_set_closecb(c->server_req->evcon, connect_evcon_close_cb, c);
 
@@ -3036,7 +3227,8 @@ void connect_request(network *n, evhttp_request *req)
 
 #if !NO_DIRECT
     // TODO: if the request is from a peer, use LEDBAT: setsocketopt(sock, SOL_SOCKET, O_TRAFFIC_CLASS, SO_TC_BK, sizeof(int))
-    bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port);
+    //bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port);
+    bufferevent_socket_connect_prefetched_address(c, n->evdns);
     evhttp_uri_free(uri);
 #endif
 }
@@ -3522,7 +3714,11 @@ port_t recreate_listener(network *n, port_t port)
     socklen_t sslen = sizeof(ss);
     getsockname(fd, (sockaddr *)&ss, &sslen);
     g_port = sockaddr_get_port((sockaddr *)&ss);
+#if defined(TEST_LISTEN_ANY) && TEST_LISTEN_ANY
+    printf("listening on TCP: %s:%d\n", "0.0.0.0", g_port);
+#else
     printf("listening on TCP: %s:%d\n", "127.0.0.1", g_port);
+#endif
     return g_port;
 }
 
@@ -3648,7 +3844,11 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
 
 network* newnode_init(const char *app_name, const char *app_id, port_t *port, https_callback https_cb)
 {
-    return client_init(app_name, app_id, port, https_cb);
+    g_have_ipv6 = have_ipv6();
+    // some main programs need g_n to be set early so it can
+    // reference g_n from the callback passed as https_cb.
+    g_n = client_init(app_name, app_id, port, https_cb);
+    return g_n;
 }
 
 #if TEST_STALL_DETECTOR

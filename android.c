@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <assert.h>
 #include <pthread.h>
@@ -16,7 +17,8 @@
 #include "newnode.h"
 #include "d2d.h"
 #include "lsd.h"
-
+#include "inttypes.h"
+#include "dns_prefetch.h"
 
 static int pfd[2];
 static JavaVM *g_jvm;
@@ -130,6 +132,128 @@ JNIEnv* get_env()
     int stat = (*g_jvm)->GetEnv(g_jvm, (void **)&env, JNI_VERSION_1_6);
     assert(stat == JNI_OK);
     return env;
+}
+
+// Request that the platform's DNS asychronously library query IPv4
+// and IPv6 addresses (as appropriate) for 'host'.  The results are
+// stored in dns_prefetch_cache_entries[cache_index] (so that NN can
+// connect directly to an address) and hopefully also in the
+// platform's DNS cache so that any "try first" attempts will be
+// faster.
+//
+// This routine doesn't return a result.  NN will use the result of
+// the query if it arrives in time, otherwise NN will use evdns
+// (sigh).
+
+void platform_dns_prefetch(int result_index, unsigned int result_id, const char *host)
+{
+    debug("%s result_index:%d result_id:%u host:%s\n", __func__, result_index, result_id, host);
+    if (!newNode) {
+        return;
+    }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow"
+    JNIEnv *env = get_env();
+#pragma clang diagnostic pop
+    if (env == NULL) {
+        return;
+    }
+    jvm_frame(env, ^() {
+        jclass cNewNode = (*env)->GetObjectClass(env, newNode);
+        CATCH(
+            debug("%s exception line %d\n", __func__, __LINE__);
+            return;
+        );
+        CALL_VOID(cNewNode, newNode,
+                  dnsPrefetch,      // shorthand form of method name
+                  Ljava/lang/String;II,  // parameter types:
+                                         // (1) String hostname (Ljava/lang/String;)
+                                         // (2) int result_index (I)
+                                         // (3) int result_id (I)
+                  JSTR(host),       // url (encoded as Java String)
+                  (jint) result_index,
+                  (jint) result_id);
+        CATCH(
+            debug("%s exception line %d\n", __func__, __LINE__);
+            return;
+        );
+    });
+}
+
+// updates global array dns_prefetch_results[result_index].result with the results of DNS lookup of 'host'.
+
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetchResult(JNIEnv *env, jobject thiz, jint result_index, jint result_id, jstring host, jobjectArray addresses)
+{
+    struct nn_addrinfo *result = NULL;
+    struct nn_addrinfo *lastitem = NULL;
+
+    if (result_id < 0) {
+        return;
+    }
+
+    if (dns_prefetch_results[result_index].id != (unsigned int) result_id ||
+        dns_prefetch_results[result_index].allocated != true) {
+        return;
+    }
+
+    const char *hoststr = (*env)->GetStringUTFChars(env, host, NULL);
+    int n_addresses = (*env)->GetArrayLength(env, addresses);
+
+    debug("storeDnsPrefetchResult result_index:%d result_id:%d host:%s n_addresses:%d\n",
+          result_index, result_id, hoststr, n_addresses);
+
+    // convert each text address to binary form using getaddrinfo()
+    // then add the result of that conversion to the end of the linked list
+    for (int i = 0; i < n_addresses; ++i) {
+        jstring string = (jstring) ((*env)->GetObjectArrayElement(env, addresses, i));
+        const char *utf8string = (*env)->GetStringUTFChars(env, string, 0);
+        struct addrinfo hints;
+        struct addrinfo *temp;
+
+        debug("storeDnsPrefetchResult host:%s address[%d] = %s\n", hoststr, i, utf8string);
+        memset(&hints, 0, sizeof(struct addrinfo));
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_flags = AI_NUMERICHOST;
+        int err;
+        temp = NULL;
+        if ((err = getaddrinfo(utf8string, NULL, &hints, &temp)) == 0) {
+            struct nn_addrinfo *n = (struct nn_addrinfo *) calloc(1, sizeof (struct nn_addrinfo));
+            debug("storeDnsPrefetchResult i:%d result:%p lastitem:%p n:%p\n", i, result, lastitem, n);
+            if (n && temp && temp->ai_addr) {
+                n->ai_addrlen = temp->ai_addrlen;
+                n->ai_addr = (struct sockaddr *) calloc(1, temp->ai_addrlen);
+                memcpy(n->ai_addr, temp->ai_addr, temp->ai_addrlen);
+                n->ai_next = NULL;
+                // append to linked list
+                if (result == NULL) {
+                    result = n;
+                } else {
+                    lastitem->ai_next = n;
+                }
+                lastitem = n;
+            }
+            if (temp) {
+                freeaddrinfo(temp);
+            }
+        } else {
+            debug("storeDnsPrefetchResult gai_strerror(%s) => %s\n", utf8string, gai_strerror(err));
+        }
+        (*env)->ReleaseStringUTFChars(env, string, utf8string);
+    }
+    // struct nn_addrinfo *p;
+    // debug("storeDnsPrefetchResult:\n");
+    // for (p = result; p; p = p->ai_next) {
+    //     debug("    %s\n", sockaddr_str(p->ai_addr));
+    // }
+
+    // copy hoststr for use by callback
+    // (the blocks callback may happen after ReleaseStringUTFChars is called)
+    char *temp_hoststr = strdup(hoststr);
+    network_async(g_n, ^{
+        dns_prefetch_store_result(result_index, result_id, result, temp_hoststr, false);
+        free(temp_hoststr);
+    });
+    (*env)->ReleaseStringUTFChars(env, host, hoststr);
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_callback(JNIEnv* env, jobject thiz, jlong callblock, jint value)

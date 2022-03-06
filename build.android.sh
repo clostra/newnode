@@ -10,6 +10,9 @@ function build_android {
 
 
     export ANDROID_NDK_HOME=$NDK
+
+    PARSON_CFLAGS=-Iparson
+
     cd libsodium
     test -f configure || ./autogen.sh
     test -f libsodium-android-$CPU_ARCH/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
@@ -97,13 +100,14 @@ function build_android {
     for file in android.c bev_splice.c base64.c client.c d2d.c dht.c http.c log.c lsd.c \
                 icmp_handler.c hash_table.c merkle_tree.c network.c obfoo.c sha1.c thread.c timer.c utp_bufferevent.c \
                 backtrace.c stall_detector.c \
+                dns_prefetch.c \
                 bugsnag/bugsnag_ndk.c \
                 bugsnag/bugsnag_ndk_report.c \
                 bugsnag/bugsnag_unwind.c \
                 bugsnag/deps/bugsnag/report.c \
                 bugsnag/deps/bugsnag/serialize.c \
                 bugsnag/deps/deps/parson/parson.c; do
-        $CC $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBUNWIND_CFLAGS -c $file
+        $CC $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBUNWIND_CFLAGS $PARSON_CFLAGS -c $file
     done
     #$CC $CFLAGS -shared -Wl,--version-script=android_export_list -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND
     $CC $CFLAGS -shared -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND -Wl,--wrap=bind -Wl,--wrap=connect -Wl,--wrap=sendto
