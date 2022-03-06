@@ -1744,6 +1744,165 @@ void peer_request_done_cb(evhttp_request *req, void *arg)
     peer_request_cleanup(r, __func__);
 }
 
+typedef struct stats_queue_entry {
+    char *url;
+    time_t notbefore;
+    void (^failure_cb)(void);
+    TAILQ_ENTRY(stats_queue_entry) next;
+} stats_queue_entry;
+
+struct event *qtimer;
+bool stats_queue_running = false;
+TAILQ_HEAD(, stats_queue_entry) stats_queue;
+
+// like statsq_append, but doesn't malloc storage for url and failure_cb
+// (because they've already been malloc()ed or Block_copy()ed)
+void statsq_reappend(char *url, time_t notbefore, void (^failure_cb)(void))
+{
+    stats_queue_entry *e = alloc(stats_queue_entry);
+
+    debug("%s url:%s notbefore:%s", __func__, url, ctime(&notbefore));
+    e->url = url;
+    e->notbefore = notbefore;
+    e->failure_cb = failure_cb;
+    TAILQ_INSERT_TAIL(&stats_queue, e, next);
+    if (!stats_queue_running) {
+        if (!evtimer_pending(qtimer, NULL)) {
+            struct timeval tv = { 0, 0 };
+            time_t now = time(0);
+            if ((notbefore - now) > 0) {
+                tv.tv_sec = notbefore - now;
+            }
+            event_del(qtimer);
+            evtimer_add(qtimer, &tv);
+        }
+    }
+}
+
+void
+statsq_append(char *url, time_t notbefore, void (^failure_cb)(void))
+{
+    stats_queue_entry *e = alloc(stats_queue_entry);
+
+    debug("%s url:%s notbefore:%s", __func__, url, ctime(&notbefore));
+    e->url = strdup(url);
+    e->notbefore = notbefore;
+    if (failure_cb) {
+        e->failure_cb = Block_copy(failure_cb);
+    }
+    TAILQ_INSERT_TAIL(&stats_queue, e, next);
+    if (!stats_queue_running) {
+        if (!evtimer_pending (qtimer, NULL)) {
+            struct timeval tv = { 0, 0 };
+            time_t now = time(0);
+            if ((notbefore - now) > 0) {
+                tv.tv_sec = notbefore - now;
+            }
+            event_del(qtimer);
+            evtimer_add(qtimer, &tv);
+        }
+    }
+}
+
+// this callback runs the first ripe entry in the stats queue if it's
+// not already running.
+
+void
+statsq_event_cb(int sock, short which, void *arg)
+{
+    stats_queue_entry *e;
+
+    // if there is already a runner active, we leave the queue alone
+    if (stats_queue_running) {
+        return;
+    }
+
+    // ok, we're the runner
+    stats_queue_running = true;
+    if (TAILQ_EMPTY(&stats_queue)) {
+        // nothing left to do for now
+        debug("%s stats_queue is empty\n", __func__);
+        stats_queue_running = false;
+        return;
+    }
+
+    // find first ripe entry in the queue, process that, and return
+    time_t now = time(0);
+    TAILQ_FOREACH(e, &stats_queue, next) {
+        time_t notbefore = e->notbefore;
+        if (now >= notbefore) {
+            debug("%s ripe queue entry url:%s notbefore:%s",
+                  __func__, e->url, ctime(&(e->notbefore)));
+            char *url;
+            void (^failure_cb)();
+
+            url = e->url;
+            e->url = NULL;
+            failure_cb = e->failure_cb;
+            e->failure_cb = NULL;
+            TAILQ_REMOVE(&stats_queue, e, next);
+            free(e);
+            g_https_cb(url, ^(bool success) {
+                if (success) {
+                    // only free the url and callback if we're
+                    // done with them; else they get reused in the
+                    // call to statsq_append() below
+                    free(url);
+                    Block_release(failure_cb);
+                } else {
+                    if (failure_cb != NULL) {
+                        // update failed and there's a failure callback; call it
+                        failure_cb();
+                        Block_release(failure_cb);
+                    } else {
+                        // update failed with no failure callback 
+                        // - put request back on the queue after a random interval
+                        // (10 to 70 minutes from the time it was queued)
+                        // (without reallocing or copying url and failure_cb)
+                        statsq_reappend(url, now + randombytes_uniform(60*60) + 10*60, NULL);
+                    }
+                }
+                // kickstart the queue again
+                if (!evtimer_pending(qtimer, NULL)) {
+                    struct timeval tv = { 0, 0 };
+                    event_del(qtimer);
+                    evtimer_add(qtimer, &tv);
+                }
+            });
+            stats_queue_running = false;
+            return;
+        }
+    }
+    // nothing ripe found in the queue, look for soonest
+    // then wake up when soonest entry is ripe
+    time_t soonest = 1;
+    TAILQ_FOREACH(e, &stats_queue, next) {
+        if (soonest == 1) {
+            soonest = e->notbefore;
+        } else if (e->notbefore < soonest) {
+            soonest = e->notbefore;
+        }
+    }
+    debug("%s no ripe queue entries found, soonest = %s",
+          __func__, ctime(&soonest));
+    if (soonest != 1) {
+        if (!evtimer_pending (qtimer, NULL)) {
+            struct timeval tv = { (soonest-now), 0 };
+            event_del(qtimer);
+            evtimer_add(qtimer, &tv);
+        }
+    }
+    stats_queue_running = false;
+}
+
+void
+statsq_init(network *n)
+{
+    stats_queue_running = false;
+    TAILQ_INIT(&stats_queue);
+    qtimer = evtimer_new(n->evbase, statsq_event_cb, NULL);
+}
+
 void stats_changed()
 {
     g_stats_changed = true;
@@ -1803,20 +1962,9 @@ void stats_changed()
                          g_app_name,
                          g_app_id,
                          g_cid);
-                failure = Block_copy(failure);
-                g_https_cb(url, ^(bool success) {
-                    network_async(g_n, ^{
-                        if (!success) {
-                            failure();
-                        }
-                        Block_release(failure);
-                        if (g_stats_changed) {
-                            stats_changed();
-                        }
-                    });
-                });
-            };
+                statsq_append(url, 0, failure);
 
+            };
             report("peer", byte_count.from_peer + byte_count.to_peer, ^{
                 b->from_peer += byte_count.from_peer;
                 b->to_peer += byte_count.to_peer;
@@ -3425,6 +3573,8 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
     if (!n) {
         return n;
     }
+
+    statsq_init(n);
 
     port_pref = n->port;
     f = fopen("port.dat", "wb");
