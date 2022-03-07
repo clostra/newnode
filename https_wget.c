@@ -390,8 +390,7 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
                         int fd = open(sp->outputfilename, O_RDONLY);
                         if (fd >= 0) {
                             off_t filesize = fdsize(fd);
-                            off_t response_length;
-                            response_length = MIN(filesize, (off_t) request->bufsize);
+                            off_t response_length = MIN(filesize, (off_t) request->bufsize);
                             result->response_body = response_length > 0 ? malloc(response_length) : NULL;
 
                             result->response_length = 0;
@@ -400,17 +399,16 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
                                     ssize_t nread = read(fd, 
                                                          result->response_body + result->response_length,
                                                          request->bufsize - result->response_length);
-                                    if (nread > 0) {
-                                        result->response_length += nread;
-                                    } else {
+                                    if (nread <= 0) {
                                         break;
                                     }
+                                    result->response_length += nread;
                                 }
                                 if (filesize > (off_t) request->bufsize) {
                                     result->result_flags |= HTTPS_RESULT_TRUNCATED;
                                 }
                             }
-                            close (fd);
+                            close(fd);
                         }
                         unlink(sp->outputfilename);
                         free(sp->outputfilename);
@@ -421,8 +419,7 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
                         // it is also possible that subproc slot has been reallocated
                         if (sp->request_id == request_id) {
                             if ((sp->flags & CANCELLED) == 0) {
-                                // XXX (sp->cb)(WEXITSTATUS(sp->exit_status) == 0 ? true : false, result);
-                                (sp->cb)(WEXITSTATUS(sp->exit_status) == 0 ? true : false);
+                                (sp->cb)(WEXITSTATUS(sp->exit_status) == 0 ? true : false, result);
                             }
                             free_subproc(sp);
                         }
@@ -441,8 +438,7 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
                 debug("%s sp->flags:(%s)\n", __func__, flags(sp->flags));
                 if (WTERMSIG(sp->exit_status) == SIGXFSZ) {
                     result->result_flags |= HTTPS_RESULT_TRUNCATED;
-                }
-                else if (result->https_error == HTTPS_NO_ERROR) {
+                } else if (result->https_error == HTTPS_NO_ERROR) {
                     result->https_error = HTTPS_GENERIC_ERROR;
                 }
                 debug("%s: %s https_error = %d (%s)(%s)\n", __func__, sp->name, result->https_error,
@@ -458,8 +454,7 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
                         int fd = open(sp->outputfilename, O_RDONLY);
                         if (fd) {
                             off_t filesize = fdsize(fd);
-                            off_t response_length;
-                            response_length = MIN(filesize, (off_t) request->bufsize);
+                            off_t response_length = MIN(filesize, (off_t) request->bufsize);
                             result->response_body = response_length > 0 ? malloc(response_length) : NULL;
 
                             result->response_length = 0;
@@ -468,14 +463,13 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
                                     ssize_t nread = read(fd, 
                                                          result->response_body + result->response_length,
                                                          request->bufsize - result->response_length);
-                                    if (nread > 0) {
-                                        result->response_length += nread;
-                                    } else {
+                                    if (nread <= 0) {
                                         break;
                                     }
+                                    result->response_length += nread;
                                 }
                             }
-                            close (fd);
+                            close(fd);
                         }
                         unlink(sp->outputfilename);
                         free(sp->outputfilename);
@@ -487,8 +481,7 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
                         // timer_callback is called
                         if (sp->request_id == request_id) {
                             if ((sp->flags & CANCELLED) == 0) {
-                                //XXX (sp->cb)(false, result);
-                                (sp->cb)(false);
+                                (sp->cb)(false, result);
                             }
                             free_subproc(sp);
                         }
@@ -586,30 +579,20 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
     if (request->bufsize > MAX_BUFSIZE && cb) {
         // call the completion handler with an error, so we always report errors consistently
         timer_start(n, 100, ^{
-#if 0
-            // XXX
             https_result result;
             memset(&result, 0, sizeof(result));
             result.https_error = HTTPS_RESOURCE_EXHAUSTED;
             cb(false, &result);
-#else
-            cb(false);
-#endif
         });
     }
     sp = alloc_subproc(request);
     if (sp == NULL && cb) {
         // call the completion handler with an error, so we always report errors consistently
         timer_start(n, 100, ^{
-#if 0
-            // XXX
             https_result result;
             memset(&result, 0, sizeof(result));
             result.https_error = HTTPS_RESOURCE_EXHAUSTED;
             cb(false, &result);
-#else
-            cb(false);
-#endif
         });
         // 0 is not a valid request_id and will be ignored in cancel requests
         debug("%s (%s:%d) could not allocate subprocess\n", __func__, __FILE__, __LINE__);

@@ -26,6 +26,111 @@ static jobject bugsnagClient;
 static jobject newNode;
 static network *g_n;
 
+// keep an array of requests that are associated with small integers
+// so that we can maintain per-download state separately from NN state
+// while allowing NN to cancel requests.
+
+#define NLINK 100
+
+static struct link {
+    jlong request_id;                // structure is unused if request_id == 0
+    volatile bool cancelled;    // nonzero if cancelled by NewNode
+    https_request request;
+    https_complete_callback completion_cb;
+    https_result result;
+} links[NLINK];
+
+static jlong request_serial = 1; // request_ids are always > 0
+
+static int alloc_link(https_request *hr)
+{
+    for (int i = 0; i < NLINK; ++i) {
+        if (links[i].request_id == 0) {
+            links[i].request_id = (request_serial++ * NLINK) + i;
+            links[i].cancelled = false;
+            if (hr) {
+                links[i].request = *hr;
+            } else {
+                // implement defaults if request==NULL
+                // (bufsize=0, flags=0, timeout_sec=7)
+                memset(&(links[i].request), 0, sizeof(https_request));
+                links[i].request.timeout_sec = 7;
+            }
+            links[i].completion_cb = NULL;
+            memset(&(links[i].result), 0, sizeof(https_result));
+            if (hr) {
+                if (hr->flags & HTTPS_USE_HEAD) {
+                    links[i].result.result_flags |= HTTPS_REQUEST_USE_HEAD;
+                }
+                if (hr->flags & HTTPS_ONE_BYTE) {
+                    links[i].result.result_flags |= HTTPS_REQUEST_ONE_BYTE;
+                }
+            }
+            links[i].result.request_id = links[i].request_id;
+            return i;
+        }
+    }
+    return -1;
+}
+
+// NOTE: this should always be called from the libevent thread
+// otherwise, alloc_link() might be called concurrently with free_link
+
+static void free_link(jlong request_id)
+{
+    if (request_id <= 0) {
+        return;
+    }
+    int i = request_id % NLINK;
+    if (links[i].request_id == request_id) {
+        if (links[i].result.response_body != NULL) {
+            free(links[i].result.response_body);
+            links[i].result.response_body = NULL;
+        }
+        links[i].request_id = 0;
+        links[i].cancelled = false;
+        memset(&(links[i].request), 0, sizeof(https_request));
+        links[i].completion_cb = NULL;
+        memset(&(links[i].result), 0, sizeof(https_result));
+        return;
+    }
+    // debug("XXX %s links[%d].request_id %" PRId64 " != request_id %" PRId64 "\n",
+    //       __func__, i, links[i].request_id, request_id);
+}
+
+// find the link with the specified request_id
+// return the index of the link in the links array
+
+static int find_link(jlong request_id)
+{
+    if (request_id <= 0) {
+        return -1;
+    }
+    int i = request_id % NLINK;
+    if (links[i].request_id == request_id) {
+        return i;
+    }
+    // debug("XXX %s request_id %" PRId64 " not found at index %d\n", __func__, request_id, i);
+    return -1;
+}
+
+// this function exists to allow NewNode to cancel an https request
+// that is in progress
+//
+// XXX for now all this does is set a cancelled flag; it doesn't
+//     actually try to stop the thread handling the request
+
+void cancel_https_request(int64_t request_id)
+{
+    debug("%s (request_id:%" PRId64 ")\n", __func__, request_id);
+    int link_index = find_link((jlong) request_id);
+    if (link_index < 0) {
+        debug("%s could not find link %" PRId64 "\n", __func__, request_id);
+        return;
+    }
+    links[link_index].cancelled = true;
+}
+
 void* stdio_thread(void *useradata)
 {
     ssize_t readSize;
@@ -96,6 +201,18 @@ enum notify_type {
     BREADCRUMB = 8,
     META = 9
 };
+
+JNIEXPORT jint Java_com_clostra_newnode_internal_NewNode_isCancelled(JNIEnv *env, jobject thiz, jlong request_id)
+{
+    jint result;
+    int link_index = find_link(request_id);
+    if (link_index < 0) {
+        return 1;
+    }
+    result = links[link_index].cancelled;
+    // debug("isCancelled(request_id:%ld) => %d\n", request_id, result);
+    return result;
+}
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_updateBugsnagDetails(JNIEnv* env, jobject thiz, int notifyType)
 {
@@ -256,13 +373,81 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetc
     (*env)->ReleaseStringUTFChars(env, host, hoststr);
 }
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_callback(JNIEnv* env, jobject thiz, jlong callblock, jint value)
+// callback() passes lots of scalar result parameters from Java code
+// that then get copied into an https_result structure (if the
+// request wasn't cancelled), because it seemed easier than either
+// having the Java code return a class instance, or having the Java
+// code manipulate a C data structure on the C heap.
+
+
+// XXX are all of these arguments still needed?
+//     NO, but wait until later to rearrange them
+//     needed: request_id, response_body, response_length, https_error, http_status_code, result_flags
+
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_callback(JNIEnv* env, jobject thiz, jlong callblock, jlong response_length, jint https_error, jint http_status_code, jint result_flags, jlong request_id, jbyteArray response_body)
 {
+    extern char *https_strerror();
+    https_result dummy_res;
+    dummy_res.https_error = https_error;
+   
+    debug("g_https_cb callback response_length:%ld https_error:%d(%s) http_status_code:%d result_flags:0x%x request_id:%lld\n", 
+          (long) response_length, https_error, https_strerror(&dummy_res),
+          http_status_code, result_flags, (long long) request_id);
+
+    int link_index = find_link(request_id);
+    if (link_index < 0) {
+        return;
+    }
+
+    if (links[link_index].cancelled) {
+        // if cancelled, free any data that is internal to this module,
+        // and don't call the completion callback
     network_async(g_n, ^{
+            free_link(request_id);
+            debug("%s request_id:%lld was cancelled\n", __func__, (long long) request_id);
+        });
+        return;
+    }
+
+    // fill in the result fields in Java's thread,
+    // (especially so we can copy out the response_body array contents safely)
+    https_request *req = &(links[link_index].request);
+    https_result *res =  &(links[link_index].result);
+    // copy min(req->bufsize, response_length) bytes from result into res->buf
+    jsize array_length = (*env)->GetArrayLength(env, response_body);
+    if (response_length > 0 && http_status_code == 200) {
+        long minimum = array_length;
+        if (response_length < minimum) {
+            minimum = response_length;
+        }
+        if ((long)(req->bufsize) < minimum) {
+            minimum = req->bufsize;
+        }
+        res->response_body = malloc(minimum);
+        (*env)->GetByteArrayRegion(env, response_body, 0, minimum, (jbyte *) res->response_body);
+        // debug("response_body=%.*s\n", response_length > 80 ? 80 : (int) response_length, req->buf);
+        res->response_length = response_length;
+    }
+    res->result_flags = result_flags;
+    res->xfer_time_us = us_clock() - res->xfer_start_time_us;
+    res->https_error = https_error;
+    res->http_status = http_status_code;
+
         https_complete_callback cb = (https_complete_callback)callblock;
-        cb(value == 200);
+    if (links[link_index].cancelled == 0) {
+        network_async(g_n, ^{
+            if (links[link_index].request_id == request_id && links[link_index].cancelled == 0) {
+                cb(http_status_code == 200, res);
         Block_release(cb);
-    });
+                free_link(request_id);
+            }
+        });
+    } else {
+        Block_release(cb);
+        network_async(g_n, ^{
+            free_link(request_id);
+        });
+    }
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNIEnv* env, jobject thiz, jobject newNodeObj)
@@ -281,29 +466,86 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
     // XXX: TODO: use real app name
     const char *app_name = app_id;
     port_t newnode_port = 0;
-    g_n = newnode_init(app_name, app_id, &newnode_port, ^(const char* url, https_complete_callback cb) {
+    g_n = newnode_init(app_name, app_id, &newnode_port, ^int64_t (const char* url, https_complete_callback cb, https_request *request) {
+        network *n = g_n;
+        int link_index = alloc_link(request);
+        if (link_index < 0) {
+            network_async(n, ^{
+                https_result fake_result;
+                memset(&fake_result, 0, sizeof(https_result));
+                fake_result.https_error = HTTPS_RESOURCE_EXHAUSTED;
+                cb(false, &fake_result);
+            });
+            return 0;
+        }
+        jlong request_id = links[link_index].request_id;
+        https_result *result = &(links[link_index].result);
+        timespec now;
+        // TODO: use us_clock()
+        clock_gettime(CLOCK_REALTIME, &now);
+        result->req_time = now.tv_sec;
+        debug("g_https_cb(%s) request_id:%lld link_index:%d\n", url, (long long) request_id, link_index);
+        result->xfer_start_time_us = us_clock();
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshadow"
         JNIEnv *env = get_env();
 #pragma clang diagnostic pop
         jvm_frame(env, ^{
             if (!newNode) {
-                cb(false);
+                network_async(n, ^{
+                    if (links[link_index].request_id == request_id) {
+                        result->https_error = HTTPS_SYSCALL_ERROR;
+                        cb(false, result);
+                        free_link(request_id);
+                    }
+                });
                 return;
             }
             jclass cNewNode = (*env)->GetObjectClass(env, newNode);
             CATCH(
-                cb(false);
+                  network_async(n, ^{
+                      if (links[link_index].request_id == request_id) {
+                          result->https_error = HTTPS_SYSCALL_ERROR;
+                          cb(false, result);
+                          free_link(request_id);
+                      }
+                  });
                 return;
             );
             https_complete_callback cbc = Block_copy(cb);
-            CALL_VOID(cNewNode, newNode, http, Ljava/lang/String;J, JSTR(url), (jlong)cbc);
+ 
+            // debug("(jni call) http(url:%s, cbc:%p, flags:0x%08x, timeout:%d, bufsize:%lu, request_id:%d)\n",
+            //       url, cbc, request->flags, request->timeout_sec, (unsigned long) request->bufsize, request_id);
+            // debug("           flags=%s\n", expand_flags(request->flags));
+            CALL_VOID(cNewNode, newNode, 
+                      http,                     // shorthand form of method name
+                      Ljava/lang/String;JIIIJI, // parameter types:
+                                                // (1) String url (Ljava/lang/String;)
+                                                // (2) long cbc (J)
+                                                // (3) int request_flags (I)
+                                                // (4) int timeout_msec (I)
+                                                // (5) int bufsize (I)
+                                                // (6) long request_id (J)
+                                                // (7) int newnode_port (I)
+                      JSTR(url),                // url (encoded as Java String)
+                      (jlong)cbc,               // callback pointer (encoded as long)
+                      (jint)(request->flags),   // request flags
+                      (jint)(request->timeout_sec * 1000), // timeout_msec
+                      (jint)(request->bufsize), // bufsize
+                      (jlong) request_id,        // request_id
+                      (jint) newnode_port);        // http_port
             CATCH(
-                cb(false);
-                Block_release(cbc);
-                return;
+                  network_async(n, ^{
+                      if (links[link_index].request_id == request_id) {
+                          result->https_error = HTTPS_SYSCALL_ERROR;
+                          cb(false, result);
+                          free_link(request_id);
+                          Block_release(cbc);
+                      }
+                  });
             );
         });
+        return links[link_index].request_id;
     });
 }
 

@@ -629,15 +629,8 @@ void cancel_https_request(int64_t request_id)
         debug("HTTPSRequest: NLINK exceeded\n");
         // call the completion handler with an error so we always report errors consistently
         timer_start(n, 100, ^{
-#if 0
-            // XXX
-            https_result result;
-            memset(&result, 0, sizeof(result));
-            result.https_error = HTTPS_RESOURCE_EXHAUSTED;
+            https_result result = {.https_error = HTTPS_RESOURCE_EXHAUSTED};
             cb(false, &result);
-#else
-            cb(false);
-#endif
         });
         return 0;
     }
@@ -834,33 +827,23 @@ didCompleteWithError:(NSError *) error
             if (links[link_index].request_id != my_request_id) {
                 debug("%s links[%d].request_id:%" PRId64 " != my_request_id:%" PRId64 "; NOT calling completion callback\n", 
                       __func__, link_index, links[link_index].request_id, my_request_id);
-            }  else if (links[link_index].cancelled) {
+            } else if (links[link_index].cancelled) {
                 debug("%s my_request_id:%" PRId64 " (late) cancelled; NOT calling completion callback\n", 
                       __func__, my_request_id);
             } else if (links[link_index].internally_cancelled) {
                 debug("%s my_request_id:%" PRId64 " internally cancelled; calling completion callback\n", 
                       __func__, my_request_id);
                 // call completion callback because caller did not explicitly cancel
-#if 0
-                // XXX
                 links[link_index].completion_cb (error == NULL, &(links[link_index].result));
-#else
-                links[link_index].completion_cb (error == NULL);
-#endif
             } else {
                 debug("%s my_request_id:%" PRId64 " completed [%lld us]; calling completion callback\n", 
                       __func__, my_request_id, us_clock() - links[link_index].result.xfer_start_time_us);
-#if 0
-                // XXX
                 links[link_index].completion_cb (error == NULL, &(links[link_index].result));
-#else
-                links[link_index].completion_cb (error == NULL);
-#endif
             }
             free_link(my_request_id);
         });
     } else {
-        network_async(n, ^{
+        network_async(, ^{
             free_link(my_request_id);
         });
     }

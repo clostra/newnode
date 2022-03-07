@@ -1,3 +1,5 @@
+#ifndef G_HTTPS_CB
+#define G_HTTPS_CB 1
 // Generic types of error that an HTTPS GET can result in.
 //
 // It's not strictly necessary for the g_https_cb implementation to be
@@ -19,9 +21,9 @@
 // 
 // One error that is NOT a sign of blocking is an HTTP error like 404.
 // Receiving an HTTP error generally means that the encrypted
-// connection to the origin server succeeded.  However, some APIs try
-// to map all error conditions to HTTP error codes, so it's necessary
-// for the implementation to avoid using those APIs.
+// connection to the origin server succeeded.  However error 451 is an
+// exception, because it specifically indicates server-side content
+// blocking.
 
 typedef enum {
     // don't change these error codes, they're used to log to stats.newnode.com
@@ -72,3 +74,6 @@ typedef struct https_result {
     int http_status;                    // 3-digit http status code (0 if unknown)
     int64_t request_id;
 } https_result;
+
+void cancel_https_request(int64_t request_id);
+#endif // G_HTTPS_CB
