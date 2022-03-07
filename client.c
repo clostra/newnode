@@ -2023,17 +2023,14 @@ void stats_changed(network *n)
                          "&ev=%"PRIu64"" \
                          "&dh=%s" \
                          "&an=%s" \
-                         "&aid=%s" \
-                         "&cid=%"PRIu64"",
+                         "&aid=%s",
                          type,
                          authority,
                          count,
                          authority,
                          g_app_name,
-                         g_app_id,
-                         g_cid);
+                         g_app_id);
                 stats_queue_append(n, url, failure);
-
             };
             report("peer", byte_count.from_peer + byte_count.to_peer, ^{
                 b->from_peer += byte_count.from_peer;
@@ -3348,7 +3345,6 @@ void update_tryfirst_stats(network *n, tryfirst_stats *tfs, https_result *result
                  "&tid=UA-149896478-2"                      // our id
                  "&npa=1"                                   // disable ad personalization
                  "&ds=%s"                                   // data source (server name)
-                 "&cid=%"PRIu64""                           // client id
                  "&geoid=%s"                                // geographical location = country code
                  "&t=event"                                 // hit type = event
                  "&ni=1"                                    // non interaction hit = 1
@@ -3358,7 +3354,7 @@ void update_tryfirst_stats(network *n, tryfirst_stats *tfs, https_result *result
                  "&ea=q"                                    // event action
                  "&el=https_error"                          // event label
                  "&ev=%d",                                  // event value
-                 origin_server, g_cid, g_country, g_app_name, g_app_id, result->https_error);
+                 origin_server, g_country, g_app_name, g_app_id, result->https_error);
         stats_queue_append(n, buf, ^{}); 
     }
 }
