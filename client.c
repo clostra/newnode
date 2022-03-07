@@ -4572,6 +4572,12 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
     return n;
 }
 
+void network_change()
+{
+    g_ifchange_time = time(0);
+    g_have_ipv6 = have_ipv6();
+}
+
 network* newnode_init(const char *app_name, const char *app_id, port_t *port, https_callback https_cb)
 {
     return client_init(app_name, app_id, port, https_cb);

@@ -12,7 +12,8 @@
 #include "network.h"
 #include "log.h"
 #include "lsd.h"
-
+#include "newnode.h"
+#include "client.h"
 
 typedef struct ip_mreq ip_mreq;
 void lsd_setup(network *n);
@@ -134,6 +135,7 @@ void route_read_cb(evutil_socket_t fd, short events, void *arg)
     char buf[2048];
     recv(fd, buf, sizeof(buf), 0);
     lsd_setup(n);
+    network_change();
 }
 
 void lsd_setup(network *n)
