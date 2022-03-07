@@ -402,7 +402,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_callback(JNIEnv
     if (links[link_index].cancelled) {
         // if cancelled, free any data that is internal to this module,
         // and don't call the completion callback
-    network_async(g_n, ^{
+        network_async(g_n, ^{
             free_link(request_id);
             debug("%s request_id:%lld was cancelled\n", __func__, (long long) request_id);
         });
@@ -433,12 +433,12 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_callback(JNIEnv
     res->https_error = https_error;
     res->http_status = http_status_code;
 
-        https_complete_callback cb = (https_complete_callback)callblock;
+    https_complete_callback cb = (https_complete_callback)callblock;
     if (links[link_index].cancelled == 0) {
         network_async(g_n, ^{
             if (links[link_index].request_id == request_id && links[link_index].cancelled == 0) {
                 cb(http_status_code == 200, res);
-        Block_release(cb);
+                Block_release(cb);
                 free_link(request_id);
             }
         });

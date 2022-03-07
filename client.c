@@ -1944,6 +1944,35 @@ void stats_queue_init(network *n)
     TAILQ_INIT(&stats_queue);
 }
 
+void send_heartbeat()
+{
+    char url[2048];
+    if (*g_country && g_asn > 0) {
+        snprintf(url, sizeof(url), "https://stats.newnode.com/heartbeat?v=1" \
+                 "&tid=UA-149896478-2&t=event&ec=byte_counts&ds=app&ni=1" \
+                 "&an=%s"                                                \
+                 "&aid=%s"                                                \
+                 "&cid=%"PRIu64""                                       \
+                 "&geoid=%s"                                            \
+                 "&el=ASN&ev=%d",
+                 g_app_name,
+                 g_app_id,
+                 g_cid,
+                 g_country,
+                 g_asn);
+    } else {
+        snprintf(url, sizeof(url), "https://stats.newnode.com/heartbeat?v=1" \
+                 "&tid=UA-149896478-2&t=event&ec=byte_counts&ds=app&ni=1" \
+                 "&an=%s"                                                \
+                 "&aid=%s"                                                \
+                 "&cid=%"PRIu64"",
+                 g_app_name,
+                 g_app_id,
+                 g_cid);
+    }
+    statsq_append(url, 0, NULL);
+}
+
 void stats_changed(network *n)
 {
     g_stats_changed = true;
@@ -3576,6 +3605,7 @@ void connect_request(network *n, evhttp_request *req)
             // retrying direct again
             connect_peer(c, false);
             break;
+
         case TF_REACHABLE:
             // was reachable on last recent attempt, skip tryfirst
 #if !NO_DIRECT
@@ -3663,6 +3693,7 @@ void connect_request(network *n, evhttp_request *req)
                   __func__, __LINE__,
                   c->tryfirst_url, c->direct_tryfirst_request_id);
             break;
+
         case TF_TRYFIRST:
         default:
             connect_peer(c, false);
@@ -4303,6 +4334,116 @@ port_t recreate_listener(network *n, port_t port)
     return g_port;
 }
 
+void maybe_update_ipinfo()
+{
+    if (g_ip[0] != '\0' && g_country[0] != '\0' && g_asn > 0) {
+        if (g_ipinfo_timestamp > g_ipinfo_logged_timestamp) {
+            char urlbuf[1024];
+            // copy g_ipinfo_timestamp so that the callback below
+            // will record the timestamp that reflects the
+            // data in the URL (which might have changed
+            // by the time the callback gets called)
+            time_t last_ipinfo_timestamp = g_ipinfo_timestamp;
+
+            // update server with a GET request
+            // XXX maybe add timestamp of the ipinfo?
+            snprintf(urlbuf, sizeof(urlbuf),
+                     "https://stats.newnode.com/collect?v=1" // version = 1
+                     "&tid=UA-149896478-2"                   // our id
+                     "&npa=1"                        // disable ad personalization
+                     "&ds=ipinfo.io"                 // data source
+                     "&cid=%"PRIu64""                    // client id
+                     "&geoid=%s"                         // geographical location = country code
+                     "&t=event"                          // hit type = event
+                     "&ni=1"                             // non interaction hit = 1
+                     "&an=%s"                            // application name
+                     "&aid=%s"                           // application ID
+                     "&ec=ipinfo"                        // event category
+                     "&ea=q"                             // event action
+                     "&el=ASN"                           // event label
+                     "&ev=%d",                           // event value (AS #)
+                     g_cid, g_country, g_app_name, g_app_id, g_asn);
+            statsq_append(urlbuf, 0, NULL);
+        }
+    }
+}
+
+void query_ipinfo(network *n)
+{
+#define IPINFO_RESPONSE_SIZE 10240
+    https_request *request = https_request_alloc(IPINFO_RESPONSE_SIZE, HTTPS_DIRECT, 30);
+    g_https_cb("https://ipinfo.io", ^(bool success, struct https_result *result) {
+        debug("GET https://ipinfo.io request_id:%" PRId64 " success=%d, response_length=%zu, https_error=%d\n",
+              result->request_id, success, result->response_length, result->https_error);
+        if (success) {
+            debug("g_https_cb duration=%f s\n", result->xfer_time_us / 1000000.0);
+        }
+        if (success && result->xfer_time_us > 0) {
+            debug("g_https_cb speed=%" PRIu64 " b/s\n",
+                  (result->response_length * 1000000) / result->xfer_time_us);
+        }
+        if (success &&
+            (result->result_flags & HTTPS_RESULT_TRUNCATED) == 0 &&
+            (result->response_length > 0) &&
+            (result->response_length < IPINFO_RESPONSE_SIZE)) {
+            // make a copy of response body so we can safely
+            // append a 0 byte (because the response_body is
+            // allocated by the caller and might not be longer
+            // than needed)
+            //
+            // ignore response_body if it is too long - don't
+            // allocate arbitrary amounts on stack even
+            // temporarily
+            char response_body_copy[result->response_length + 1];
+            memcpy(response_body_copy, result->response_body, result->response_length);
+            response_body_copy[result->response_length] = '\0';
+
+            JSON_Value *v = json_parse_string(response_body_copy);
+            if (json_value_get_type(v) == JSONObject) {
+                const char *ip, *country, *org;
+                int asn = -1;
+                JSON_Object *jo = json_value_get_object(v);
+                time_t t = time(NULL);
+
+                ip = json_string(json_object_get_value(jo, "ip"));
+                country = json_string(json_object_get_value(jo, "country"));
+                org = json_string(json_object_get_value(jo, "org"));
+                if (org != NULL) {
+                    // try to parse AS number embedded in org
+                    if (strlen(org) > 3 && org[0] == 'A' && org[1] == 'S' && isdigit(org[2])) {
+                        asn = atoi(org + 2);
+                    }
+                }
+                debug("IP=%s CC=%s ASN=%d time=%s", ip, country, asn, ctime(&t));
+
+                // now write the result to stats server if they've changed
+                if (ip && ip[0] && country && country[0] && asn > 0 &&
+                    (strcmp (ip, g_ip) != 0 || strcmp(country, g_country) != 0 || asn != g_asn)) {
+                    // save new values iff they fit (don't truncate them)
+                    if (strlen(ip) < sizeof(g_ip)) {
+                        strcpy(g_ip, ip);
+                    } else {
+                        *g_ip = '\0';
+                    }
+                    if (strlen(country) < sizeof(g_country)) {
+                        strcpy(g_country, country);
+                    } else {
+                        *g_country = '\0';
+                    }
+                    g_asn = asn;
+                    g_ipinfo_timestamp = result->req_time;
+                    maybe_update_ipinfo();
+                }
+            }
+            json_value_free(v);
+        } else {
+            debug("https://ipinfo.io => success=%d response_length=%zu https_error=%d\n",
+                  success, result->response_length, result->https_error);
+        }
+    }, request);
+    free(request);
+}
+
 network* client_init(const char *app_name, const char *app_id, port_t *port, https_callback https_cb)
 {
     //network_set_log_level(1);
@@ -4418,6 +4559,19 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         };
         cb();
         timer_repeating(n, 25 * 60 * 1000, cb);
+        timer_callback cb2 = ^{
+            // wait ~2 minutes in case network config changes several
+            // times in a short interval
+            if ((g_ifchange_time - g_ipinfo_timestamp) > 120) {
+                query_ipinfo(n);
+            } else {
+                maybe_update_ipinfo();
+            }
+        };
+        timer_repeating(n, 1 * 60 * 1000, cb2);
+        // random intervals between 6-12 hours
+        timer_repeating(n, 1000 * (6 + randombytes_uniform(6)) * 60 * 60, ^{ send_heartbeat(); });
+        query_ipinfo(n);
     });
 
     return n;
