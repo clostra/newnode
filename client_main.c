@@ -38,22 +38,14 @@ int main(int argc, char *argv[])
     }
 
     port_t port = atoi(port_s);
-    network *n = newnode_init("client", "com.newnode.client", &port, ^(const char *url, https_complete_callback cb) {
+    __block network *n = newnode_init("client", "com.newnode.client", &port, ^(const char *url, https_complete_callback cb) {
         // can't reference 'n' here because 'n' is uninitialized when this block callback is declared
-        extern network *g_n;
         debug("https: %s\n", url);
         https_request *request = https_request_alloc(0, 0, 15);
-        // note: https_wget and do_https will call the completion callback if the request fails immediately
-#ifdef __APPLE__
-        int64_t do_https(network *, uint16_t port, const char *url, https_complete_callback cb, https_request *request);
-        // XXX get rid of (void)
-        (void) do_https(g_n, port, url, cb, request);
+        // note: do_https will call the completion callback if the request fails immediately
+        int64_t do_https(network *n, port_t port, const char *url, https_complete_callback cb, https_request *request);
+        do_https(n, port, url, cb, request);
         free(request);
-#else
-        // XXX get rid of (void)
-        (void) https_wget(g_n, port, url, cb, request);
-        free(request);
-#endif
     });
     if (!n) {
         return 1;

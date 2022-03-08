@@ -9,7 +9,6 @@
 #include "timer.h"
 
 char *https_strerror(https_result *);
-extern port_t g_port;
 
 void HTTPSRequest_init()
 {
@@ -18,7 +17,7 @@ void HTTPSRequest_init()
 
 void set_https_error(https_result *result, const char *error_domain, NSInteger errorCode)
 {
-    if (strcmp (error_domain, "NSURLErrorDomain") == 0) {
+    if (strcmp(error_domain, "NSURLErrorDomain") == 0) {
         switch(errorCode) {
             // error codes and descriptions from:
             // https://developer.apple.com/documentation/foundation/1508628-url_loading_system_error_codes
@@ -402,8 +401,7 @@ void set_https_error(https_result *result, const char *error_domain, NSInteger e
             result->https_error = HTTPS_GENERIC_ERROR;
             break;
         }
-    }
-    else {
+    } else {
         // unrecognized error domain
         result->https_error = HTTPS_GENERIC_ERROR;
     }
@@ -419,33 +417,30 @@ static NSURLSession *statsURLSession;
 static NSURLSession *tryfirstURLSession;
 
 // return the session configuration we need to implement 'flags' in https_request
-static NSURLSessionConfiguration *sessionConfig(int flags)
+static NSURLSessionConfiguration *sessionConfig(network *n, int flags)
 {
     NSURLSessionConfiguration *config = [NSURLSessionConfiguration ephemeralSessionConfiguration];
-    NSDictionary *noProxyDictionary = @{};
 
     // override proxy settings if HTTPS_DIRECT is requested
-    if (flags & HTTPS_DIRECT)
-        [config setConnectionProxyDictionary:noProxyDictionary];
-    else {
-        NSDictionary *newnodeProxyDictionary;
-        if (!g_port) {
-            debug("%s: g_port:%hu\n", __func__, g_port);
-            newnodeProxyDictionary = noProxyDictionary;
-        }
-        else {
-            newnodeProxyDictionary = @{
-                                       @"HTTPEnable": @1,
-                                       @"HTTPProxy": @"127.0.0.1",
-                                       @"HTTPPort": @(g_port),
-                                       @"HTTPSEnable": @1,
-                                       @"HTTPSProxy": @"127.0.0.1",
-                                       @"HTTPSPort": @(g_port),
-                                       @"SOCKSEnable": @1,
-                                       @"SOCKSProxy": @"127.0.0.1",
-                                       @"SOCKSPort": @(g_port)
-            };
-            [config setConnectionProxyDictionary:newnodeProxyDictionary];
+    if (flags & HTTPS_DIRECT) {
+        [config setConnectionProxyDictionary:@{}];
+    } else {
+        port_t port = newnode_get_port(n);
+        // XXX: this should not duplicate logic from NewNode.m
+        if (!port) {
+            [config setConnectionProxyDictionary:@{}];
+        } else {
+            [config setConnectionProxyDictionary:@{
+                @"HTTPEnable": @1,
+                @"HTTPProxy": @"127.0.0.1",
+                @"HTTPPort": @(port),
+                @"HTTPSEnable": @1,
+                @"HTTPSProxy": @"127.0.0.1",
+                @"HTTPSPort": @(port),
+                @"SOCKSEnable": @1,
+                @"SOCKSProxy": @"127.0.0.1",
+                @"SOCKSPort": @(port)
+            }];
         }
     }
     config.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyNever;
@@ -457,35 +452,35 @@ static NSURLSessionConfiguration *sessionConfig(int flags)
 //
 // this will either be a preconfigured session or a custom session
 // (if the latter it will need to be explicitly invalidated)
-static NSURLSession *sessionForRequest(https_request *hr, id delegate)
+static NSURLSession *sessionForRequest(network *n, https_request *hr, id delegate)
 {
     NSURLSessionConfiguration *config;
 
     switch (hr->flags & HTTPS_OPTION_MASK) {
     case HTTPS_GEOIP_FLAGS:
         if (geoipURLSession == NULL) {
-            NSURLSessionConfiguration *config_geoip = sessionConfig(HTTPS_GEOIP_FLAGS);
+            NSURLSessionConfiguration *config_geoip = sessionConfig(n, HTTPS_GEOIP_FLAGS);
             geoipURLSession = [NSURLSession sessionWithConfiguration:config_geoip
                                                             delegate:delegate delegateQueue:nil];
         }
         return geoipURLSession;
     case HTTPS_STATS_FLAGS:
         if (statsURLSession == NULL) {
-            NSURLSessionConfiguration *config_stats = sessionConfig(HTTPS_STATS_FLAGS);
+            NSURLSessionConfiguration *config_stats = sessionConfig(n, HTTPS_STATS_FLAGS);
             statsURLSession = [NSURLSession sessionWithConfiguration:config_stats
                                                             delegate:delegate delegateQueue:nil];
         }
         return statsURLSession;
     case HTTPS_TRYFIRST_FLAGS:
         if (tryfirstURLSession == NULL) {
-            NSURLSessionConfiguration *config_tryfirst = sessionConfig(HTTPS_TRYFIRST_FLAGS);
+            NSURLSessionConfiguration *config_tryfirst = sessionConfig(n, HTTPS_TRYFIRST_FLAGS);
             tryfirstURLSession = [NSURLSession sessionWithConfiguration:config_tryfirst
                                                                delegate:delegate delegateQueue:nil];
         }
         return tryfirstURLSession;
     default:
         debug("sessionForOptions: returning custom session\n");
-        config = sessionConfig(hr->flags);
+        config = sessionConfig(n, hr->flags);
         // NB: need to invalidate this session when finished with it, else it will leak memory
         // no delegate for this one, b/c we don't know what the session needs anyway
         return [NSURLSession sessionWithConfiguration:config];
@@ -551,8 +546,9 @@ static int alloc_link(https_request *request)
 
 static void free_link(int64_t request_id)
 {
-    if (request_id <= 0)
+    if (request_id <= 0) {
         return;
+    }
     int i = request_id % NLINK;
     if (links[i].request_id == request_id) {
         links[i].request_id = 0;
@@ -568,8 +564,7 @@ static void free_link(int64_t request_id)
         }
         memset((&links[i].result), 0, sizeof(https_result));
         return;
-    }
-    else {
+    } else {
         // debug("XXX %s links[%d].request_id %" PRId64 " != request_id %" PRId64 "\n",
         //       __func__, i, links[i].request_id, request_id);
     }
@@ -597,10 +592,11 @@ void cancel_https_request(int64_t request_id)
 {
     debug("%s (request_id:%" PRId64 ")\n", __func__, request_id);
     int link_index = find_link(request_id);
-    if (link_index < 0)
+    if (link_index < 0) {
         return;
+    }
     links[link_index].cancelled = YES;
-    [links[link_index].r  cancel];
+    [links[link_index].r cancel];
 }
 
 @implementation HTTPSRequest
@@ -608,38 +604,41 @@ void cancel_https_request(int64_t request_id)
     bool needs_invalidation;
     NSURLSessionDataTask *task;
     NSURLSession *session;
+    network *n;
     https_complete_callback completion_cb;
 }
 
-- (void) cancel
+- (void)cancel
 {
-    if (needs_invalidation)
+    if (needs_invalidation) {
         [session invalidateAndCancel];
-    else
+    } else {
         [task cancel];
+    }
 }
 
 - (int64_t) start:(NSURL *)ns_url
-       request:(https_request *) req
-      callback:(https_complete_callback) cb
+          network:(network*)nn
+          request:(https_request *)req
+         callback:(https_complete_callback)cb
 {
+    n = nn;
     int link_index = alloc_link(req);
-    extern network *g_n;
 
-    if (link_index < 0 && g_n) {
+    if (link_index < 0) {
         debug("HTTPSRequest: NLINK exceeded\n");
         // call the completion handler with an error so we always report errors consistently
-        timer_start(g_n, 100, ^{
+        timer_start(n, 100, ^{
 #if 0
-                // XXX
-                https_result result;
-                memset(&result, 0, sizeof(result));
-                result.https_error = HTTPS_RESOURCE_EXHAUSTED;
-                cb(false, &result);
+            // XXX
+            https_result result;
+            memset(&result, 0, sizeof(result));
+            result.https_error = HTTPS_RESOURCE_EXHAUSTED;
+            cb(false, &result);
 #else
-                cb(false);
+            cb(false);
 #endif
-            });
+        });
         return 0;
     }
     needs_invalidation = NO;
@@ -665,7 +664,7 @@ void cancel_https_request(int64_t request_id)
     links[link_index].result.http_status = 0;
 
     NSMutableURLRequest *ns_request = [[NSMutableURLRequest alloc] initWithURL:ns_url];
-    session = sessionForRequest(req, self);
+    session = sessionForRequest(n, req, self);
     if (session != geoipURLSession && session != statsURLSession && session != tryfirstURLSession)
         needs_invalidation = YES;    
 
@@ -704,7 +703,7 @@ void cancel_https_request(int64_t request_id)
 //
 // https://developer.apple.com/documentation/foundation/nsurlsessiondelegate/1407776-urlsession
 
-- (void)               URLSession:(NSURLSession *)sess 
+- (void)               URLSession:(NSURLSession *)sess
         didBecomeInvalidWithError:(NSError *)error
 {
     const char *error_message = "";
@@ -716,16 +715,13 @@ void cancel_https_request(int64_t request_id)
     if (sess == geoipURLSession) {
         debug("session:geoipURLSession didBecomeInvalidWithError %s:%s\n", error_domain, error_message);
         geoipURLSession = NULL;
-    }
-    else if (sess == statsURLSession) {
+    } else if (sess == statsURLSession) {
         debug("session:statsURLSession didBecomeInvalidWithError %s:%s\n", error_domain, error_message);
         statsURLSession = NULL;
-    }
-    else if (sess == tryfirstURLSession) {
+    } else if (sess == tryfirstURLSession) {
         debug("session:tryfirstURLSession didBecomeInvalidWithError %s:%s\n", error_domain, error_message);
         tryfirstURLSession = NULL;
-    }
-    else {
+    } else {
         debug("session:%p didBecomeInvalidWithError %s:%s\n", sess, error_domain, error_message);
     }
 }
@@ -780,8 +776,8 @@ void cancel_https_request(int64_t request_id)
 }
 
 - (void)  URLSession:(NSURLSession *) session
-                task: (NSURLSessionTask *) mytask
-didCompleteWithError: (NSError *) error
+                task:(NSURLSessionTask *) mytask
+didCompleteWithError:(NSError *) error
 {
     const char *error_message = "";
     const char *error_domain = "";
@@ -802,8 +798,9 @@ didCompleteWithError: (NSError *) error
     else {
         debug("%s my_request_id:%" PRId64 " (task completed no error)\n", __func__, my_request_id);
     }
-    if (link_index < 0)
+    if (link_index < 0) {
         return;
+    }
     if (links[link_index].request_id == my_request_id && !links[link_index].cancelled) {
         uint64_t now = us_clock();
         links[link_index].result.xfer_time_us = now - links[link_index].result.xfer_start_time_us;
@@ -826,83 +823,77 @@ didCompleteWithError: (NSError *) error
             debug("%s: my_request_id:%" PRId64 " https_error set to %d (%s)\n", __func__, my_request_id,
                   links[link_index].result.https_error, 
                   https_strerror(&(links[link_index].result)));
-        }
-        else {
+        } else {
             links[link_index].result.https_error = HTTPS_NO_ERROR;
         }
 
         // call callback from a timer to make sure it's done in the libevent thread
         // note that links[link_index] might be assigned to a different request
         // by the time the callback gets called
-        extern network *g_n;
-        network_async(g_n, ^{
-                if (links[link_index].request_id != my_request_id) {
-                    debug("%s links[%d].request_id:%" PRId64 " != my_request_id:%" PRId64 "; NOT calling completion callback\n", 
-                          __func__, link_index, links[link_index].request_id, my_request_id);
-                }
-                else if (links[link_index].cancelled) {
-                    debug("%s my_request_id:%" PRId64 " (late) cancelled; NOT calling completion callback\n", 
-                          __func__, my_request_id);
-                }
-                else if (links[link_index].internally_cancelled) {
-                    debug("%s my_request_id:%" PRId64 " internally cancelled; calling completion callback\n", 
-                          __func__, my_request_id);
-                    // call completion callback because caller did not explicitly cancel
+        network_async(n, ^{
+            if (links[link_index].request_id != my_request_id) {
+                debug("%s links[%d].request_id:%" PRId64 " != my_request_id:%" PRId64 "; NOT calling completion callback\n", 
+                      __func__, link_index, links[link_index].request_id, my_request_id);
+            }  else if (links[link_index].cancelled) {
+                debug("%s my_request_id:%" PRId64 " (late) cancelled; NOT calling completion callback\n", 
+                      __func__, my_request_id);
+            } else if (links[link_index].internally_cancelled) {
+                debug("%s my_request_id:%" PRId64 " internally cancelled; calling completion callback\n", 
+                      __func__, my_request_id);
+                // call completion callback because caller did not explicitly cancel
 #if 0
-                    // XXX
-                    links[link_index].completion_cb (error == NULL, &(links[link_index].result));
+                // XXX
+                links[link_index].completion_cb (error == NULL, &(links[link_index].result));
 #else
-                    links[link_index].completion_cb (error == NULL);
+                links[link_index].completion_cb (error == NULL);
 #endif
-                }
-                else {
-                    debug("%s my_request_id:%" PRId64 " completed [%lld us]; calling completion callback\n", 
-                          __func__, my_request_id, us_clock() - links[link_index].result.xfer_start_time_us);
+            } else {
+                debug("%s my_request_id:%" PRId64 " completed [%lld us]; calling completion callback\n", 
+                      __func__, my_request_id, us_clock() - links[link_index].result.xfer_start_time_us);
 #if 0
-                    // XXX
-                    links[link_index].completion_cb (error == NULL, &(links[link_index].result));
+                // XXX
+                links[link_index].completion_cb (error == NULL, &(links[link_index].result));
 #else
-                    links[link_index].completion_cb (error == NULL);
+                links[link_index].completion_cb (error == NULL);
 #endif
-                }
-                free_link(my_request_id);
-            });
-    }
-    else {
-        extern network *g_n;
-        network_async(g_n, ^{
-                free_link(my_request_id);
-            });
+            }
+            free_link(my_request_id);
+        });
+    } else {
+        network_async(n, ^{
+            free_link(my_request_id);
+        });
     }
 }
 
-- (void)        URLSession:(NSURLSession *)session 
-                      task:(NSURLSessionTask *)mytask 
-willPerformHTTPRedirection:(NSHTTPURLResponse *)response 
-                newRequest:(NSURLRequest *)request 
+- (void)        URLSession:(NSURLSession *)session
+                      task:(NSURLSessionTask *)mytask
+willPerformHTTPRedirection:(NSHTTPURLResponse *)response
+                newRequest:(NSURLRequest *)request
          completionHandler:(void (^)(NSURLRequest *))completionHandler
 {
     int64_t my_request_id = atol(mytask.taskDescription.UTF8String);
     int link_index = find_link(my_request_id);
-    if (link_index < 0)
+    if (link_index < 0) {
         return;
-    if (links[link_index].cancelled)
+    }
+    if (links[link_index].cancelled) {
         return;
+    }
     debug("%s: my_request_id:%" PRId64 " [%lld us]\n", __func__, my_request_id, 
           us_clock() - links[link_index].result.xfer_start_time_us);
     if (links[link_index].request.flags & HTTPS_NO_REDIRECT) {
         debug("%s: ignoring redirect as requested\n", __func__);
         completionHandler(NULL);
-    }
-    else {
+    } else {
         debug("%s: accepting redirect\n", __func__);
         completionHandler(request);
     }
 }
 
-- (void)URLSession:(NSURLSession *)session 
-          dataTask:(NSURLSessionDataTask *)dataTask 
-didReceiveResponse:(NSURLResponse *)response 
+- (void)URLSession:(NSURLSession *)session
+          dataTask:(NSURLSessionDataTask *)dataTask
+didReceiveResponse:(NSURLResponse *)response
  completionHandler:(void (^)(NSURLSessionResponseDisposition disposition))completionHandler
 {
     NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *) response;
@@ -924,8 +915,8 @@ didReceiveResponse:(NSURLResponse *)response
     completionHandler(NSURLSessionResponseAllow);
 }
 
-- (void)URLSession:(NSURLSession *)session 
-          dataTask:(NSURLSessionDataTask *)dataTask 
+- (void)URLSession:(NSURLSession *)session
+          dataTask:(NSURLSessionDataTask *)dataTask
     didReceiveData:(NSData *)data
 {
     // if this HTTPSRequest hasn't been cancelled, add the received
@@ -948,8 +939,7 @@ didReceiveResponse:(NSURLResponse *)response
         links[link_index].result.https_error = HTTPS_NO_ERROR;
         debug("%s about to cancel dataTask\n", __func__);
         [dataTask cancel];
-    }
-    else if (links[link_index].cancelled == NO && links[link_index].internally_cancelled == NO) {
+    } else if (links[link_index].cancelled == NO && links[link_index].internally_cancelled == NO) {
         if (links[link_index].result.response_body == NULL) {
             // for now assume that requested bufsize is small enough
             // that we can just malloc the whole thing in one call,
@@ -991,8 +981,7 @@ didReceiveResponse:(NSURLResponse *)response
             links[link_index].result.response_length = links[link_index].request.bufsize;
             debug("%s about to cancel dataTask\n", __func__);
             [dataTask cancel];
-        }
-        else {
+        } else {
             debug("%s: copied %lu bytes into buffer\n", __func__, data.length);
             links[link_index].result.response_length += (off_t) data.length;
         }
@@ -1000,10 +989,10 @@ didReceiveResponse:(NSURLResponse *)response
 }
 @end
 
-int64_t do_https(network *n, unsigned short port, const char *url, https_complete_callback cb, https_request *request)
+int64_t do_https(network *n, port_t port, const char *url, https_complete_callback cb, https_request *request)
 {
     @autoreleasepool {
         NSURL *ns_url = [NSURL URLWithString:@(url)];
-        return [[HTTPSRequest alloc] start: ns_url request: request callback: cb];
+        return [HTTPSRequest.alloc start:ns_url network:n request:request callback:cb];
     }
 }

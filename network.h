@@ -58,6 +58,7 @@ typedef struct evhttp_bound_socket evhttp_bound_socket;
 typedef struct evwatch evwatch;
 typedef struct evwatch_check_cb_info evwatch_check_cb_info;
 typedef struct evwatch_prepare_cb_info evwatch_prepare_cb_info;
+typedef struct evdns_getaddrinfo_request evdns_getaddrinfo_request;
 typedef struct evbuffer evbuffer;
 typedef struct evbuffer_ptr evbuffer_ptr;
 typedef struct evbuffer_iovec evbuffer_iovec;

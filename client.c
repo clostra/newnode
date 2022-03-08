@@ -185,7 +185,7 @@ typedef struct {
 
 hash_table *byte_count_per_authority;
 timer *stats_report_timer;
-network *g_n;
+network *g_stats_n;
 evconnlistener *g_listener;
 uint64_t g_cid;
 bool g_stats_changed;
@@ -1985,7 +1985,7 @@ void stats_changed(network *n)
 void byte_count_cb(evbuffer *buf, const evbuffer_cb_info *info, void *userdata)
 {
     uint64_t *counter = (uint64_t*)userdata;
-    network *n = g_n;
+    network *n = g_stats_n;
     //debug("%s counter:%p bytes:%zu\n", __func__, counter, info->n_deleted);
     if (info->n_deleted) {
         *counter += info->n_deleted;
@@ -2000,7 +2000,8 @@ void bufferevent_count_bytes(network *n, const char *authority, bool from_localh
           bufferevent_is_utp(to) ? "peer" : "direct",
           authority);
 
-    g_n = n;
+    // a little hack instead of making a struct for the uint64_t and network*
+    g_stats_n = n;
 
     if (!byte_count_per_authority) {
         byte_count_per_authority = hash_table_create();
@@ -2591,31 +2592,6 @@ typedef struct {
     int64_t dns_prefetch_key;
 } connect_req;
 
-char *make_ip_addr_list(nn_addrinfo *p)
-{
-    static char result[10240];
-    char *ptr = result;
-
-    if (p == NULL) {
-        return NULL;
-    }
-    while (p) {
-        const char *a = sockaddr_str_addronly(p->ai_addr);
-        size_t l = strlen(a);
-        if ((ptr - result) + l + 2 < sizeof(result)) {
-            memcpy(ptr, a, l);
-            ptr += l;
-            if (p->ai_next) {
-                *ptr++ = ',';
-            }
-        }
-        p = p->ai_next;
-    }
-    *ptr++ = '\0';
-    assert((ptr - result) < (int) sizeof(result));
-    return result;
-}
-
 void free_write_cb(bufferevent *bev, void *ctx)
 {
     debug("%s bev:%p\n", __func__, bev);
@@ -3098,9 +3074,8 @@ char *https_strerror(https_result *result)
     }
 }
 
-void
-bufferevent_socket_connect_address(struct bufferevent *bev, struct sockaddr *address, int addrlen,
-                                   uint16_t port)
+void bufferevent_socket_connect_address(struct bufferevent *bev, struct sockaddr *address, int addrlen,
+                                        uint16_t port)
 {
     struct sockaddr_in v4addr;
     struct sockaddr_in6 v6addr;

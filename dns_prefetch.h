@@ -27,6 +27,7 @@ extern dns_prefetch_result dns_prefetch_results[];
 
 bool valid_server_address(nn_addrinfo *g);
 nn_addrinfo *choose_addr(nn_addrinfo *g);
+char *make_ip_addr_list(nn_addrinfo *p);
 nn_addrinfo *dns_prefetch_addrinfo(int64_t key);
 int64_t dns_prefetch_alloc(void);
 void dns_prefetch_freeaddrinfo(nn_addrinfo *p);
@@ -37,6 +38,6 @@ evutil_addrinfo *copy_evutil_addrinfo_from_nn_addrinfo(nn_addrinfo *nna);
 void dns_prefetch_store_result(network *n, size_t result_index, uint64_t result_id, nn_addrinfo *nna, const char *host, bool fromevdns);
 int dns_prefetch_index(uint64_t key);
 uint32_t dns_prefetch_id(uint64_t key);
-void platform_dns_prefetch(network *n, int result_index, unsigned int result_id, const char *host);
+extern void platform_dns_prefetch(network *n, int result_index, unsigned int result_id, const char *host);
 void newnode_evdns_cache_write(network *n, const char *nodename, evutil_addrinfo *res, int ttl);
 int newnode_evdns_cache_lookup(evdns_base *base, const char *host, evutil_addrinfo *hints, uint16_t port, evutil_addrinfo **res);

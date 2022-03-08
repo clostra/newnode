@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <assert.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -421,7 +422,30 @@ static int minimum_ttl(nn_addrinfo *nna)
     return 0;
 }
 
-extern char *make_ip_addr_list(nn_addrinfo *p); // XXX from client.c
+char *make_ip_addr_list(nn_addrinfo *p)
+{
+    static char result[10240];
+    char *ptr = result;
+
+    if (!p) {
+        return NULL;
+    }
+    while (p) {
+        const char *a = sockaddr_str_addronly(p->ai_addr);
+        size_t l = strlen(a);
+        if ((ptr - result) + l + 2 < sizeof(result)) {
+            memcpy(ptr, a, l);
+            ptr += l;
+            if (p->ai_next) {
+                *ptr++ = ',';
+            }
+        }
+        p = p->ai_next;
+    }
+    *ptr++ = '\0';
+    assert((ptr - result) < (int) sizeof(result));
+    return result;
+}
 
 void dns_prefetch_store_result(network *n, size_t result_index, uint64_t result_id, nn_addrinfo *nna, const char *host, bool fromevdns)
 {

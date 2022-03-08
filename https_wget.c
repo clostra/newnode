@@ -53,7 +53,6 @@
 #include "network.h"
 #include "newnode.h"
 #include "g_https_cb.h"
-#include "client.h"
 
 #ifndef PATH_WGET
 #define PATH_WGET "/usr/bin/wget"
@@ -102,6 +101,9 @@ struct subproc {
     volatile int64_t request_id;        // unique ID for request
 } subprocs[NSUBPROC];
 
+bool likely_blocked(https_result *result);
+char *https_strerror(https_result *result);
+
 typedef struct subproc subproc;
 int max_subproc = -1;
 static int request_serial = 1;
@@ -117,7 +119,7 @@ static char *flags(int f)
     return buf;
 }
 
-static struct subproc *alloc_subproc(https_request *req)
+static subproc *alloc_subproc(https_request *req)
 {
     int i;
     // allocate first unused subprocess
@@ -133,7 +135,7 @@ static struct subproc *alloc_subproc(https_request *req)
             memset(&(subprocs[i].request), 0, sizeof(https_request));
             subprocs[i].request.timeout_sec = 7;
         }
-        memset(&(subprocs[i].result), 0, sizeof (struct https_result));
+        memset(&(subprocs[i].result), 0, sizeof(https_result));
         if (req && req->flags & HTTPS_USE_HEAD) {
             subprocs[i].result.result_flags |= HTTPS_REQUEST_USE_HEAD;
         }
@@ -151,7 +153,7 @@ static struct subproc *alloc_subproc(https_request *req)
     debug("%s: NSUBPROC too small\n", __func__);
     if (o_debug) {
         for (i = 0; i < NSUBPROC; ++i) {
-            struct subproc *sp = subprocs + i;
+            subproc *sp = subprocs + i;
             fprintf(stderr, "subprocs[%d] = { pid:%d, flags:%s, exit_status:%d, request_id:%" PRId64 ", name:%s\n",
                     i, sp->pid, flags(sp->flags), sp->exit_status, sp->request_id, sp->name);
         }
@@ -159,7 +161,7 @@ static struct subproc *alloc_subproc(https_request *req)
     return NULL;
 }
 
-static void free_subproc (struct subproc *sp)
+static void free_subproc(subproc *sp)
 {
     if (!sp) {
         return;
@@ -190,7 +192,7 @@ static void free_subproc (struct subproc *sp)
     return;
 }
 
-static struct subproc *find_subproc(pid_t pid)
+static subproc* find_subproc(pid_t pid)
 {
     int i;
 
@@ -202,7 +204,7 @@ static struct subproc *find_subproc(pid_t pid)
     return NULL;
 }
 
-static pid_t spawn(struct subproc *sp, char *program, char **child_argv, int child_stdout, char **env_mods, 
+static pid_t spawn(subproc *sp, char *program, char **child_argv, int child_stdout, char **env_mods, 
                    off_t maxfsize)
 {
     pid_t child_pid;
@@ -254,7 +256,7 @@ static pid_t spawn(struct subproc *sp, char *program, char **child_argv, int chi
             //
             // wget has an option to limit output file size, but it
             // didn't work when tested.
-            struct rlimit oldrlim, newrlim;
+            rlimit oldrlim, newrlim;
             getrlimit(RLIMIT_FSIZE, &oldrlim);
             newrlim.rlim_cur = MIN((rlim_t) maxfsize, oldrlim.rlim_max);
             newrlim.rlim_max = MIN((rlim_t) maxfsize, oldrlim.rlim_max);
@@ -277,7 +279,7 @@ static pid_t spawn(struct subproc *sp, char *program, char **child_argv, int chi
 static off_t fdsize(int fd)
 {
     struct stat buf;
-    if (fstat (fd, &buf) < 0) {
+    if (fstat(fd, &buf) < 0) {
         return 0;
     }
     return buf.st_size;
@@ -285,226 +287,220 @@ static off_t fdsize(int fd)
 
 static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
 {
-    int count;
-    struct subproc *sp;
-    char buf[20];
-    int nread;
-    int i;
-    extern network *g_n;
-    pid_t pid;
-    int wstatus;
-
+    network *n = (network*)arg;
     debug("%s fd:%d events:%x arg:%p\n", __func__, fd, events, arg);
 
     // do waitpid processing here since the actual SIGCHLD handler is inside libevent.
     //
     // for every exited process waitpid returns, mark it as EXITED in the subproc table
+    pid_t pid;
+    int wstatus;
     while ((pid = waitpid(0, &wstatus, WNOHANG)) > 0) {
-        if (WIFEXITED(wstatus) || WIFSIGNALED(wstatus)) {
-            if ((sp = find_subproc(pid)) != NULL) {
-                sp->flags |= EXITED;
-                sp->exit_status = wstatus;
-            } else {
-                if (WIFEXITED(wstatus)) {
-                    debug("!!! cannot find subproc for pid %d which exited with status %d\n", 
-                          pid, WEXITSTATUS(wstatus));
-                } else {
-                    debug("!!! cannot find subproc for pid %d which was killed by signal %d\n", 
-                          pid, WTERMSIG(wstatus));
-                }
-            }
+        if (!(WIFEXITED(wstatus) || WIFSIGNALED(wstatus))) {
+            continue;
         }
+        subproc *sp = find_subproc(pid);
+        if (!sp) {
+            if (WIFEXITED(wstatus)) {
+                debug("!!! cannot find subproc for pid %d which exited with status %d\n", 
+                      pid, WEXITSTATUS(wstatus));
+            } else {
+                debug("!!! cannot find subproc for pid %d which was killed by signal %d\n", 
+                      pid, WTERMSIG(wstatus));
+            }
+            continue;
+        }
+        sp->flags |= EXITED;
+        sp->exit_status = wstatus;
     }
 
     // for each subprocess tagged as EXITED, call its callback and
     // clean up the subprocess slot
-    for (i = 0; i < NSUBPROC; ++i) {            // XXX change < NSUBPROC to <= max_subproc
-        sp = subprocs + i;
-        struct https_request *request = &(sp->request);
-        struct https_result *result = &(sp->result);
+    for (int i = 0; i < NSUBPROC; ++i) {            // XXX change < NSUBPROC to <= max_subproc
+        subproc *sp = subprocs + i;
+        https_request *request = &(sp->request);
+        https_result *result = &(sp->result);
 
-        if (sp->flags & EXITED) {
-            int64_t request_id = sp->request_id;
+        if (!(sp->flags & EXITED)) {
+            continue;
+        }
+        int64_t request_id = sp->request_id;
 
-            debug("%s sp:%p\n", __func__, sp);
-            // Unfortunately wget isn't great at distinguishing
-            // different kinds of error that are needed for the try
-            // first strategy.  But we try to map wget's exit codes
-            // into https_error codes.
-            //
-            // (from wget man page:)
-            //
-            // Wget may return one of several error codes if it encounters problems.
-            // 0 No problems occurred.
-            // 1 Generic error code.
-            // 2 Parse error---for instance, when parsing command-line options, the .wgetrc or .netrc
-            // 3 File I/O error.
-            // 4 Network failure.
-            // 5 SSL verification failure.
-            // 6 Username/password authentication failure.
-            // 7 Protocol errors.
-            // 8 Server issued an error response.
-            if (WIFEXITED(sp->exit_status)) {
-                debug("%s: pid:%d request_id:%" PRId64 " name:%s exited with status %d\n",
-                      __func__, sp->pid, sp->request_id, sp->name,
-                      WEXITSTATUS(sp->exit_status));
+        debug("%s sp:%p\n", __func__, sp);
+        // Unfortunately wget isn't great at distinguishing
+        // different kinds of error that are needed for the try
+        // first strategy.  But we try to map wget's exit codes
+        // into https_error codes.
+        //
+        // (from wget man page:)
+        //
+        // Wget may return one of several error codes if it encounters problems.
+        // 0 No problems occurred.
+        // 1 Generic error code.
+        // 2 Parse error---for instance, when parsing command-line options, the .wgetrc or .netrc
+        // 3 File I/O error.
+        // 4 Network failure.
+        // 5 SSL verification failure.
+        // 6 Username/password authentication failure.
+        // 7 Protocol errors.
+        // 8 Server issued an error response.
+        if (WIFEXITED(sp->exit_status)) {
+            debug("%s: pid:%d request_id:%" PRId64 " name:%s exited with status %d\n",
+                  __func__, sp->pid, sp->request_id, sp->name,
+                  WEXITSTATUS(sp->exit_status));
 
-                if (sp->flags & CANCELLED) {
-                    debug("%s: exited pid:%d request_id:%" PRId64 " name:%s was already cancelled\n",
-                          __func__, sp->pid, sp->request_id, sp->name);
-                    free_subproc(sp);
-                } else {
-                    // set error code if not already set
-                    if (result->https_error == HTTPS_NO_ERROR) {
-                        switch (WEXITSTATUS(sp->exit_status)) {
-                        case 0:
-                            result->https_error = HTTPS_NO_ERROR;
-                            break;
-                        case 4:
-                            // "Network failure" may include DNS lookup failures, which aren't
-                            // a reliable indication of blocking.
-                            // request->https_error = HTTPS_SOCKET_IO_ERROR;
-                            result->https_error = HTTPS_GENERIC_ERROR;
-                            break;
-                        case 5:
-                            result->https_error = HTTPS_TLS_ERROR;
-                            break;
-                        case 8:
-                            result->https_error = HTTPS_HTTP_ERROR;
-                            // alas, wget doesn't make it easy for us to get the http status code
-                            break;
-                        default:
-                            result->https_error = HTTPS_GENERIC_ERROR;
-                            break;
-                        }
-                    }
-                    debug("%s: %s https_error = %d (%s)(%s)\n", __func__, sp->name, result->https_error,
-                          https_strerror(result),
-                          likely_blocked(result) ? "likely blocked" : "not blocked");
-                    if (sp->cb) {
-                        uint64_t now = us_clock();
-                        result->xfer_time_us = now - result->xfer_start_time_us;
-                        // if there's an output file and room in the buffer, read
-                        // the contents of the output file into the buffer
-                        if ((sp->flags & HASOUTPUTFILE) && sp->outputfilename && request->bufsize > 0) {
-                            int fd = open(sp->outputfilename, O_RDONLY);
-                            if (fd >= 0) {
-                                off_t filesize = fdsize(fd);
-                                int nread;
-                                off_t response_length;
-                                response_length = MIN(filesize, (off_t) request->bufsize);
-                                result->response_body = response_length > 0 ? malloc(response_length) : NULL;
-
-                                result->response_length = 0;
-                                if (result->response_body) {
-                                    while (result->response_length < request->bufsize) {
-                                        nread = read(fd, 
-                                                     result->response_body + result->response_length,
-                                                     request->bufsize - result->response_length);
-                                        if (nread > 0) {
-                                            result->response_length += nread;
-                                        } else {
-                                            break;
-                                        }
-                                    }
-                                    if (filesize > (off_t) request->bufsize) {
-                                        result->result_flags |= HTTPS_RESULT_TRUNCATED;
-                                    }
-                                }
-                                close (fd);
-                            }
-                            unlink(sp->outputfilename);
-                            free(sp->outputfilename);
-                            sp->outputfilename = NULL;
-                        }
-                        network_async(g_n, ^{
-                            // check cancelled flag again - it may have changed
-                            // it is also possible that subproc slot has been reallocated
-                            if (sp->request_id == request_id) {
-                                if ((sp->flags & CANCELLED) == 0) {
-                                    // XXX (sp->cb)(WEXITSTATUS(sp->exit_status) == 0 ? true : false, result);
-                                    (sp->cb)(WEXITSTATUS(sp->exit_status) == 0 ? true : false);
-                                }
-                                free_subproc(sp);
-                            }
-                        });
-                    }
-                }
-            }
-            else if (WIFSIGNALED(sp->exit_status)) {
-                if (sp->flags & CANCELLED) {
-                    debug("%s: process pid:%d request_id:%" PRId64 " name:%s) killed with signal %d (%s) was already cancelled\n",
-                          __func__, sp->pid, sp->request_id, sp->name, WTERMSIG(sp->exit_status), strsignal(WTERMSIG(sp->exit_status)));
-                    free_subproc(sp);
-                } else {
-                    debug("%s: process pid:%d request_id:%" PRId64 " name:%s) killed with signal %d (%s)\n",
-                          __func__, sp->pid, sp->request_id, sp->name, WTERMSIG(sp->exit_status),
-                          strsignal(WTERMSIG(sp->exit_status)));
-                    debug("%s sp->flags:(%s)\n", __func__, flags(sp->flags));
-                    if (WTERMSIG(sp->exit_status) == SIGXFSZ) {
-                        result->result_flags |= HTTPS_RESULT_TRUNCATED;
-                    }
-                    else if (result->https_error == HTTPS_NO_ERROR) {
-                        result->https_error = HTTPS_GENERIC_ERROR;
-                    }
-                    debug("%s: %s https_error = %d (%s)(%s)\n", __func__, sp->name, result->https_error,
-                          https_strerror(result),
-                          likely_blocked(result) ? "likely blocked" : "not blocked");
-                    if (sp->cb) {
-                        // if there's an output file and room in the
-                        // buffer, read the contents of the output
-                        // file into the buffer (if we have received a
-                        // SIGXFSZ signal, we still want what we can
-                        // get from the buffer)
-                        if ((sp->flags & HASOUTPUTFILE) && sp->outputfilename && request->bufsize > 0) {
-                            int fd = open(sp->outputfilename, O_RDONLY);
-                            if (fd) {
-                                off_t filesize = fdsize(fd);
-                                int nread;
-                                off_t response_length;
-                                response_length = MIN(filesize, (off_t) request->bufsize);
-                                result->response_body = response_length > 0 ? malloc(response_length) : NULL;
-
-                                result->response_length = 0;
-                                if (result->response_body) {
-                                    while (result->response_length < request->bufsize) {
-                                        nread = read(fd, 
-                                                     result->response_body + result->response_length,
-                                                     request->bufsize - result->response_length);
-                                        if (nread > 0) {
-                                            result->response_length += nread;
-                                        } else {
-                                            break;
-                                        }
-                                    }
-                                }
-                                close (fd);
-                            }
-                            unlink(sp->outputfilename);
-                            free(sp->outputfilename);
-                            sp->outputfilename = NULL;
-                        }
-                        network_async(g_n, ^{
-                            // check CANCELLED flag again since it
-                            // may have changed by the time the
-                            // timer_callback is called
-                            if (sp->request_id == request_id) {
-                                if ((sp->flags & CANCELLED) == 0) {
-                                    //XXX (sp->cb)(false, result);
-                                    (sp->cb)(false);
-                                }
-                                free_subproc(sp);
-                            }
-                        });
-                    }
-                }
-            } else {
-                // got a SIGCHLD for this process but its exit status shows neither
-                // that it exited nor died of a signal.   maybe this never happens?
-                debug("not sure what happened to pid %d with exit status 0x%x\n",
-                      sp->pid, sp->exit_status);
+            if (sp->flags & CANCELLED) {
+                debug("%s: exited pid:%d request_id:%" PRId64 " name:%s was already cancelled\n",
+                      __func__, sp->pid, sp->request_id, sp->name);
                 free_subproc(sp);
+            } else {
+                // set error code if not already set
+                if (result->https_error == HTTPS_NO_ERROR) {
+                    switch (WEXITSTATUS(sp->exit_status)) {
+                    case 0:
+                        result->https_error = HTTPS_NO_ERROR;
+                        break;
+                    case 4:
+                        // "Network failure" may include DNS lookup failures, which aren't
+                        // a reliable indication of blocking.
+                        // request->https_error = HTTPS_SOCKET_IO_ERROR;
+                        result->https_error = HTTPS_GENERIC_ERROR;
+                        break;
+                    case 5:
+                        result->https_error = HTTPS_TLS_ERROR;
+                        break;
+                    case 8:
+                        result->https_error = HTTPS_HTTP_ERROR;
+                        // alas, wget doesn't make it easy for us to get the http status code
+                        break;
+                    default:
+                        result->https_error = HTTPS_GENERIC_ERROR;
+                        break;
+                    }
+                }
+                debug("%s: %s https_error = %d (%s)(%s)\n", __func__, sp->name, result->https_error,
+                      https_strerror(result),
+                      likely_blocked(result) ? "likely blocked" : "not blocked");
+                if (sp->cb) {
+                    uint64_t now = us_clock();
+                    result->xfer_time_us = now - result->xfer_start_time_us;
+                    // if there's an output file and room in the buffer, read
+                    // the contents of the output file into the buffer
+                    if ((sp->flags & HASOUTPUTFILE) && sp->outputfilename && request->bufsize > 0) {
+                        int fd = open(sp->outputfilename, O_RDONLY);
+                        if (fd >= 0) {
+                            off_t filesize = fdsize(fd);
+                            off_t response_length;
+                            response_length = MIN(filesize, (off_t) request->bufsize);
+                            result->response_body = response_length > 0 ? malloc(response_length) : NULL;
+
+                            result->response_length = 0;
+                            if (result->response_body) {
+                                while (result->response_length < request->bufsize) {
+                                    ssize_t nread = read(fd, 
+                                                         result->response_body + result->response_length,
+                                                         request->bufsize - result->response_length);
+                                    if (nread > 0) {
+                                        result->response_length += nread;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                if (filesize > (off_t) request->bufsize) {
+                                    result->result_flags |= HTTPS_RESULT_TRUNCATED;
+                                }
+                            }
+                            close (fd);
+                        }
+                        unlink(sp->outputfilename);
+                        free(sp->outputfilename);
+                        sp->outputfilename = NULL;
+                    }
+                    network_async(n, ^{
+                        // check cancelled flag again - it may have changed
+                        // it is also possible that subproc slot has been reallocated
+                        if (sp->request_id == request_id) {
+                            if ((sp->flags & CANCELLED) == 0) {
+                                // XXX (sp->cb)(WEXITSTATUS(sp->exit_status) == 0 ? true : false, result);
+                                (sp->cb)(WEXITSTATUS(sp->exit_status) == 0 ? true : false);
+                            }
+                            free_subproc(sp);
+                        }
+                    });
+                }
             }
+        } else if (WIFSIGNALED(sp->exit_status)) {
+            if (sp->flags & CANCELLED) {
+                debug("%s: process pid:%d request_id:%" PRId64 " name:%s) killed with signal %d (%s) was already cancelled\n",
+                      __func__, sp->pid, sp->request_id, sp->name, WTERMSIG(sp->exit_status), strsignal(WTERMSIG(sp->exit_status)));
+                free_subproc(sp);
+            } else {
+                debug("%s: process pid:%d request_id:%" PRId64 " name:%s) killed with signal %d (%s)\n",
+                      __func__, sp->pid, sp->request_id, sp->name, WTERMSIG(sp->exit_status),
+                      strsignal(WTERMSIG(sp->exit_status)));
+                debug("%s sp->flags:(%s)\n", __func__, flags(sp->flags));
+                if (WTERMSIG(sp->exit_status) == SIGXFSZ) {
+                    result->result_flags |= HTTPS_RESULT_TRUNCATED;
+                }
+                else if (result->https_error == HTTPS_NO_ERROR) {
+                    result->https_error = HTTPS_GENERIC_ERROR;
+                }
+                debug("%s: %s https_error = %d (%s)(%s)\n", __func__, sp->name, result->https_error,
+                      https_strerror(result),
+                      likely_blocked(result) ? "likely blocked" : "not blocked");
+                if (sp->cb) {
+                    // if there's an output file and room in the
+                    // buffer, read the contents of the output
+                    // file into the buffer (if we have received a
+                    // SIGXFSZ signal, we still want what we can
+                    // get from the buffer)
+                    if ((sp->flags & HASOUTPUTFILE) && sp->outputfilename && request->bufsize > 0) {
+                        int fd = open(sp->outputfilename, O_RDONLY);
+                        if (fd) {
+                            off_t filesize = fdsize(fd);
+                            off_t response_length;
+                            response_length = MIN(filesize, (off_t) request->bufsize);
+                            result->response_body = response_length > 0 ? malloc(response_length) : NULL;
+
+                            result->response_length = 0;
+                            if (result->response_body) {
+                                while (result->response_length < request->bufsize) {
+                                    ssize_t nread = read(fd, 
+                                                         result->response_body + result->response_length,
+                                                         request->bufsize - result->response_length);
+                                    if (nread > 0) {
+                                        result->response_length += nread;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
+                            close (fd);
+                        }
+                        unlink(sp->outputfilename);
+                        free(sp->outputfilename);
+                        sp->outputfilename = NULL;
+                    }
+                    network_async(n, ^{
+                        // check CANCELLED flag again since it
+                        // may have changed by the time the
+                        // timer_callback is called
+                        if (sp->request_id == request_id) {
+                            if ((sp->flags & CANCELLED) == 0) {
+                                //XXX (sp->cb)(false, result);
+                                (sp->cb)(false);
+                            }
+                            free_subproc(sp);
+                        }
+                    });
+                }
+            }
+        } else {
+            // got a SIGCHLD for this process but its exit status shows neither
+            // that it exited nor died of a signal.   maybe this never happens?
+            debug("not sure what happened to pid %d with exit status 0x%x\n",
+                  sp->pid, sp->exit_status);
+            free_subproc(sp);
         }
     }
 }
@@ -513,12 +509,8 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
 //
 // A cancelled request doesn't ever call its completion callback.
 
-void
-cancel_https_request(int64_t request_id)
+void cancel_https_request(network *n, int64_t request_id)
 {
-    int i;
-    extern network *g_n;
-
     debug("%s (%" PRId64 ")\n", __func__, request_id);
     if (request_id <= 0) {
         return;
@@ -526,7 +518,7 @@ cancel_https_request(int64_t request_id)
     //
     // XXX instead of iterating through loop calculate i from request_id
     //
-    for (i = 0; i < NSUBPROC; ++i) {            // XXX change < NSUBPROC to <= max_subproc
+    for (int i = 0; i < NSUBPROC; ++i) {            // XXX change < NSUBPROC to <= max_subproc
         if (subprocs[i].request_id == request_id) {
             if (subprocs[i].flags & INUSE) {
                 // debug("XXX request_id:%" PRId64 " request_id%%NSUBPROC=%" PRId64 " i=%d\n", request_id,
@@ -538,7 +530,7 @@ cancel_https_request(int64_t request_id)
                 // from completing.  (wait 100ms - just a guess)
                 int pid = subprocs[i].pid;
                 if (pid) {
-                    timer_start(g_n, 100, ^{
+                    timer_start(n, 100, ^{
                         kill(pid, SIGINT);
                         debug("%s: process %d killed\n", __func__, pid);
                     });
@@ -554,18 +546,16 @@ cancel_https_request(int64_t request_id)
     debug("%s request_id:%" PRId64 " not found in subproc list\n", __func__, request_id);
 }
 
-static char *
-make_temp_filename()
+static char* make_temp_filename()
 {
     char buf[1024];
     snprintf(buf, sizeof(buf), "/var/tmp/nn%08x", randombytes_uniform(0xffffffff));
     return strdup(buf);
 }
 
-static struct https_request default_request = { 0 };
+static https_request default_request = { 0 };
 
-int64_t
-https_wget(network *n, int http_port, const char *url, https_complete_callback cb, struct https_request *request)
+int64_t do_https(network *n, int http_port, const char *url, https_complete_callback cb, https_request *request)
 {
     static int inited = 0;
     char buf[128];
@@ -574,11 +564,11 @@ https_wget(network *n, int http_port, const char *url, https_complete_callback c
     int child_socket = 0;
     char *envp_mods[2];
     pid_t pid;
-    struct subproc *sp;
+    subproc *sp;
     int s[2] = { 0, 0 };
     char timeout_str[30];
-    struct event *child_exit_event;
-    struct event *child_output_event = NULL;
+    event *child_exit_event;
+    event *child_output_event = NULL;
     size_t maxoutputfilesize = 0;
     bool use_head = false;
     bool range_one_byte = false;
@@ -589,7 +579,7 @@ https_wget(network *n, int http_port, const char *url, https_complete_callback c
         // libevent has the built-in ability to treat signals as
         // events and assign callbacks to them.  So treat SIGCHLD as
         // an event and get a callback whenever a child process exits.
-        child_exit_event = event_new(n->evbase, SIGCHLD, EV_SIGNAL|EV_PERSIST, child_exit_event_cb, 0);
+        child_exit_event = event_new(n->evbase, SIGCHLD, EV_SIGNAL|EV_PERSIST, child_exit_event_cb, n);
         event_add(child_exit_event, NULL);
         inited = 1;
     }
@@ -626,10 +616,10 @@ https_wget(network *n, int http_port, const char *url, https_complete_callback c
         return 0;
     }
     if (request) {
-        memcpy(&(sp->request), request, sizeof(struct https_request));
+        memcpy(&(sp->request), request, sizeof(https_request));
     } else {
         // default if request == NULL: bufsize=0, HTTPS_DIRECT=0, default timeout
-        memcpy(&(sp->request), &default_request, sizeof(struct https_request));
+        memcpy(&(sp->request), &default_request, sizeof(https_request));
         sp->request.timeout_sec = 7;
     }
 
@@ -649,7 +639,7 @@ https_wget(network *n, int http_port, const char *url, https_complete_callback c
 
     // alloc_subproc initialized result fields to zeros
     // get start times
-    struct timespec now;
+    timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
     sp->result.req_time = now.tv_sec;
     sp->result.xfer_start_time_us = us_clock();
@@ -754,54 +744,49 @@ https_wget(network *n, int http_port, const char *url, https_complete_callback c
 
 #include "dns_prefetch.h"
 
-struct user_data {
+typedef struct {
     int index;
     uint64_t id;
     char *host;
-};
+    network *n;
+} userdata;
 
-void evdns_callback(int errcode, struct evutil_addrinfo *addr, void *ptr)
+void evdns_callback(int errcode, evutil_addrinfo *addr, void *ptr)
 {
-    struct user_data *data = (struct user_data *) ptr;
+    userdata *data = (userdata*)ptr;
     if (errcode) {
         debug("evdns_callback(%s) -> %s\n", data->host,
               evutil_gai_strerror(errcode));
-    } else {
-        struct nn_addrinfo *result;
-        extern char *make_ip_addr_list(struct nn_addrinfo *r);
+        return;
+    }
 
-        result = copy_nn_addrinfo_from_evutil_addrinfo(addr);
-        // no need for timer_start() here, as this always runs in libevent thread
-        dns_prefetch_store_result(data->index, data->id, result, data->host, true);
-        debug("%s: host:%s addrs:%s\n", __func__, data->host, make_ip_addr_list(result));
-        if (data) {
-            if (data->host) {
-                free(data->host);
-                data->host = NULL;
-            }
-            free(data);
-        }
+    extern char *make_ip_addr_list(struct nn_addrinfo *r);
+
+    nn_addrinfo *result = copy_nn_addrinfo_from_evutil_addrinfo(addr);
+    // no need for timer_start() here, as this always runs in libevent thread
+    dns_prefetch_store_result(data->n, data->index, data->id, result, data->host, true);
+    debug("%s: host:%s addrs:%s\n", __func__, data->host, make_ip_addr_list(result));
+    if (data) {
+        free(data->host);
+        free(data);
     }
 }
 
-void
-platform_dns_prefetch(int result_index, unsigned int result_id, const char *host)
+void platform_dns_prefetch(network *n, int result_index, unsigned int result_id, const char *host)
 {
-    struct evdns_getaddrinfo_request *req;
-    struct evutil_addrinfo hints;
-    struct user_data *user_data;
-    extern network *g_n;
-
-    memset(&hints, 0, sizeof (struct evutil_addrinfo));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-    user_data = alloc(struct user_data);
-    user_data->host = strdup(host);
-    user_data->id = result_id;
-    user_data->index = result_index;
-    req = evdns_getaddrinfo(g_n->evdns, host, NULL, &hints, evdns_callback, user_data);
-    if (req == NULL) {
+    evdns_getaddrinfo_request *req;
+    evutil_addrinfo hints = {
+        .ai_family = AF_UNSPEC,
+        .ai_socktype = SOCK_STREAM,
+        .ai_protocol = IPPROTO_TCP
+    };
+    userdata *userdata = alloc(userdata);
+    userdata->host = strdup(host);
+    userdata->id = result_id;
+    userdata->index = result_index;
+    userdata->n = n;
+    req = evdns_getaddrinfo(n->evdns, host, NULL, &hints, evdns_callback, userdata);
+    if (!req) {
         debug("evdns_getaddrinfo(%s) returned immediately\n", host);
     }
 }
