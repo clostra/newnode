@@ -1790,9 +1790,9 @@ void stats_queue_reappend(network *n, char *url, time_t notbefore, void (^failur
     stats_queue_restart_timer_notbefore(n, notbefore);
 }
 
-void stats_queue_append(network *n, char *url, time_t notbefore, void (^failure_cb)(void))
+void stats_queue_append(network *n, char *url, void (^failure_cb)(void))
 {
-    stats_queue_reappend(n, strdup(url), notbefore, failure_cb ? Block_copy(failure_cb) : failure_cb);
+    stats_queue_reappend(n, strdup(url), 0, failure_cb ? Block_copy(failure_cb) : failure_cb);
 }
 
 void stats_queue_cb(network *n)
@@ -1831,25 +1831,24 @@ void stats_queue_cb(network *n)
         TAILQ_REMOVE(&stats_queue, e, next);
         free(e);
         g_https_cb(url, ^(bool success) {
-            if (!success) {
-                if (failure_cb != NULL) {
-                    // update failed and there's a failure callback; call it
-                    failure_cb();
-                    Block_release(failure_cb);
-                } else {
-                    // update failed with no failure callback
-                    // - put request back on the queue after a random interval
-                    // (10 to 70 minutes from the time it was queued)
-                    // (without reallocing or copying url and failure_cb)
-                    stats_queue_reappend(n, url, now + randombytes_uniform(60*60) + 10*60, NULL);
-                }
-                return;
-            }
             // only free the url and callback if we're
             // done with them; else they get reused in the
-            // call to stats_queue_append() below
-            free(url);
-            Block_release(failure_cb);
+            // call to stats_queue_reappend() below
+            if (success) {
+                free(url);
+                Block_release(failure_cb);
+            } else if (!failure_cb) {
+                free(url);
+            } else {
+                failure_cb();
+                int delay = randombytes_uniform(60*60) + 10*60;
+                if (delay > 0) {
+                    stats_queue_reappend(n, url, now + delay, failure_cb);
+                } else {
+                    free(url);
+                    Block_release(failure_cb);
+                }
+            }
             // kickstart the queue again
             if (!stats_queue_timer) {
                 stats_queue_restart_timer(n, 0);
@@ -1942,7 +1941,7 @@ void stats_changed(network *n)
                          g_app_name,
                          g_app_id,
                          g_cid);
-                stats_queue_append(n, url, 0, failure);
+                stats_queue_append(n, url, failure);
 
             };
             report("peer", byte_count.from_peer + byte_count.to_peer, ^{
