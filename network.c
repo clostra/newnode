@@ -547,6 +547,21 @@ const char* sockaddr_str(const sockaddr *sa)
     return buf;
 }
 
+const char* sockaddr_str_addronly(const sockaddr *sa)
+{
+    if (sa->sa_family == AF_LOCAL) {
+        const sockaddr_un *sun = (const sockaddr_un*)sa;
+        return sun->sun_path;
+    }
+    static char host[NI_MAXHOST] = {0};
+    int r = getnameinfo(sa, sockaddr_get_length(sa), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
+    if (r) {
+        debug("getnameinfo failed %d %s\n", r, gai_strerror(r));
+        return "";
+    }
+    return host;
+}
+
 bool sockaddr_is_localhost(const sockaddr *sa, socklen_t salen)
 {
     switch(sa->sa_family) {
