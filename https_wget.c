@@ -168,23 +168,10 @@ static void free_subproc(subproc *sp)
     }
     if ((sp - subprocs) >= 0 && (sp - subprocs) < NSUBPROC) {
         debug("%s request_id:%" PRId64 " flags:%s\n", __func__, sp->request_id, flags(sp->flags));
-        sp->flags = 0;
-        if (sp->cb) {
-            Block_release(sp->cb);
-            sp->cb = NULL;
-        }
-        if (sp->name) {
-            free(sp->name);
-            sp->name = NULL;
-        }
-        if (sp->outputfilename) {
-            free(sp->outputfilename);
-            sp->outputfilename = NULL;
-        }
-        if (sp->result.response_body) {
-            free(sp->result.response_body);
-            sp->result.response_body = NULL;
-        }
+        Block_release(sp->cb);
+        free(sp->name);
+        free(sp->outputfilename);
+        free(sp->result.response_body);
         memset(sp, 0, sizeof(*sp));
         return;
     }
