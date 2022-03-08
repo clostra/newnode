@@ -128,9 +128,7 @@ uint64 utp_callback_log(utp_callback_arguments *a)
 
 void dht_schedule(network *n, time_t tosleep)
 {
-    if (n->dht_timer) {
-        timer_cancel(n->dht_timer);
-    }
+    timer_cancel(n->dht_timer);
     n->dht_timer = timer_start(n, tosleep * 1000, ^{
         n->dht_timer = NULL;
         dht_schedule(n, dht_tick(n->dht));
