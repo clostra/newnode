@@ -89,7 +89,7 @@ mv injector.o injector.o.tmp
 mv client.o.tmp client.o
 clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c dns_prefetch.c
 case $(uname -s):$(uname -m) in
-    D2arwin:*) 
+    Darwin:*) 
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -c dns_prefetch_macos.c
         clang -framework Foundation $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS -I. -o client client_main.c ios/HTTPSRequest.m *.o $LRT $LM $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -lpthread
         ;;
