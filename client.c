@@ -1892,7 +1892,7 @@ void stats_queue_cb(network *n)
         TAILQ_REMOVE(&stats_queue, e, next);
         free(e);
         https_request *req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
-        g_https_cb(url, ^(bool success) {
+        g_https_cb(url, ^(bool success, https_result *result) {
             // only free the url and callback if we're
             // done with them; else they get reused in the
             // call to stats_queue_reappend() below
@@ -2681,7 +2681,7 @@ void cancel_tryfirst_requests(connect_req *c)
     debug("c:%p %s\n", c, __func__);
     c->tryfirst_pending = false;
     if (c->direct_tryfirst_request_id) {
-        cancel_https_request(c->direct_tryfirst_request_id);
+        cancel_https_request(c->n, c->direct_tryfirst_request_id);
         // indicate that cancel has been issued and also avoid calling it twice
         c->direct_tryfirst_request_id = 0;
         free(c->direct_tryfirst_request);
@@ -3275,10 +3275,8 @@ tryfirst_stats *get_tryfirst_stats(const char *host, bool create)
     return hash_get(tryfirst_per_origin_server, host);
 }
 
-void update_tryfirst_stats(tryfirst_stats *tfs, https_result *result, char *origin_server)
+void update_tryfirst_stats(network *n, tryfirst_stats *tfs, https_result *result, char *origin_server)
 {
-    char buf[1024];
-
     if (!tfs) {
         return;
     }
@@ -3315,6 +3313,7 @@ void update_tryfirst_stats(tryfirst_stats *tfs, https_result *result, char *orig
         fprintf(stderr, "last_blocked = %s", ctime(&tfs->last_blocked));
     }
     if (*g_country) {
+        char buf[1024];
         snprintf(buf, sizeof(buf),
                  "https://stats.newnode.com/collect?v=1"
                  "&tid=UA-149896478-2"                      // our id
@@ -3331,7 +3330,7 @@ void update_tryfirst_stats(tryfirst_stats *tfs, https_result *result, char *orig
                  "&el=https_error"                          // event label
                  "&ev=%d",                                  // event value
                  origin_server, g_cid, g_country, g_app_name, g_app_id, result->https_error);
-        statsq_append(buf, 0, ^{}); 
+        stats_queue_append(n, buf, ^{}); 
     }
 }
 
@@ -3433,18 +3432,20 @@ static bool is_ip_literal(const char *host)
 void bufferevent_socket_connect_address(bufferevent *bev, struct sockaddr *address, int addrlen, port_t port)
 {
     switch (address->sa_family) {
-    case AF_INET:
+    case AF_INET: {
         sockaddr_in v4addr;
         memcpy(&v4addr, address, addrlen);
         v4addr.sin_port = htons(port);
         bufferevent_socket_connect(bev, (sockaddr*)&v4addr, addrlen);
         break;
-    case AF_INET6:
+    }
+    case AF_INET6: {
         sockaddr_in6 v6addr;
         memcpy(&v6addr, address, addrlen);
         v6addr.sin6_port = htons(port);
         bufferevent_socket_connect(bev, (sockaddr*)&v6addr, addrlen);
         break;
+    }
     default:
         debug("%s: unrecognized family %d\n", __func__, address->sa_family);
         break;
@@ -3614,7 +3615,7 @@ void connect_request(network *n, evhttp_request *req)
                     debug("g_https_cb speed=%" PRIu64 " b/s\n",
                           (result->response_length * 1000000) / result->xfer_time_us);
                 }
-                update_tryfirst_stats(tfs, result, c->host);
+                update_tryfirst_stats(n, tfs, result, c->host);
 
                 // NB: This callback should not have been
                 // called if this tryfirst operation was
@@ -3679,7 +3680,7 @@ void connect_request(network *n, evhttp_request *req)
                 c->direct_tryfirst_result = *result;
                 c->direct_tryfirst_result.response_body = NULL;
                 c->direct_tryfirst_request_id = 0;
-                update_tryfirst_stats(tfs, result, c->host);
+                update_tryfirst_stats(n, tfs, result, c->host);
 
                 // NB: This callback should not have
                 // been called if this tryfirst
@@ -4030,49 +4031,49 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
             c->direct_tryfirst_request = tryfirst_request_alloc();
             c->tryfirst_pending = true;
             c->direct_tryfirst_request_id = g_https_cb(c->tryfirst_url,
-                       ^(bool success, https_result *result) {
-                           debug("g_https_cb complete request_id:%" PRId64 " duration=%f s\n",
-                                 result->request_id, result->xfer_time_us / 1000000.0);
-                           if (success && result->xfer_time_us > 0) {
-                               debug("g_https_cb speed=%" PRIu64 " b/s\n",
-                                     (result->response_length * 1000000) / result->xfer_time_us);
-                           }
-                           // XXX not sure this copy is still needed
-                           c->direct_tryfirst_result = *result;
-                           c->direct_tryfirst_result.response_body = NULL;
-                           c->direct_tryfirst_request_id = 0;
-                           update_tryfirst_stats(tfs, result, c->host);
+                ^(bool success, https_result *result) {
+                    debug("g_https_cb complete request_id:%" PRId64 " duration=%f s\n",
+                          result->request_id, result->xfer_time_us / 1000000.0);
+                    if (success && result->xfer_time_us > 0) {
+                        debug("g_https_cb speed=%" PRIu64 " b/s\n",
+                              (result->response_length * 1000000) / result->xfer_time_us);
+                    }
+                    // XXX not sure this copy is still needed
+                    c->direct_tryfirst_result = *result;
+                    c->direct_tryfirst_result.response_body = NULL;
+                    c->direct_tryfirst_request_id = 0;
+                    update_tryfirst_stats(n, tfs, result, c->host);
 
-                           // NB: This callback should not have been called if this tryfirst
-                           // operation was cancelled.  So it should be safe to reference c and
-                           // its elements here; c should not have been free'd yet.
+                    // NB: This callback should not have been called if this tryfirst
+                    // operation was cancelled.  So it should be safe to reference c and
+                    // its elements here; c should not have been free'd yet.
 
-                           if (c->connected) {
-                               // already connected to a peer; don't bother with direct connection
-                               debug("c:%p %s already connected\n", c, __func__);
-                               c->tryfirst_pending = false;
-                               return;
-                           }
-                           if (direct_likely_to_succeed(result)) {
-                               debug("c:%p %s %s direct tryfirst appears likely to succeed\n", c, __func__,
-                                     c->tryfirst_url);
-                               c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
-                               bufferevent_setcb(c->direct, NULL, NULL, connect_direct_event_cb, c);
-                               bufferevent_enable(c->direct, EV_READ);
-                               // normally socks_read_req_cb() would call bufferevent_socket_connect()
-                               // to connect the returned bev to the requested host/port. but since
-                               // the attempt to connect directly to origin server has been deferred
-                               // pending result of the tryfirst attempt, c->direct will contain 0s
-                               // when we return it to the caller, and we need to do the connect
-                               // ourselves.
-                               bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, c->host, 443);
-                           } else {
-                               debug("c:%p %s %s direct unlikely to succeed\n", c, __func__,
-                                     c->tryfirst_url);
-                           }
-                           c->tryfirst_pending = false;
-                       },
-                       c->direct_tryfirst_request);
+                    if (c->connected) {
+                        // already connected to a peer; don't bother with direct connection
+                        debug("c:%p %s already connected\n", c, __func__);
+                        c->tryfirst_pending = false;
+                        return;
+                    }
+                    if (direct_likely_to_succeed(result)) {
+                        debug("c:%p %s %s direct tryfirst appears likely to succeed\n", c, __func__,
+                              c->tryfirst_url);
+                        c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
+                        bufferevent_setcb(c->direct, NULL, NULL, connect_direct_event_cb, c);
+                        bufferevent_enable(c->direct, EV_READ);
+                        // normally socks_read_req_cb() would call bufferevent_socket_connect()
+                        // to connect the returned bev to the requested host/port. but since
+                        // the attempt to connect directly to origin server has been deferred
+                        // pending result of the tryfirst attempt, c->direct will contain 0s
+                        // when we return it to the caller, and we need to do the connect
+                        // ourselves.
+                        bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, c->host, 443);
+                    } else {
+                        debug("c:%p %s %s direct unlikely to succeed\n", c, __func__,
+                              c->tryfirst_url);
+                    }
+                    c->tryfirst_pending = false;
+                },
+                c->direct_tryfirst_request);
             debug("%s:%d g_https_cb(%s) => request_id:%" PRId64 "\n",
                   __func__, __LINE__,
                   c->tryfirst_url, c->direct_tryfirst_request_id);

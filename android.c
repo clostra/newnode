@@ -120,7 +120,7 @@ static int find_link(jlong request_id)
 // XXX for now all this does is set a cancelled flag; it doesn't
 //     actually try to stop the thread handling the request
 
-void cancel_https_request(int64_t request_id)
+void cancel_https_request(network *n, int64_t request_id)
 {
     debug("%s (request_id:%" PRId64 ")\n", __func__, request_id);
     int link_index = find_link((jlong) request_id);
@@ -262,7 +262,7 @@ JNIEnv* get_env()
 // the query if it arrives in time, otherwise NN will use evdns
 // (sigh).
 
-void platform_dns_prefetch(int result_index, unsigned int result_id, const char *host)
+void platform_dns_prefetch(network *n, int result_index, unsigned int result_id, const char *host)
 {
     debug("%s result_index:%d result_id:%u host:%s\n", __func__, result_index, result_id, host);
     if (!newNode) {

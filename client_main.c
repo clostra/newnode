@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
         debug("https: %s\n", url);
         // note: do_https will call the completion callback if the request fails immediately
         int64_t do_https(network *n, port_t port, const char *url, https_complete_callback cb, https_request *request);
-        do_https(n, port, url, cb, request);
+        return do_https(n, port, url, cb, request);
     });
     if (!n) {
         return 1;

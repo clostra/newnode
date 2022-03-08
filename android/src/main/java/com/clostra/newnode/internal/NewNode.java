@@ -296,24 +296,22 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
         try {
             new Thread() { public void run() {
                 try {
-                    Log.i("newnode", String.format("dnsPrefetch(hostname:%s, result_index:%d, result_id:%d)",
+                    Log.i(TAG, String.format("dnsPrefetch(hostname:%s, result_index:%d, result_id:%d)",
                                                    hostname, result_index, result_id));
                     InetAddress[] addrs = InetAddress.getAllByName(hostname);
                     String[] addresses = new String[addrs.length];
-                    for (int i = 0; i < addrs.length; ++i)
+                    for (int i = 0; i < addrs.length; ++i) {
                         addresses[i] = addrs[i].getHostAddress();
+                    }
                     storeDnsPrefetchResult(result_index, result_id, hostname, addresses);
-                }
-                catch (java.net.UnknownHostException e) {
-                    Log.i ("newnode", String.format("dnsPrefetch: unknown host %s", hostname), e);
-                }
-                catch (Exception e) {
-                    Log.i ("newnode", "dnsPrefetch inner thread", e);
+                } catch (java.net.UnknownHostException e) {
+                    Log.i (TAG, String.format("dnsPrefetch: unknown host %s", hostname), e);
+                } catch (Exception e) {
+                    Log.i (TAG, "dnsPrefetch inner thread", e);
                 }
             }}.start();
-        }
-        catch (Exception e) {
-            Log.i ("newnode", "dnsPrefetch", e);
+        } catch (Exception e) {
+            Log.i (TAG, "dnsPrefetch", e);
         }
     }
 
@@ -345,8 +343,7 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
         Log.i("newnode",
               String.format("http(url:%s, flags:0x%x, timeout_msec:%d, bufsize:%d, request_id:%d, http_port:%d)",
                             url, request_flags, timeout_msec, bufsize, request_id, http_port));
-        final byte dummy_response[];
-        dummy_response = new byte[1];
+        final byte dummy_response[] = new byte[1];
 
         try {
             new Thread(){public void run() {
@@ -356,20 +353,19 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
                 int result_flags = 0;
                 byte response_body[];
                 long timeout_time_msec;
-                long start_time_msec;
                 InputStream inputStream = null;
                 HttpURLConnection connection;
                 URL jUrl;
                 int fakebufsize;
 
-                start_time_msec = System.currentTimeMillis();
+                long start_time_msec = System.currentTimeMillis();
 
                 try {
                     // not sure how useful this is as it rarely seems
                     // to occur, but maybe useful if the CPU gets
                     // swamped.
                     if (isCancelled (request_id) != 0) {
-                        Log.i("newnode", String.format("request_id:%s cancelled, callback skipped", request_id));
+                        Log.i(TAG, String.format("request_id:%s cancelled, callback skipped", request_id));
                         // call native callback function so the link
                         // and blocks callback will be properly freed.
                         // it won't call the completion_callback
@@ -380,28 +376,29 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
                     // CONNECTION SETUP PHASE
                     jUrl = new URL(url);
                     
-                    if (timeout_msec >= 0) 
+                    if (timeout_msec >= 0) {
                         timeout_time_msec = start_time_msec + timeout_msec;
-                    else
+                    } else {
                         timeout_time_msec = start_time_msec + 15 * 60 * 1000; // 15 minutes
+                    }
 
                     // not sure whether allocating an array of 0 bytes
                     // is a Bad Idea, but before I made this change
                     // there were indications of huge memory
                     // allocations in logcat output
-                    if (bufsize > 0)
+                    if (bufsize > 0) {
                         fakebufsize = bufsize;
-                    else
+                    } else {
                         fakebufsize = 1;
+                    }
                     response_body = new byte[fakebufsize];
 
                     // HTTPS_DIRECT (connect directly to origin server)
                     if ((request_flags & HTTPS_DIRECT) != 0) {
-                        Log.i("newnode", String.format("direct connection request_id:%d", request_id));
+                        Log.i(TAG, String.format("direct connection request_id:%d", request_id));
                         connection = (HttpURLConnection)jUrl.openConnection(Proxy.NO_PROXY);
-                    }
-                    else {
-                        Log.i("newnode", String.format("connection via proxy request_id:%d", request_id));
+                    } else {
+                        Log.i(TAG, String.format("connection via proxy request_id:%d", request_id));
 
                         Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", http_port));
                         connection = (HttpURLConnection)jUrl.openConnection(proxy);
@@ -411,20 +408,23 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
                     //
                     // HTTPS_USE_HEAD (issue HEAD request rather than GET)
                     // (XXX maybe not useful any more but easy to do)
-                    if ((request_flags & HTTPS_USE_HEAD) != 0)
+                    if ((request_flags & HTTPS_USE_HEAD) != 0) {
                         connection.setRequestMethod("HEAD");
-                    else
+                    } else {e
                         connection.setRequestMethod("GET");
+                    }
 
                     // HTTPS_ONE_BYTE (explicitly request a one-byte response)
-                    if ((request_flags & HTTPS_ONE_BYTE) != 0)
+                    if ((request_flags & HTTPS_ONE_BYTE) != 0) {
                         connection.setRequestProperty("Range", "bytes=0,1");
+                    }
 
                     // HTTPS_NO_REDIRECT
-                    if ((request_flags & HTTPS_NO_REDIRECT) != 0)
+                    if ((request_flags & HTTPS_NO_REDIRECT) != 0) {
                         connection.setFollowRedirects(false);
-                    else
+                    } else {
                         connection.setFollowRedirects(true);
+                    }
                     // XXX HTTPS_NO_RETRIES not implemented
 
                     // https_request->timeout_sec is really supposed
@@ -453,7 +453,7 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
                     // XXX TEMPORARY list request headers
                     // Map<String, List<String>> request_headers = connection.getRequestProperties();
                     // for (Map.Entry<String, List<String>> property: request_headers.entrySet()) {
-                    //     Log.i("newnode", 
+                    //     Log.i(TAG, 
                     //           String.format("%s:%s", property.getKey(), Arrays.toString(property.getValue().toArray())));
                     // }
 
@@ -462,47 +462,38 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
                     // is established, but the response body won't be available that soon.
                     // so if a response body was requested, don't call the callback until we have
                     // it, or we have an error.
-                }
-                //
-                // handle exceptions that happened in connection setup phase
-                //
-                catch (java.net.SocketException e) {
-                    Log.e("newnode", String.format("HTTPS_SOCKET_IO_ERROR request_id:%d", request_id));
+                } catch (java.net.SocketException e) {
+                    Log.e(TAG, String.format("HTTPS_SOCKET_IO_ERROR request_id:%d", request_id));
                     https_error = HTTPS_SOCKET_IO_ERROR;
                     callback(callblock, 0, https_error, 0, result_flags, request_id, dummy_response);
                     return;
-                }
-                catch (java.net.UnknownHostException e) {
-                    Log.e("newnode", String.format("HTTPS_DNS_ERROR (%s) request_id:%d", e.toString(), request_id));
+                } catch (java.net.UnknownHostException e) {
+                    Log.e(TAG, String.format("HTTPS_DNS_ERROR (%s) request_id:%d", e.toString(), request_id));
                     https_error = HTTPS_DNS_ERROR;
                     callback(callblock, 0, https_error, 0, result_flags, request_id, dummy_response);
                     return;
-                }
-                catch (javax.net.ssl.SSLPeerUnverifiedException e) {
-                    Log.e("newnode", String.format("HTTPS_TLS_CERT_ERROR request_id:%d", request_id), e);
+                } catch (javax.net.ssl.SSLPeerUnverifiedException e) {
+                    Log.e(TAG, String.format("HTTPS_TLS_CERT_ERROR request_id:%d", request_id), e);
                     https_error = HTTPS_TLS_CERT_ERROR;
                     callback(callblock, 0, https_error, 0, result_flags, request_id, dummy_response);
                     return;
-                }
-                catch (javax.net.ssl.SSLException e) {
-                    Log.e("newnode", String.format("HTTPS_TLS_ERROR request_id:%d", request_id));
+                } catch (javax.net.ssl.SSLException e) {
+                    Log.e(TAG, String.format("HTTPS_TLS_ERROR request_id:%d", request_id));
                     https_error = HTTPS_TLS_ERROR;
                     callback(callblock, 0, https_error, 0, result_flags, request_id, dummy_response);
                     return;
-                }
-                catch (java.net.SocketTimeoutException e) {
+                } catch (java.net.SocketTimeoutException e) {
                     long now_msec = System.currentTimeMillis();
-                    Log.e("newnode", 
+                    Log.e(TAG, 
                           String.format("HTTPS_TIMEOUT_ERROR request_id:%d elapsed:%d ms", 
                                         request_id, now_msec - start_time_msec));
                     https_error = HTTPS_TIMEOUT_ERROR;
                     callback(callblock, 0, https_error, 0, result_flags, request_id, dummy_response);
                     return;
-                }
-                catch (Exception e) {
-                    Log.e("newnode", 
+                } catch (Exception e) {
+                    Log.e(TAG, 
                           String.format("HTTPS_GENERIC_ERROR(1) exception:%s request_id:%d",
-					e.toString(), request_id), e);
+                    e.toString(), request_id), e);
                     https_error = HTTPS_GENERIC_ERROR;
                     callback(callblock, 0, https_error, 0, result_flags, request_id, dummy_response);
                     return;
@@ -532,8 +523,8 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
                             //     calls from java
                             
                             if (isCancelled (request_id) != 0) {
-                                Log.i("newnode", String.format("request_id:%s cancelled, callback skipped",
-							       request_id));
+                                Log.i(TAG, String.format("request_id:%s cancelled, callback skipped",
+                                   request_id));
                                 // call native callback function.   it won't call completion callback because
                                 // the cancelled flag is set in links[link_index] corresponding to request_id
                                 callback(callblock, 0, https_error, 0, result_flags, request_id, dummy_response);
@@ -547,8 +538,9 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
                                 byte buf[];
                                 buf = new byte[1];
                                 int nread = inputStream.read(buf, 0, 1);
-                                if (nread > 0)
+                                if (nread > 0) {
                                     result_flags |= HTTPS_RESULT_TRUNCATED;
+                                }
                                 inputStream.close();
                                 break;
                             }
@@ -559,58 +551,50 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
                             // Log.i("newnode",
                             //      String.format("request_id:%d inputStream.read returned %d\n",
                             //                    request_id, nread));
-                            if (nread < 0) // EOF or error
+                            // EOF or error
+                            if (nread < 0) {
                                 break;
+                            }
                             response_length += nread;
                         }
                         inputStream.close();
                     }
-                }
-                //
-                // process exceptions that happen during the transfer phase
-                //
-                catch (java.net.SocketException e) {
-                    Log.e("newnode", String.format("HTTPS_SOCKET_IO_ERROR request_id:%d", request_id));
+                } catch (java.net.SocketException e) {
+                    Log.e(TAG, String.format("HTTPS_SOCKET_IO_ERROR request_id:%d", request_id));
                     https_error = HTTPS_SOCKET_IO_ERROR;
-                }
-                catch (java.net.UnknownHostException e) {
-                    Log.e("newnode", String.format("HTTPS_DNS_ERROR (%s) request_id:%d", e.toString(),
-						   request_id));
+                } catch (java.net.UnknownHostException e) {
+                    Log.e(TAG, String.format("HTTPS_DNS_ERROR (%s) request_id:%d", e.toString(),
+                          request_id));
                     https_error = HTTPS_DNS_ERROR;
-                }
-                catch (javax.net.ssl.SSLPeerUnverifiedException e) {
-                    Log.e("newnode", String.format("HTTPS_TLS_CERT_ERROR request_id:%d", request_id), e);
+                } catch (javax.net.ssl.SSLPeerUnverifiedException e) {
+                    Log.e(TAG, String.format("HTTPS_TLS_CERT_ERROR request_id:%d", request_id), e);
                     https_error = HTTPS_TLS_CERT_ERROR;
-                }
-                catch (javax.net.ssl.SSLException e) {
-                    Log.e("newnode", String.format("HTTPS_TLS_ERROR request_id:%d", request_id));
+                } catch (javax.net.ssl.SSLException e) {
+                    Log.e(TAG, String.format("HTTPS_TLS_ERROR request_id:%d", request_id));
                     https_error = HTTPS_TLS_ERROR;
-                }
-                catch (java.net.SocketTimeoutException e) {
+                } catch (java.net.SocketTimeoutException e) {
                     long now_msec = System.currentTimeMillis();
-                    Log.e("newnode", 
+                    Log.e(TAG, 
                           String.format("HTTPS_TIMEOUT_ERROR request_id:%d elapsed:%d ms", 
                                         request_id, now_msec - start_time_msec));
                     https_error = HTTPS_TIMEOUT_ERROR;
-                }
-                catch (Exception e) {
-                    Log.e("newnode", String.format("HTTPS_GENERIC_ERROR request_id:%d", request_id), e);
+                } catch (Exception e) {
+                    Log.e(TAG, String.format("HTTPS_GENERIC_ERROR request_id:%d", request_id), e);
                     https_error = HTTPS_GENERIC_ERROR;
                 }
                 finally {
                     try {
-                        if (inputStream != null)
+                        if (inputStream != null) {
                             inputStream.close();
-                    }
-                    catch (java.io.IOException e) {
+                        }
+                    } catch (java.io.IOException e) {
                     }
                     callback(callblock, (long) response_length, https_error, http_response_code,
                              result_flags, request_id, response_body);
                 }
             }}.start();
-        }
-        catch (Exception e) {
-            Log.e("newnode", "exception starting https thread", e);
+        } catch (Exception e) {
+            Log.e(TAG, "exception starting https thread", e);
         }
     }
 

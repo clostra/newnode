@@ -588,7 +588,7 @@ static int find_link(int64_t request_id)
     return -1;
 }
 
-void cancel_https_request(int64_t request_id)
+void cancel_https_request(network *n, int64_t request_id)
 {
     debug("%s (request_id:%" PRId64 ")\n", __func__, request_id);
     int link_index = find_link(request_id);
@@ -843,7 +843,7 @@ didCompleteWithError:(NSError *) error
             free_link(my_request_id);
         });
     } else {
-        network_async(, ^{
+        network_async(n, ^{
             free_link(my_request_id);
         });
     }

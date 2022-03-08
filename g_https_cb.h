@@ -1,5 +1,8 @@
-#ifndef G_HTTPS_CB
-#define G_HTTPS_CB 1
+#ifndef __G_HTTPS_CB__
+#define __G_HTTPS_CB__
+
+#include "network.h"
+
 // Generic types of error that an HTTPS GET can result in.
 //
 // It's not strictly necessary for the g_https_cb implementation to be
@@ -75,5 +78,6 @@ typedef struct https_result {
     int64_t request_id;
 } https_result;
 
-void cancel_https_request(int64_t request_id);
-#endif // G_HTTPS_CB
+void cancel_https_request(network *n, int64_t request_id);
+
+#endif // __G_HTTPS_CB__

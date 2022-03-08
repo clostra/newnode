@@ -3,6 +3,7 @@
 #include "log.h"
 #import "NetService.h"
 #import "Bluetooth.h"
+#import "HTTPSRequest.h"
 #import "NewNode-iOS.h"
 #define BSG_KSLogger_Level TRACE
 #define BSG_LOG_LEVEL BSG_LOGLEVEL_DEBUG
@@ -36,12 +37,9 @@ network *g_n;
     NSString *appId = NSBundle.mainBundle.infoDictionary[@"CFBundleIdentifier"];
 
     port_t port = 0;
-    g_n = newnode_init(appName.UTF8String, appId.UTF8String, &port, ^(const char *url, https_complete_callback cb) {
-        debug("https: %s\n", url);
-        [[NSURLSession.sharedSession downloadTaskWithURL:[NSURL URLWithString:@(url)]
-                                       completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
-            cb(!!error);
-        }] resume];
+    g_n = newnode_init(appName.UTF8String, appId.UTF8String, &port, ^(const char *url, https_complete_callback cb, https_request *request) {
+        network *n = g_n;
+        return do_https(n, port, url, cb, request);
     });
     if (!g_n) {
         NSLog(@"Error: NewNode could not be initialized");
