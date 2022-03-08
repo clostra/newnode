@@ -15,38 +15,39 @@ typedef struct {
     event *event;
     uint64_t result_id;
     size_t result_index;
+    network *n;
 } dns_prefetch_request;
 
 void dns_prefetch_callback(DNSServiceRef sdRef, DNSServiceFlags flags, uint32_t interfaceIndex,
                            DNSServiceErrorType errorCode, const char *fullname,
                            const sockaddr *address, uint32_t ttl, void *context)
 {
-    dns_prefetch_request *result = (dns_prefetch_request *) context;
-    unsigned int sockaddrsize = sockaddr_get_length(address);
+    dns_prefetch_request *result = (dns_prefetch_request*)context;
+    socklen_t sockaddrsize = sockaddr_get_length(address);
 
     if (errorCode != 0) {
         debug("%s host:%s errorCode:%d\n", __func__, result->host, errorCode);
         return;
     }
 
-    nn_addrinfo *n = alloc(nn_addrinfo);
+    nn_addrinfo *a = alloc(nn_addrinfo);
     time_t now = time(0);
-    n->ai_addr = calloc(1, sockaddrsize);
-    n->ai_addrlen = sockaddrsize;
-    memcpy((void *) n->ai_addr, (void *) address, sockaddrsize);
-    n->ai_expiry = now + ttl;
-    debug("%s host:%s address:%s ttl:%d expiry:%s", __func__, result->host, sockaddr_str_addronly(n->ai_addr), ttl, ctime(&n->ai_expiry));
+    a->ai_addr = calloc(1, sockaddrsize);
+    a->ai_addrlen = sockaddrsize;
+    memcpy((void*)a->ai_addr, (void*)address, sockaddrsize);
+    a->ai_expiry = now + ttl;
+    debug("%s host:%s address:%s ttl:%d expiry:%s", __func__, result->host, sockaddr_str_addronly(a->ai_addr), ttl, ctime(&a->ai_expiry));
     // this callback will often get called more than once per
     // query.  in each case we append the new address to the
     // result list, and store the head of that list in result->result.
     if (result->result == 0) {
-        result->result = n;
+        result->result = a;
     } else {
         if (result->lastresult) {
-            result->lastresult->ai_next = n;
+            result->lastresult->ai_next = a;
         }
     }
-    result->lastresult = n;
+    result->lastresult = a;
     if (o_debug) {
         debug("%s addresses for %s are now:\n", __func__, result->host);
         nn_addrinfo *nn;
@@ -55,14 +56,10 @@ void dns_prefetch_callback(DNSServiceRef sdRef, DNSServiceFlags flags, uint32_t 
         }
     }
     if ((flags & kDNSServiceFlagsMoreComing) == 0) {
+        network *n = result->n;
         // no more DNS responses immediately queued, go ahead and update result
-        extern network *g_n;
-        // XXX are we assured that if there are multiple calls to
-        //     dns_prefetch_callback (e.g. because both A and AAAA
-        //     records were returned from separate queries), that the
-        //     timer callbacks will happen in order?
-        network_async(g_n, ^{
-            dns_prefetch_store_result(result->result_index, result->result_id, result->result, result->host, false);
+        network_async(n, ^{
+            dns_prefetch_store_result(n, result->result_index, result->result_id, result->result, result->host, false);
         });
     }
 }
@@ -87,15 +84,11 @@ void platform_dns_event_cb(evutil_socket_t fd, short what, void *arg)
         event_free(request->event);
         DNSServiceRefDeallocate(request->sd);
         free(request->host);
-        request->host = NULL;
-        request->result_index = 0;
-        request->result_id = 0;
         free(request);
     }
 }
 
-
-void platform_dns_prefetch(int result_index, unsigned int result_id, const char *host)
+void platform_dns_prefetch(network *n, int result_index, unsigned int result_id, const char *host)
 {
     if (host == NULL || *host == '\0') {
         return;
@@ -105,6 +98,7 @@ void platform_dns_prefetch(int result_index, unsigned int result_id, const char 
     request->host = strdup(host);
     request->result_index = result_index;
     request->result_id = result_id;
+    request->n = n;
 
     // No matter which kinds of addresses we request,
     // DNSServiceGetAddrInfo won't return A records unless we have a
@@ -124,16 +118,13 @@ void platform_dns_prefetch(int result_index, unsigned int result_id, const char 
         return;
     }
 
-    int fd = DNSServiceRefSockFD(request->sd);
-    extern network *g_n;
-    timeval timeout = { 10, 0 }; // ten seconds
-
-    // make socket nonblocking
-    int flags = fcntl(fd, F_GETFL);
-    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    evutil_socket_t fd = DNSServiceRefSockFD(request->sd);
+    evutil_make_socket_closeonexec(fd);
+    evutil_make_socket_nonblocking(fd);
 
     // arrange for query results to be processed
-    request->event = event_new(g_n->evbase, fd, EV_READ|EV_TIMEOUT, platform_dns_event_cb, (void *) request);
+    request->event = event_new(n->evbase, fd, EV_READ|EV_TIMEOUT, platform_dns_event_cb, (void *) request);
+    timeval timeout = { 10, 0 }; // ten seconds
     event_add(request->event, &timeout);
 
     debug("%s queued request for %s\n", __func__, host);

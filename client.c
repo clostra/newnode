@@ -3206,8 +3206,9 @@ void connect_request(network *n, evhttp_request *req)
     c->server_req = req;
     c->authority = strdup(evhttp_request_get_uri(c->server_req));
     c->host = strdup(host);
-    if ((dns_prefetch_key = dns_prefetch_alloc()) >= 0) {
-        dns_prefetch(dns_prefetch_key, host, n->evdns);
+    dns_prefetch_key = dns_prefetch_alloc();
+    if (dns_prefetch_key >= 0) {
+        dns_prefetch(n, dns_prefetch_key, host, n->evdns);
         c->dns_prefetch_key = dns_prefetch_key;
         debug("dns_prefetch_key = %lld index:%d id:%u\n",
               (long long) dns_prefetch_key,
@@ -3844,11 +3845,7 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
 
 network* newnode_init(const char *app_name, const char *app_id, port_t *port, https_callback https_cb)
 {
-    g_have_ipv6 = have_ipv6();
-    // some main programs need g_n to be set early so it can
-    // reference g_n from the callback passed as https_cb.
-    g_n = client_init(app_name, app_id, port, https_cb);
-    return g_n;
+    return client_init(app_name, app_id, port, https_cb);
 }
 
 #if TEST_STALL_DETECTOR

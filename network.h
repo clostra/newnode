@@ -114,9 +114,10 @@ const char* bev_events_to_str(short events);
 socklen_t sockaddr_get_length(const sockaddr* sa);
 port_t sockaddr_get_port(const sockaddr* sa);
 void sockaddr_set_port(sockaddr* sa, port_t port);
-int sockaddr_cmp(const struct sockaddr * sa, const struct sockaddr * sb);
-bool sockaddr_eq(const struct sockaddr * sa, const struct sockaddr * sb);
+int sockaddr_cmp(const sockaddr * sa, const sockaddr * sb);
+bool sockaddr_eq(const sockaddr * sa, const sockaddr * sb);
 const char* sockaddr_str(const sockaddr *ss);
+const char* sockaddr_str_addronly(const sockaddr *ss);
 bool sockaddr_is_localhost(const sockaddr *sa, socklen_t salen);
 bool bufferevent_is_localhost(const bufferevent *bev);
 

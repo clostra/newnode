@@ -250,7 +250,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetc
     // (the blocks callback may happen after ReleaseStringUTFChars is called)
     char *temp_hoststr = strdup(hoststr);
     network_async(g_n, ^{
-        dns_prefetch_store_result(result_index, result_id, result, temp_hoststr, false);
+        dns_prefetch_store_result(g_n, result_index, result_id, result, temp_hoststr, false);
         free(temp_hoststr);
     });
     (*env)->ReleaseStringUTFChars(env, host, hoststr);

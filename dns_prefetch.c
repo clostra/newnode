@@ -10,9 +10,11 @@
 #include <sodium.h>
 #include <netinet/in.h>
 #include <pthread.h>
+
+#include "libevent/util-internal.h"
+
 #include "dns_prefetch.h"
 #include "log.h"
-#include "libevent/util-internal.h"
 
 static uint64_t result_ids = 1; // ids start at 1, not 0
 
@@ -91,8 +93,6 @@ bool valid_server_address(nn_addrinfo *g)
     // usable.  So for instance an IPv6 address is not valid for us if
     // we don't have any active IPv6 interfaces.
 
-    extern bool g_have_ipv6;        // declared in client.c
-
     if (!g) {
         return false;
     }
@@ -109,9 +109,6 @@ bool valid_server_address(nn_addrinfo *g)
         }
         break;
     case AF_INET6: {
-        if (!g_have_ipv6) {
-            return false;
-        }
         in6_addr *a6 = &(((sockaddr_in6 *)s)->sin6_addr);
         if (IN6_IS_ADDR_LOOPBACK(a6)) {
             return false;
@@ -162,8 +159,7 @@ nn_addrinfo* choose_addr(nn_addrinfo *g)
     return NULL;
 }
 
-static int64_t
-dns_prefetch_makekey(size_t result_index, uint64_t result_id)
+static int64_t dns_prefetch_makekey(size_t result_index, uint64_t result_id)
 {
     if (result_index < 0 || result_index >= NUM_DNS_RESULTS) {
         return -1;
@@ -252,8 +248,7 @@ void dns_prefetch_freeaddrinfo(nn_addrinfo *p)
     }
 }
 
-static void
-dns_prefetch_free_internal(size_t result_index, uint64_t result_id)
+static void dns_prefetch_free_internal(size_t result_index, uint64_t result_id)
 {
     if (result_index < NUM_DNS_RESULTS) {
         addrinfo *p, *next;
@@ -289,7 +284,7 @@ void dns_prefetch_free(int64_t key)
 
 nn_addrinfo* copy_nn_addrinfo_from_evutil_addrinfo(evutil_addrinfo *p)
 {
-    if (p == NULL) {
+    if (!p) {
         return NULL;
     }
     nn_addrinfo *result = alloc(nn_addrinfo);
@@ -311,37 +306,33 @@ evutil_addrinfo* copy_evutil_addrinfo_from_nn_addrinfo(nn_addrinfo *nna)
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
-    if (nna == NULL) {
+    if (!nna) {
         return NULL;
     }
     for (; nna; nna = nna->ai_next) {
         // call evutil_new_addrinfo_ so that the resulting structure will be allocated
         // in a way that's compatible with evutil_freeaddrinfo()
-        evutil_addrinfo *n = evutil_new_addrinfo_(nna->ai_addr, nna->ai_addrlen, &hints);
-        if (!n) {
+        evutil_addrinfo *a = evutil_new_addrinfo_(nna->ai_addr, nna->ai_addrlen, &hints);
+        if (!a) {
             return first;
         }
         if (!first) {
-            first = n;
+            first = a;
         } else {
-            prev->ai_next = n;
+            prev->ai_next = a;
         }
-        prev = n;
+        prev = a;
     }
     return first;
 }
 
-void newnode_evdns_cache_write(const char *nodename, evutil_addrinfo *res, int ttl)
+void newnode_evdns_cache_write(network *n, const char *nodename, evutil_addrinfo *res, int ttl)
 {
-    extern network *g_n;
-    if (g_n == NULL || g_n->evdns == NULL) {
-        return;
-    }
-    evdns_cache_write(g_n->evdns, (char *) nodename, res, ttl);
+    evdns_cache_write(n->evdns, (char *) nodename, res, ttl);
 }
 
 // allow peek into the evdns cache
-int newnode_evdns_cache_lookup(struct evdns_base *base, const char *host, evutil_addrinfo *hints,
+int newnode_evdns_cache_lookup(evdns_base *base, const char *host, evutil_addrinfo *hints,
                                uint16_t port, evutil_addrinfo **res)
 {
     evutil_addrinfo nullhints = {
@@ -361,10 +352,8 @@ int newnode_evdns_cache_lookup(struct evdns_base *base, const char *host, evutil
 // populated from a single query.   The result will be stored in
 // dns_prefetch_results[result_index] assuming the IDs match.
 
-static void dns_prefetch_internal(size_t result_index, uint64_t result_id, const char *host, struct evdns_base *base)
+static void dns_prefetch_internal(network *n, size_t result_index, uint64_t result_id, const char *host, evdns_base *base)
 {
-    evutil_addrinfo *eres;
-
     // XXX sigh... more failure of cross-compilation to provide working stdint
     debug("%s result_index:%zu result_id:%llu host:%s base:%p\n", __func__, result_index, 
           (unsigned long long) result_id, host, base);
@@ -384,6 +373,7 @@ static void dns_prefetch_internal(size_t result_index, uint64_t result_id, const
 
     // if this is already in libevent's cache, skip the platform DNS
     // lookup and use the already-cached addresses.
+    evutil_addrinfo *eres;
     if (newnode_evdns_cache_lookup (base, host, NULL, 443, &eres) == 0) {
         debug("%s found %s in libevent dns cache (eres:%p)\n", __func__, host, eres);
         for (evutil_addrinfo *p = eres; p; p=p->ai_next) {
@@ -391,16 +381,15 @@ static void dns_prefetch_internal(size_t result_index, uint64_t result_id, const
         }
         dns_prefetch_results[result_index].result = copy_nn_addrinfo_from_evutil_addrinfo(eres);
         return;
-    } else {
-        debug("%s did not find %s in libevent dns cache\n", __func__, host);
     }
+    debug("%s did not find %s in libevent dns cache\n", __func__, host);
 
     // if not, initiate a DNS query using the platform's DNS library,
     // (and use that result to update libevent's DNS cache)
-    platform_dns_prefetch(result_index, result_id, host);
+    platform_dns_prefetch(n, result_index, result_id, host);
 }
 
-void dns_prefetch(uint64_t key, const char *host, struct evdns_base *base)
+void dns_prefetch(network *n, uint64_t key, const char *host, evdns_base *base)
 {
     size_t index;
     uint32_t id;
@@ -408,7 +397,7 @@ void dns_prefetch(uint64_t key, const char *host, struct evdns_base *base)
     if (key <= 0) {
         return;
     }
-    dns_prefetch_internal(index, id, host, base);
+    dns_prefetch_internal(n, index, id, host, base);
 }
 
 static int minimum_ttl(nn_addrinfo *nna)
@@ -434,7 +423,7 @@ static int minimum_ttl(nn_addrinfo *nna)
 
 extern char *make_ip_addr_list(nn_addrinfo *p); // XXX from client.c
 
-void dns_prefetch_store_result(size_t result_index, uint64_t result_id, nn_addrinfo *nna, const char *host, bool fromevdns)
+void dns_prefetch_store_result(network *n, size_t result_index, uint64_t result_id, nn_addrinfo *nna, const char *host, bool fromevdns)
 {
     debug("%s result_index:%zu result_id:%d host:%s\n", __func__, result_index, (int) result_id, host);
     if (dns_prefetch_results[result_index].id == result_id &&
@@ -443,7 +432,6 @@ void dns_prefetch_store_result(size_t result_index, uint64_t result_id, nn_addri
     }
     if (!fromevdns) {
         int minttl = minimum_ttl(nna);
-        extern network *g_n;
 
         if (minttl > 0) {
             // have a ttl obtained from DNS query, add to evdns cache
@@ -451,7 +439,7 @@ void dns_prefetch_store_result(size_t result_index, uint64_t result_id, nn_addri
 
             debug("%s adding (host:%s=>%s) to evdns cache with ttl:%d)\n",
                   __func__, host, make_ip_addr_list(nna), minttl);
-            newnode_evdns_cache_write(host, addrinfo_copy, minttl);
+            newnode_evdns_cache_write(n, host, addrinfo_copy, minttl);
             evutil_freeaddrinfo(addrinfo_copy);
         } else {
             // don't have a ttl from DNS query.  add to evdns cache with
@@ -462,14 +450,14 @@ void dns_prefetch_store_result(size_t result_index, uint64_t result_id, nn_addri
             memset(&hints, 0, sizeof (evutil_addrinfo));
             hints.ai_socktype = SOCK_STREAM;
             hints.ai_protocol = IPPROTO_TCP;
-            if (newnode_evdns_cache_lookup(g_n->evdns, host, &hints, 0, &result) == 0) {
+            if (newnode_evdns_cache_lookup(n->evdns, host, &hints, 0, &result) == 0) {
                 debug("%s NOT adding (host:%s=>%s) to evdns cache - already present in cache\n",
                       __func__, host, make_ip_addr_list(nna));
             } else {
                 evutil_addrinfo *addrinfo_copy = copy_evutil_addrinfo_from_nn_addrinfo(nna);
                 debug("%s adding (host:%s=>%s) to evdns cache with default ttl:60\n",
                       __func__, host, make_ip_addr_list(nna));
-                newnode_evdns_cache_write(host, addrinfo_copy, 60);
+                newnode_evdns_cache_write(n, host, addrinfo_copy, 60);
                 evutil_freeaddrinfo(addrinfo_copy);
             }
         }

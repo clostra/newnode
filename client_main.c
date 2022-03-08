@@ -6,11 +6,12 @@
 #include "log.h"
 #include "g_https_cb.h"
 #include "https_wget.h"
-#include "client.h"
 
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
 #endif
+
+https_request *https_request_alloc(size_t bufsize, unsigned int flags, unsigned timeout);
 
 void ui_display_stats(const char *type, uint64_t direct, uint64_t peers) {}
 
