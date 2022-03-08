@@ -579,9 +579,7 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
     if (request->bufsize > MAX_BUFSIZE && cb) {
         // call the completion handler with an error, so we always report errors consistently
         timer_start(n, 100, ^{
-            https_result result;
-            memset(&result, 0, sizeof(result));
-            result.https_error = HTTPS_RESOURCE_EXHAUSTED;
+            https_result result = {.https_error = HTTPS_RESOURCE_EXHAUSTED};
             cb(false, &result);
         });
     }
@@ -589,9 +587,7 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
     if (sp == NULL && cb) {
         // call the completion handler with an error, so we always report errors consistently
         timer_start(n, 100, ^{
-            https_result result;
-            memset(&result, 0, sizeof(result));
-            result.https_error = HTTPS_RESOURCE_EXHAUSTED;
+            https_result result = {.https_error = HTTPS_RESOURCE_EXHAUSTED};
             cb(false, &result);
         });
         // 0 is not a valid request_id and will be ignored in cancel requests
