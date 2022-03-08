@@ -1944,7 +1944,7 @@ void stats_queue_init(network *n)
     TAILQ_INIT(&stats_queue);
 }
 
-void send_heartbeat()
+void send_heartbeat(network *n)
 {
     char url[2048];
     if (*g_country && g_asn > 0) {
@@ -1970,7 +1970,7 @@ void send_heartbeat()
                  g_app_id,
                  g_cid);
     }
-    statsq_append(url, 0, NULL);
+    stats_queue_append(n, url, NULL);
 }
 
 void stats_changed(network *n)
@@ -2685,7 +2685,7 @@ char *get_ip_addr_list(connect_req *c)
         return result;
     }
 
-    struct evutil_addrinfo *ear;
+    evutil_addrinfo *ear;
     if (newnode_evdns_cache_lookup(c->n->evdns, c->host, NULL, 443, &ear) == 0) {
         nna = copy_nn_addrinfo_from_evutil_addrinfo(ear);
         if (nna) {
@@ -3403,19 +3403,17 @@ tryfirst_hint need_tryfirst(const char *host, tryfirst_stats *tfs)
 
 static bool is_ipv4_literal(const char *host)
 {
-    struct addrinfo *foo;
-    int result;
-    struct addrinfo hints;
-
     if (!isdigit(*host)) {
         return false;
     }
-    memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_family = AF_INET;
-    hints.ai_flags = AI_NUMERICHOST;
-    result = getaddrinfo(host, NULL, &hints, &foo);
+    addrinfo hints = {
+        .ai_family = AF_INET,
+        .ai_flags = AI_NUMERICHOST
+    };
+    addrinfo *res;
+    int result = getaddrinfo(host, NULL, &hints, &res);
     if (result == 0) {
-        freeaddrinfo(foo);
+        freeaddrinfo(res);
     } else {
         // debug("v4 %s: %s\n", host, gai_strerror(result));
     }
@@ -3424,25 +3422,22 @@ static bool is_ipv4_literal(const char *host)
 
 static bool is_ipv6_literal(const char *host)
 {
-    char *host_copy;
-    char *ptr;
-    struct addrinfo *foo;
-    int result;
-    struct addrinfo hints;
-
     if (*host != '[') {
         return false;
     }
-    if ((ptr = strchr(host+1, ']')) == NULL || ptr[1] != '\0') {
+    char *ptr = strchr(host+1, ']');
+    if (!ptr || ptr[1] != '\0') {
         return false;
     }
-    host_copy = strndup (host+1, ptr-(host+1));
-    memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_family = AF_INET6;
-    hints.ai_flags = AI_NUMERICHOST;
-    result = getaddrinfo(host_copy, NULL, &hints, &foo);
+    char *host_copy = strndup(host+1, ptr-(host+1));
+    addrinfo hints = {
+        .ai_family = AF_INET6,
+        .ai_flags = AI_NUMERICHOST
+    };
+    addrinfo *res;
+    int result = getaddrinfo(host_copy, NULL, &hints, &res);
     if (result == 0) {
-        freeaddrinfo(foo);
+        freeaddrinfo(res);
     } else {
         // debug("v6 %s: %s\n", host, gai_strerror(result));
     }
@@ -3458,7 +3453,7 @@ static bool is_ip_literal(const char *host)
     return is_ipv4_literal(host);
 }
 
-void bufferevent_socket_connect_address(bufferevent *bev, struct sockaddr *address, int addrlen, port_t port)
+void bufferevent_socket_connect_address(bufferevent *bev, sockaddr *address, int addrlen, port_t port)
 {
     switch (address->sa_family) {
     case AF_INET: {
@@ -4334,7 +4329,7 @@ port_t recreate_listener(network *n, port_t port)
     return g_port;
 }
 
-void maybe_update_ipinfo()
+void maybe_update_ipinfo(network *n)
 {
     if (g_ip[0] != '\0' && g_country[0] != '\0' && g_asn > 0) {
         if (g_ipinfo_timestamp > g_ipinfo_logged_timestamp) {
@@ -4363,7 +4358,7 @@ void maybe_update_ipinfo()
                      "&el=ASN"                           // event label
                      "&ev=%d",                           // event value (AS #)
                      g_cid, g_country, g_app_name, g_app_id, g_asn);
-            statsq_append(urlbuf, 0, NULL);
+            stats_queue_append(n, urlbuf, NULL);
         }
     }
 }
@@ -4372,7 +4367,7 @@ void query_ipinfo(network *n)
 {
 #define IPINFO_RESPONSE_SIZE 10240
     https_request *request = https_request_alloc(IPINFO_RESPONSE_SIZE, HTTPS_DIRECT, 30);
-    g_https_cb("https://ipinfo.io", ^(bool success, struct https_result *result) {
+    g_https_cb("https://ipinfo.io", ^(bool success, https_result *result) {
         debug("GET https://ipinfo.io request_id:%" PRId64 " success=%d, response_length=%zu, https_error=%d\n",
               result->request_id, success, result->response_length, result->https_error);
         if (success) {
@@ -4432,7 +4427,7 @@ void query_ipinfo(network *n)
                     }
                     g_asn = asn;
                     g_ipinfo_timestamp = result->req_time;
-                    maybe_update_ipinfo();
+                    maybe_update_ipinfo(n);
                 }
             }
             json_value_free(v);
@@ -4565,12 +4560,12 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
             if ((g_ifchange_time - g_ipinfo_timestamp) > 120) {
                 query_ipinfo(n);
             } else {
-                maybe_update_ipinfo();
+                maybe_update_ipinfo(n);
             }
         };
         timer_repeating(n, 1 * 60 * 1000, cb2);
         // random intervals between 6-12 hours
-        timer_repeating(n, 1000 * (6 + randombytes_uniform(6)) * 60 * 60, ^{ send_heartbeat(); });
+        timer_repeating(n, 1000 * (6 + randombytes_uniform(6)) * 60 * 60, ^{ send_heartbeat(n); });
         query_ipinfo(n);
     });
 
