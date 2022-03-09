@@ -222,6 +222,10 @@ int64_t dns_prefetch_alloc()
         dns_prefetch_results[oldest_index].allocated = true;
         dns_prefetch_results[oldest_index].when_allocated = now;
         dns_prefetch_results[oldest_index].id = result_ids++;
+        if (dns_prefetch_results[oldest_index].result != NULL) {
+            dns_prefetch_freeaddrinfo(dns_prefetch_results[oldest_index].result);
+            dns_prefetch_results[oldest_index].result = NULL;
+        }
         key = dns_prefetch_makekey(oldest_index,
                                    dns_prefetch_results[oldest_index].id);
         return key;
