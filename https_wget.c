@@ -746,12 +746,12 @@ void platform_dns_prefetch(network *n, int result_index, unsigned int result_id,
         .ai_socktype = SOCK_STREAM,
         .ai_protocol = IPPROTO_TCP
     };
-    userdata *userdata = alloc(userdata);
-    userdata->host = strdup(host);
-    userdata->id = result_id;
-    userdata->index = result_index;
-    userdata->n = n;
-    req = evdns_getaddrinfo(n->evdns, host, NULL, &hints, evdns_callback, userdata);
+    userdata *ud = alloc(userdata);
+    ud->host = strdup(host);
+    ud->id = result_id;
+    ud->index = result_index;
+    ud->n = n;
+    req = evdns_getaddrinfo(n->evdns, host, NULL, &hints, evdns_callback, ud);
     if (!req) {
         debug("evdns_getaddrinfo(%s) returned immediately\n", host);
     }
