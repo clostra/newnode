@@ -410,7 +410,7 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
                     // (XXX maybe not useful any more but easy to do)
                     if ((request_flags & HTTPS_USE_HEAD) != 0) {
                         connection.setRequestMethod("HEAD");
-                    } else {e
+                    } else {
                         connection.setRequestMethod("GET");
                     }
 
