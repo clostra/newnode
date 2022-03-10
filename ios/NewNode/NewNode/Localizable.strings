@@ -7,7 +7,9 @@
 */
 
 "info_title" = "How NewNode Works";
-"info_text" = "NewNode is a peer to peer mesh network which works as a personal pseudo-VPN to get around blocking or establish good internet connection when connectivity is sparse.\n\nNewNode works differently than a traditional VPN, which sends your connection to a specific server. Traditional VPNs are unfortunately quite easy to block by IP address. NewNode, instead, sends your traffic through a mesh network which can even make connections directly between nearby devices. This, along with encrypting and disguising the traffic, makes NewNode very robust against any kind of blocking.\n\nThere is no location selector because the NewNode network is globally distributed.";
+"info_text" = "NewNode uses a peer to peer network to get around blocking and to establish a good internet connection when connectivity is sparse.
+        \n\n
+        NewNode sends your traffic through a peer network that makes connections through user devices rather than relying on a central server. This, along with encrypting and obfuscating the traffic, makes NewNode very robust at content access.";
 
 // Status
 "connected" = "CONNECTED";
