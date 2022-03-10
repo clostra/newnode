@@ -4317,11 +4317,7 @@ port_t recreate_listener(network *n, port_t port)
     socklen_t sslen = sizeof(ss);
     getsockname(fd, (sockaddr *)&ss, &sslen);
     g_port = sockaddr_get_port((sockaddr *)&ss);
-#if defined(TEST_LISTEN_ANY) && TEST_LISTEN_ANY
-    printf("listening on TCP: %s:%d\n", "0.0.0.0", g_port);
-#else
     printf("listening on TCP: %s:%d\n", "127.0.0.1", g_port);
-#endif
     return g_port;
 }
 
