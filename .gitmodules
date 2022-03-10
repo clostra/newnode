@@ -20,7 +20,7 @@
 	path = libevent
 	url = https://github.com/clostra/libevent
 [submodule "ios/NewNode/MMWormhole"]
-	path = ios/NewNode/MMWormhole
+	path = ios/vpn/MMWormhole
 	url = https://github.com/mutualmobile/MMWormhole.git
 [submodule "parson"]
 	path = parson
