@@ -22,6 +22,9 @@ void evtimer_callback(evutil_socket_t fd, short events, void *arg)
 
 void timer_cancel(timer *t)
 {
+    if (!t) {
+        return;
+    }
     evtimer_del(&t->event);
     timer_free(t);
 }

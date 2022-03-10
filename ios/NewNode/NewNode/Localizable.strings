@@ -1,0 +1,30 @@
+/* 
+  Localizable.strings
+  NewNode VPN
+
+  Created by Mikhail Koroteev on 31.05.21.
+  Copyright © 2021 Clostra. All rights reserved.
+*/
+
+"info_title" = "How NewNode Works";
+"info_text" = "NewNode uses a peer to peer network to get around blocking and to establish a good internet connection when connectivity is sparse.
+        \n\n
+        NewNode sends your traffic through a peer network that makes connections through user devices rather than relying on a central server. This, along with encrypting and obfuscating the traffic, makes NewNode very robust at content access.";
+
+// Status
+"connected" = "CONNECTED";
+"disconnected" = "DISCONNECTED";
+"invalid" = "NOT CONFIGURED";
+"connecting" = "CONNECTING...";
+"reasserting" = "RECONNECTING...";
+"disconnecting" = "DISCONNECTING...";
+
+"hint_connected" = "tap to disconnect";
+"hint_disconnected" = "tap to connect\nto NewNode VPN";
+
+"usage" = "USAGE";
+"day" = "Day";
+"week" = "Week";
+"all_time" = "Max";
+"direct" = "Direct: ";
+"peers" = "Through peers: ";

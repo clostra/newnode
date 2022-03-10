@@ -12,6 +12,7 @@
 #include "network.h"
 #include "log.h"
 #include "lsd.h"
+#include "newnode.h"
 
 
 typedef struct ip_mreq ip_mreq;
@@ -28,8 +29,7 @@ event route_event;
  * Find the first occurrence of find in s, where the search is limited to the
  * first slen characters of s.
  */
-char *
-strnstr(const char *s, const char *find, size_t slen)
+char* strnstr(const char *s, const char *find, size_t slen)
 {
     char c, sc;
     size_t len;
@@ -134,6 +134,8 @@ void route_read_cb(evutil_socket_t fd, short events, void *arg)
     char buf[2048];
     recv(fd, buf, sizeof(buf), 0);
     lsd_setup(n);
+    extern void network_change(void);
+    network_change();
 }
 
 void lsd_setup(network *n)

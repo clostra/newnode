@@ -128,9 +128,7 @@ uint64 utp_callback_log(utp_callback_arguments *a)
 
 void dht_schedule(network *n, time_t tosleep)
 {
-    if (n->dht_timer) {
-        timer_cancel(n->dht_timer);
-    }
+    timer_cancel(n->dht_timer);
     n->dht_timer = timer_start(n, tosleep * 1000, ^{
         n->dht_timer = NULL;
         dht_schedule(n, dht_tick(n->dht));
@@ -547,6 +545,21 @@ const char* sockaddr_str(const sockaddr *sa)
         assert(false);
     }
     return buf;
+}
+
+const char* sockaddr_str_addronly(const sockaddr *sa)
+{
+    if (sa->sa_family == AF_LOCAL) {
+        const sockaddr_un *sun = (const sockaddr_un*)sa;
+        return sun->sun_path;
+    }
+    static char host[NI_MAXHOST] = {0};
+    int r = getnameinfo(sa, sockaddr_get_length(sa), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
+    if (r) {
+        debug("getnameinfo failed %d %s\n", r, gai_strerror(r));
+        return "";
+    }
+    return host;
 }
 
 bool sockaddr_is_localhost(const sockaddr *sa, socklen_t salen)

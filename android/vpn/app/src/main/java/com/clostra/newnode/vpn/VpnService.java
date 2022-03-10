@@ -113,7 +113,7 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
     }
 
     private void updateForegroundNotification(final int message) {
-        final String NOTIFICATION_CHANNEL_ID = "NewNode VPN";
+        final String NOTIFICATION_CHANNEL_ID = "NewNode";
         NotificationManager mNotificationManager = (NotificationManager) getSystemService(
                 NOTIFICATION_SERVICE);
         mNotificationManager.createNotificationChannel(new NotificationChannel(

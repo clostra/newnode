@@ -605,3 +605,5 @@ static_assert(20 >= crypto_generichash_BYTES_MIN, "dht hash must fit in generich
 
     return network_loop(n);
 }
+
+void network_change() {}
