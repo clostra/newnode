@@ -1947,29 +1947,24 @@ void stats_queue_init(network *n)
 void send_heartbeat(network *n)
 {
     char url[2048];
+    char asn[512] = "";
     if (*g_country && g_asn > 0) {
-        snprintf(url, sizeof(url), "https://stats.newnode.com/heartbeat?v=1" \
-                 "&tid=UA-149896478-2&t=event&ec=byte_counts&ds=app&ni=1" \
-                 "&an=%s"                                                \
-                 "&aid=%s"                                                \
-                 "&cid=%"PRIu64""                                       \
-                 "&geoid=%s"                                            \
+        snprintf(asn, sizeof(asn),
+                 "&geoid=%s" \
                  "&el=ASN&ev=%d",
-                 g_app_name,
-                 g_app_id,
-                 g_cid,
                  g_country,
                  g_asn);
-    } else {
-        snprintf(url, sizeof(url), "https://stats.newnode.com/heartbeat?v=1" \
-                 "&tid=UA-149896478-2&t=event&ec=byte_counts&ds=app&ni=1" \
-                 "&an=%s"                                                \
-                 "&aid=%s"                                                \
-                 "&cid=%"PRIu64"",
-                 g_app_name,
-                 g_app_id,
-                 g_cid);
     }
+    snprintf(url, sizeof(url), "https://stats.newnode.com/heartbeat?v=1" \
+             "&tid=UA-149896478-2&t=event&ec=byte_counts&ds=app&ni=1" \
+             "&an=%s"                                                \
+             "&aid=%s"                                                \
+             "&cid=%"PRIu64""                                       \
+             "%s",
+             g_app_name,
+             g_app_id,
+             g_cid,
+             asn);
     stats_queue_append(n, url, NULL);
 }
 
