@@ -17,8 +17,8 @@ function build_android {
     test -f configure || ./autogen.sh
     test -f libsodium-android-$CPU_ARCH/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
     cd ..
-    LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-android-$CPU_ARCH/include
-    LIBSODIUM=libsodium/libsodium-android-$CPU_ARCH/lib/libsodium.a
+    LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-android-$SODIUM_CPU_ARCH/include
+    LIBSODIUM=libsodium/libsodium-android-$SODIUM_CPU_ARCH/lib/libsodium.a
 
 
     export TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/$HOST_TAG
@@ -126,6 +126,7 @@ CPU_ARCH=armv7-a
 NDK_TRIPLE=arm-linux-androideabi
 NDK_CLANG_TRIPLE=armv7a-linux-androideabi$NDK_API
 SODIUM_SCRIPT=$CPU_ARCH
+SODIUM_CPU_ARCH=$CPU_ARCH
 # large file support doesn't work for sendfile until API 21
 # https://github.com/android-ndk/ndk/issues/536#issuecomment-333197557
 LIBEVENT_CONFIG=--disable-largefile
@@ -140,6 +141,7 @@ CPU_ARCH=armv8-a
 NDK_TRIPLE=aarch64-linux-android
 NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$CPU_ARCH
+SODIUM_CPU_ARCH=$CPU_ARCH+crypto
 build_android &
 wait %%
 
@@ -150,6 +152,7 @@ CPU_ARCH=i686
 NDK_TRIPLE=i686-linux-android
 NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$ABI
+SODIUM_CPU_ARCH=$CPU_ARCH
 # disabled until libsodium is fixed https://github.com/jedisct1/libsodium/issues/1047
 #build_android &
 #wait %%
@@ -161,5 +164,6 @@ CPU_ARCH=westmere
 NDK_TRIPLE=x86_64-linux-android
 NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$ABI
+SODIUM_CPU_ARCH=$CPU_ARCH
 build_android &
 wait %%
