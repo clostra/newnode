@@ -799,9 +799,9 @@ didCompleteWithError:(NSError *) error
         links[link_index].result.xfer_time_us = now - links[link_index].result.xfer_start_time_us;
         if (error) {
             NSInteger errorCode = [error code];
-            if (statusCode == 451) {
+            if (statusCode == 451 || statusCode == 403) {
                 links[link_index].result.https_error = HTTPS_BLOCKING_ERROR;
-                debug("%s my_request_id:%" PRId64 " HTTP code %d indicates server-side blocking\n", __func__,
+                debug("%s my_request_id:%" PRId64 " HTTP code %d indicates possible server-side blocking\n", __func__,
                       my_request_id, statusCode);
             }
             else if (links[link_index].internally_cancelled) {

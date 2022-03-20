@@ -579,8 +579,13 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
                                         request_id, now_msec - start_time_msec));
                     https_error = HTTPS_TIMEOUT_ERROR;
                 } catch (Exception e) {
-                    Log.e(TAG, String.format("HTTPS_GENERIC_ERROR request_id:%d", request_id), e);
-                    https_error = HTTPS_GENERIC_ERROR;
+                    if (http_response_code == 451 || http_response_code == 403) {
+                        Log.e(TAG, String.format("HTTPS_BLOCKING_ERROR request_id:%d", request_id), e);
+                        https_error = HTTPS_BLOCKING_ERROR;
+                    } else {
+                        Log.e(TAG, String.format("HTTPS_GENERIC_ERROR request_id:%d", request_id), e);
+                        https_error = HTTPS_GENERIC_ERROR;
+                    }
                 }
                 finally {
                     try {
