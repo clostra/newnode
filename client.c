@@ -128,6 +128,8 @@ typedef struct {
     chunked_range range;
 } direct_request;
 
+#define rdelta(r) ((double)(us_clock() - r->start_time) / 1000.0)
+
 struct proxy_request {
     network *n;
 
@@ -628,11 +630,6 @@ bool proxy_request_any_peers(const proxy_request *p)
     return false;
 }
 
-double pdelta(proxy_request *p)
-{
-    return (double)(us_clock() - p->start_time) / 1000.0;
-}
-
 void proxy_send_error(proxy_request *p, int error, const char *reason)
 {
     if (proxy_request_any_direct(p) || proxy_request_any_peers(p)) {
@@ -644,11 +641,11 @@ void proxy_send_error(proxy_request *p, int error, const char *reason)
         }
         if (p->server_req->response_code) {
             debug("p:%p req:%p evcon:%p (%.2fms) responding can't send error, terminating connection. %d %s\n",
-                  p, p->server_req, p->server_req->evcon, pdelta(p), error, reason);
+                  p, p->server_req, p->server_req->evcon, rdelta(p), error, reason);
             evhttp_send_reply_end(p->server_req);
         } else {
             debug("p:%p req:%p evcon:%p (%.2fms) responding with %d %s\n",
-                  p, p->server_req, p->server_req->evcon, pdelta(p),
+                  p, p->server_req, p->server_req->evcon, rdelta(p),
                   error, reason);
             evhttp_send_error(p->server_req, error, reason);
         }
@@ -984,7 +981,7 @@ int direct_header_cb(evhttp_request *req, void *arg)
 {
     direct_request *d = (direct_request*)arg;
     proxy_request *p = d->p;
-    debug("d:%p (%.2fms) direct_header_cb %d %s %s\n", d, pdelta(p), req->response_code, req->response_code_line, p->uri);
+    debug("d:%p (%.2fms) direct_header_cb %d %s %s\n", d, rdelta(p), req->response_code, req->response_code_line, p->uri);
 
     // "416 Range Not Satisfiable" means we can't use additional connections at all.
     if (req->response_code == 416) {
@@ -1122,7 +1119,7 @@ void proxy_request_reply_start(proxy_request *p, evhttp_request *req)
     const char *range = evhttp_find_header(p->server_req->input_headers, "Range");
     if (!range && req->response_code == 206) {
         debug("p:%p req:%p evcon:%p (%.2fms) responding with %d %s\n",
-              p, p->server_req, p->server_req->evcon, pdelta(p),
+              p, p->server_req, p->server_req->evcon, rdelta(p),
               200, "OK");
         evhttp_send_reply_start(p->server_req, 200, "OK");
     } else {
@@ -1132,11 +1129,11 @@ void proxy_request_reply_start(proxy_request *p, evhttp_request *req)
                      p->range_start, p->range_end, p->content_length);
             overwrite_kv_header(p->server_req->output_headers, "Content-Range", content_range);
             debug("p:%p req:%p evcon:%p (%.2fms) responding with %d %s start:%"PRIu64" end:%"PRIu64" length:%"PRIu64"\n",
-                  p, p->server_req, p->server_req->evcon, pdelta(p),
+                  p, p->server_req, p->server_req->evcon, rdelta(p),
                   req->response_code, req->response_code_line, p->range_start, p->range_end, p->content_length);
         } else {
             debug("p:%p req:%p evcon:%p (%.2fms) responding with %d %s\n",
-                  p, p->server_req, p->server_req->evcon, pdelta(p),
+                  p, p->server_req, p->server_req->evcon, rdelta(p),
                   req->response_code, req->response_code_line);
         }
         evhttp_send_reply_start(p->server_req, req->response_code, req->response_code_line);
@@ -1330,7 +1327,7 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
         return;
     }
     proxy_request *p = d->p;
-    debug("p:%p d:%p (%.2fms) %s %s\n", p, d, pdelta(p), __func__, p->uri);
+    debug("p:%p d:%p (%.2fms) %s %s\n", p, d, rdelta(p), __func__, p->uri);
     d->req = NULL;
 
     if (p->chunked) {
@@ -1433,7 +1430,7 @@ void proxy_save_cache(proxy_request *p)
     snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, encoded_uri);
     snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
     free(encoded_uri);
-    debug("p:%p (%.2fms) store cache:%s headers:%s\n", p, pdelta(p), cache_path, cache_headers_path);
+    debug("p:%p (%.2fms) store cache:%s headers:%s\n", p, rdelta(p), cache_path, cache_headers_path);
 
     fsync(p->cache_file);
     rename(p->cache_name, cache_path);
@@ -1458,7 +1455,7 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
 {
     peer_request *r = (peer_request*)arg;
     proxy_request *p = r->p;
-    debug("p:%p r:%p (%.2fms) %s %d %s\n", p, r, pdelta(p), __func__, req->response_code, req->response_code_line);
+    debug("p:%p r:%p (%.2fms) %s %d %s\n", p, r, rdelta(p), __func__, req->response_code, req->response_code_line);
 
     int klass = req->response_code / 100;
     switch (klass) {
@@ -1479,7 +1476,7 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
 
     const char *content_location = evhttp_find_header(req->input_headers, "Content-Location");
     if (!content_location || !streq(content_location, p->uri)) {
-        debug("p:%p r:%p (%.2fms) Content-Location mismatch: [%s] != [%s]\n", p, r, pdelta(p), content_location, p->uri);
+        debug("p:%p r:%p (%.2fms) Content-Location mismatch: [%s] != [%s]\n", p, r, rdelta(p), content_location, p->uri);
         proxy_send_error(p, 502, "Content-Location mismatch");
         return -1;
     }
@@ -1492,7 +1489,7 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
     const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
     if (!msign) {
         fprintf(stderr, "no signature!\n");
-        debug("p:%p (%.2fms) no signature\n", p, pdelta(p));
+        debug("p:%p (%.2fms) no signature\n", p, rdelta(p));
         proxy_send_error(p, 502, "Missing Gateway Signature");
         return -1;
     }
@@ -1501,7 +1498,7 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
         const char *xhashes = evhttp_find_header(req->input_headers, "X-Hashes");
         if (!xhashes) {
             fprintf(stderr, "no hashes!\n");
-            debug("p:%p (%.2fms) no hashes\n", p, pdelta(p));
+            debug("p:%p (%.2fms) no hashes\n", p, rdelta(p));
             proxy_send_error(p, 502, "Missing Gateway Hashes");
             return -1;
         }
@@ -1771,7 +1768,7 @@ void peer_request_done_cb(evhttp_request *req, void *arg)
     r->req = NULL;
     proxy_request *p = r->p;
     if (!req->response_code) {
-        debug("p:%p (%.2fms) no response code!\n", p, pdelta(p));
+        debug("p:%p (%.2fms) no response code!\n", p, rdelta(p));
         peer_request_cleanup(r, __func__);
         return;
     }
@@ -2412,7 +2409,7 @@ void proxy_submit_request(proxy_request *p)
 void proxy_evcon_close_cb(evhttp_connection *evcon, void *ctx)
 {
     proxy_request *p = (proxy_request*)ctx;
-    debug("p:%p evcon:%p (%.2fms) %s\n", p, evcon, pdelta(p), __func__);
+    debug("p:%p evcon:%p (%.2fms) %s\n", p, evcon, rdelta(p), __func__);
     evhttp_connection_set_closecb(evcon, NULL, NULL);
     p->server_req = NULL;
     p->dont_free = true;
