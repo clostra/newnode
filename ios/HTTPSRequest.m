@@ -10,7 +10,7 @@
 
 char *https_strerror(https_result *);
 
-void HTTPSRequest_init()
+void HTTPSRequest_init(void)
 {
     // we used to need this; leave it here in case we need it again someday.
 }
@@ -780,7 +780,7 @@ didCompleteWithError:(NSError *) error
     if (error) {
         NSHTTPURLResponse *response = (NSHTTPURLResponse *) mytask.response;
         if (response) {
-            statusCode = [response statusCode];
+            statusCode = (int)response.statusCode;
             debug("%s my_request_id:%" PRId64 " statusCode:%d\n", __func__, my_request_id, statusCode);
         }
         error_message = [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding];
@@ -876,7 +876,7 @@ didReceiveResponse:(NSURLResponse *)response
  completionHandler:(void (^)(NSURLSessionResponseDisposition disposition))completionHandler
 {
     NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *) response;
-    NSInteger statusCode = [httpResponse statusCode];
+    int statusCode = (int)httpResponse.statusCode;
 
     // XXX if we're doing a try first request we could cancel the task
     //     at this point, call the completion callback, and be done,
@@ -885,7 +885,7 @@ didReceiveResponse:(NSURLResponse *)response
     //     just save the status code from the HTTP response and let
     //     the data task complete normally.
     int64_t my_request_id = atoi(dataTask.taskDescription.UTF8String);
-    debug("%s: my_request_id:%" PRId64 " HTTP status code = %ld\n", __func__, my_request_id, statusCode);
+    debug("%s: my_request_id:%" PRId64 " HTTP status code = %d\n", __func__, my_request_id, statusCode);
     int link_index = find_link(my_request_id);
     if (link_index >= 0 && !links[link_index].cancelled) {
         links[link_index].result.http_status = statusCode;
