@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3C1F49F927F27E5F00EC709C /* dns_prefetch.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C1F49F827F27E4600EC709C /* dns_prefetch.c */; };
+		3C1F49FA27F27E6200EC709C /* dns_prefetch_macos.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C1F49F727F27E2100EC709C /* dns_prefetch_macos.c */; };
 		3C4B39AD21B2A4830031CCA2 /* lsd.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C4B399D21B2A4830031CCA2 /* lsd.c */; };
 		3C4B39AE21B2A4830031CCA2 /* timer.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C4B399E21B2A4830031CCA2 /* timer.c */; };
 		3C4B39AF21B2A4830031CCA2 /* base64.c in Sources */ = {isa = PBXBuildFile; fileRef = 3C4B399F21B2A4830031CCA2 /* base64.c */; };
@@ -27,6 +29,7 @@
 		3C4B39C121B2AB5B0031CCA2 /* libevent.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C4B39C021B2AB5B0031CCA2 /* libevent.a */; };
 		3C4B39C321B2AB730031CCA2 /* libevent_pthreads.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C4B39C221B2AB730031CCA2 /* libevent_pthreads.a */; };
 		3C4B39C521B2AB820031CCA2 /* libsodium.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C4B39C421B2AB820031CCA2 /* libsodium.a */; };
+		3CBC847F27F27CCB00361BD4 /* HTTPSRequest.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CBC847C27F27CCB00361BD4 /* HTTPSRequest.m */; };
 		3CE5D4D323E9C9D200E39BCA /* dht_dht.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 3CE5D4D223E9C9D200E39BCA /* dht_dht.o */; };
 		3CFE42A4235E89A500231DEB /* thread.c in Sources */ = {isa = PBXBuildFile; fileRef = 3CFE42A3235E89A500231DEB /* thread.c */; };
 /* End PBXBuildFile section */
@@ -44,6 +47,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		3C1F49F727F27E2100EC709C /* dns_prefetch_macos.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = dns_prefetch_macos.c; sourceTree = "<group>"; };
+		3C1F49F827F27E4600EC709C /* dns_prefetch.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = dns_prefetch.c; sourceTree = "<group>"; };
 		3C3C0895227BC79500232FDB /* log.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = log.h; sourceTree = "<group>"; };
 		3C3C0896227BC79500232FDB /* utp_bufferevent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = utp_bufferevent.h; sourceTree = "<group>"; };
 		3C3C0897227BC79500232FDB /* khash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = khash.h; sourceTree = "<group>"; };
@@ -84,6 +89,7 @@
 		3C4B39C021B2AB5B0031CCA2 /* libevent.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libevent.a; path = Libevent/native/lib/libevent.a; sourceTree = "<group>"; };
 		3C4B39C221B2AB730031CCA2 /* libevent_pthreads.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libevent_pthreads.a; path = Libevent/native/lib/libevent_pthreads.a; sourceTree = "<group>"; };
 		3C4B39C421B2AB820031CCA2 /* libsodium.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsodium.a; path = libsodium/native/lib/libsodium.a; sourceTree = "<group>"; };
+		3CBC847C27F27CCB00361BD4 /* HTTPSRequest.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = HTTPSRequest.m; path = ios/HTTPSRequest.m; sourceTree = "<group>"; };
 		3CE5D4D223E9C9D200E39BCA /* dht_dht.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; path = dht_dht.o; sourceTree = "<group>"; };
 		3CFE42A2235E89A500231DEB /* thread.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = thread.h; sourceTree = "<group>"; };
 		3CFE42A3235E89A500231DEB /* thread.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = thread.c; sourceTree = "<group>"; };
@@ -135,12 +141,15 @@
 				3C3C08A5227BC79500232FDB /* constants.h */,
 				3C4B39A021B2A4830031CCA2 /* dht.c */,
 				3C3C08A1227BC79500232FDB /* dht.h */,
+				3C1F49F727F27E2100EC709C /* dns_prefetch_macos.c */,
+				3C1F49F827F27E4600EC709C /* dns_prefetch.c */,
 				3C4B39A921B2A4830031CCA2 /* hash_table.c */,
 				3C3C089B227BC79500232FDB /* hash_table.h */,
 				3C4B39A521B2A4830031CCA2 /* http.c */,
 				3C3C08A3227BC79500232FDB /* http.h */,
 				3C4B39A621B2A4830031CCA2 /* icmp_handler.c */,
 				3C3C0899227BC79500232FDB /* icmp_handler.h */,
+				3CBC847927F27CB900361BD4 /* ios */,
 				3C3C089F227BC79500232FDB /* ios.h */,
 				3C3C0897227BC79500232FDB /* khash.h */,
 				3C4B39A121B2A4830031CCA2 /* log.c */,
@@ -178,6 +187,14 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		3CBC847927F27CB900361BD4 /* ios */ = {
+			isa = PBXGroup;
+			children = (
+				3CBC847C27F27CCB00361BD4 /* HTTPSRequest.m */,
+			);
+			name = ios;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -204,7 +221,7 @@
 		3C4B398B21B2A3B40031CCA2 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastUpgradeCheck = 1100;
+				LastUpgradeCheck = 1330;
 				ORGANIZATIONNAME = Clostra;
 				TargetAttributes = {
 					3C4B399221B2A3B40031CCA2 = {
@@ -241,6 +258,7 @@
 				3C4B39AD21B2A4830031CCA2 /* lsd.c in Sources */,
 				3C4B39B621B2A4830031CCA2 /* icmp_handler.c in Sources */,
 				3C4B39AF21B2A4830031CCA2 /* base64.c in Sources */,
+				3C1F49F927F27E5F00EC709C /* dns_prefetch.c in Sources */,
 				3C4B39B321B2A4830031CCA2 /* utp_bufferevent.c in Sources */,
 				3C4B39B121B2A4830031CCA2 /* log.c in Sources */,
 				3C4B39BA21B2A4830031CCA2 /* merkle_tree.c in Sources */,
@@ -250,6 +268,8 @@
 				3C4B39B921B2A4830031CCA2 /* hash_table.c in Sources */,
 				3C4B39AE21B2A4830031CCA2 /* timer.c in Sources */,
 				3CFE42A4235E89A500231DEB /* thread.c in Sources */,
+				3C1F49FA27F27E6200EC709C /* dns_prefetch_macos.c in Sources */,
+				3CBC847F27F27CCB00361BD4 /* HTTPSRequest.m in Sources */,
 				3C4B39B521B2A4830031CCA2 /* http.c in Sources */,
 				3C4B39B721B2A4830031CCA2 /* obfoo.c in Sources */,
 			);
@@ -284,6 +304,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
@@ -306,7 +327,6 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -340,6 +360,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
@@ -359,7 +380,6 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -400,6 +420,8 @@
 					Libevent/native/include,
 					libsodium/native/include,
 					libutp,
+					parson,
+					.,
 				);
 				USER_HEADER_SEARCH_PATHS = "";
 			};
@@ -438,6 +460,8 @@
 					Libevent/native/include,
 					libsodium/native/include,
 					libutp,
+					parson,
+					.,
 				);
 				USER_HEADER_SEARCH_PATHS = "";
 			};
