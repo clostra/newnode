@@ -103,7 +103,7 @@ struct network {
     recreate_sockets_callback recreate_sockets_cb;
 };
 
-uint64_t us_clock();
+uint64_t us_clock(void);
 
 void evbuffer_clear(evbuffer *buf);
 void evbuffer_hash_update(evbuffer *buf, crypto_generichash_state *content_state);
@@ -122,7 +122,7 @@ const char* sockaddr_str_addronly(const sockaddr *ss);
 bool sockaddr_is_localhost(const sockaddr *sa, socklen_t salen);
 bool bufferevent_is_localhost(const bufferevent *bev);
 
-int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
+ssize_t udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
 bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
 
 network* network_setup(char *address, port_t port);

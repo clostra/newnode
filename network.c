@@ -73,7 +73,7 @@ void map6to4(const in6_addr *in, in_addr *out)
     ((uint8_t *)&out->s_addr)[3] = in->s6_addr[15];
 }
 
-int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
+ssize_t udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
 {
     ddebug("sendto(%zd, %s)\n", len, sockaddr_str(sa));
 
@@ -597,7 +597,7 @@ bool bufferevent_is_localhost(const bufferevent *bev)
     return sockaddr_is_localhost((sockaddr *)&ss, len);
 }
 
-void set_max_nofile()
+void set_max_nofile(void)
 {
     rlimit nofile;
     int r = getrlimit(RLIMIT_NOFILE, &nofile);
