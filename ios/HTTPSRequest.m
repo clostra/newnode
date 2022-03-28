@@ -17,393 +17,393 @@ void HTTPSRequest_init()
 
 void set_https_error(https_result *result, const char *error_domain, NSInteger errorCode)
 {
-    if (strcmp(error_domain, "NSURLErrorDomain") == 0) {
-        switch(errorCode) {
-            // error codes and descriptions from:
-            // https://developer.apple.com/documentation/foundation/1508628-url_loading_system_error_codes
-            //+KM
-            // it's tedious to list them all and to
-            // list then in order they appear in that
-            // document, but for now that seems like
-            // the best way to make sure that the
-            // important cases are all dealt with.
-            //-KM
-        case NSURLErrorAppTransportSecurityRequiresSecureConnection:
-            //+CO
-            // App Transport Security disallowed a
-            // connection because there is no secure
-            // network connection.
-            //-CO
-            //KM XXX not sure if this is the right https_error
-            result->https_error = HTTPS_TLS_ERROR;
-            break;
-        case NSURLErrorBackgroundSessionInUseByAnotherProcess:
-            //+CO
-            // An app or app extension attempted to
-            // connect to a background session that is
-            // already connected to a process.
-            //-CO
-            result->https_error = HTTPS_RESOURCE_EXHAUSTED;
-            break;
-        case NSURLErrorBackgroundSessionRequiresSharedContainer:
-            //+CO
-            // The shared container identifier of the
-            // URL session configuration is needed but
-            // hasn’t been set.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorBackgroundSessionWasDisconnected:
-            //+CO
-            // The app is suspended or exits while a
-            // background data task is processing.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorBadServerResponse:
-            //+CO
-            // The URL Loading System received bad
-            // data from the server.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorBadURL:
-            //+CO
-            // A malformed URL prevented a URL request from being initiated.
-            //-CO
-            result->https_error = HTTPS_PARAMETER_ERROR;
-            break;
-        case NSURLErrorCallIsActive:
-            //+CO
-            // A connection was attempted while a
-            // phone call was active on a network that
-            // doesn’t support simultaneous phone and
-            // data communication, such as EDGE or
-            // GPRS.
-            //-CO
-            result->https_error = HTTPS_RESOURCE_EXHAUSTED;
-            break;
-        case NSURLErrorCancelled:
-            //+CO
-            // This seems like the expected result
-            // when cancellation of a download has
-            // been requested.  But in that case we
-            // want to make sure that we don't call
-            // the completion callback.
-            //-CO
-            // debug("NSURLErrorCancelled %d\n", request->flags & HTTPS_CANCELLED);
-
-            // we might cancel ourselves for multiple reasons including
-            // received data too big; those are not errors
-            // (but if we cancel ourselves we won't call this routine)
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorCannotCloseFile:
-            //+CO
-            // A download task couldn’t close the downloaded file on disk.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorCannotConnectToHost:
-            //+CO
-            // An attempt to connect to a host failed.
-            // could be either a timeout or connection refused?
-            // (could also be IP blocked)
-            //-CO
-            result->https_error = HTTPS_BLOCKING_ERROR;
-            break;
-        case NSURLErrorCannotCreateFile:
-            //+CO
-            // A download task couldn’t create the
-            // downloaded file on disk because of an
-            // I/O failure.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorCannotDecodeContentData:
-            //+CO
-            // Content data received during a
-            // connection request had an unknown
-            // content encoding.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorCannotDecodeRawData:
-            //+CO
-            // Content data received during a
-            // connection request couldn’t be decoded
-            // for a known content encoding.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorCannotFindHost:
-            //+CO
-            // The host name for a URL couldn’t be resolved.
-            //-CO
-            result->https_error = HTTPS_DNS_ERROR;
-            break;
-        case NSURLErrorCannotLoadFromNetwork:
-            //+CO
-            // A specific request to load an item only
-            // from the cache couldn't be satisfied.
-            //-CO
-            //+KM
-            // Seems like this should not be able
-            // to happen to us since we should
-            // disable any local caches.
-            //-KM
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorCannotMoveFile:
-            //+CO
-            // A downloaded file on disk couldn’t be moved.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorCannotOpenFile:
-            //+CO
-            // A downloaded file on disk couldn’t be opened.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorCannotParseResponse:
-            //+CO
-            // A response to a connection request couldn’t be parsed.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorCannotRemoveFile:
-            //+CO
-            // A downloaded file couldn’t be removed from disk.
-            //-CO
-            //+KM
-            // shouldn't happen, but apparently the URL was accessible.
-            //-KM
-            result->https_error = HTTPS_NO_ERROR;
-            break;
-        case NSURLErrorCannotWriteToFile:
-            //+CO
-            // A download task couldn’t write the file to disk.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorClientCertificateRejected:
-            //+CO
-            // A server certificate was rejected.
-            //-CO
-            result->https_error = HTTPS_TLS_CERT_ERROR;
-            break;
-        case NSURLErrorClientCertificateRequired:
-            //+CO
-            // A client certificate was required to
-            // authenticate an SSL connection during a
-            // connection request.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorDataLengthExceedsMaximum:
-            //+CO
-            // The length of the resource data
-            // exceeded the maximum allowed.
-            //-CO
-            // XXX do we need to detect this and set the truncated flag? (sigh)
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorDataNotAllowed:
-            //+CO
-            // The cellular network disallowed a connection.
-            //-CO
-            result->https_error = HTTPS_RESOURCE_EXHAUSTED;
-            break;
-        case NSURLErrorDNSLookupFailed:
-            //+CO
-            // The host address couldn’t be found via DNS lookup.
-            //-CO
-            result->https_error = HTTPS_DNS_ERROR;
-            break;
-        case NSURLErrorDownloadDecodingFailedMidStream:
-            //+CO
-            // A download task failed to decode an
-            // encoded file during the download.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorDownloadDecodingFailedToComplete:
-            //+CO
-            // A download task failed to decode an encoded file after downloading.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorFileDoesNotExist:
-            //+CO
-            // The specified file doesn’t exist.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorFileIsDirectory:
-            //+CO
-            // A request for an FTP file resulted in
-            // the server responding that the file is
-            // not a plain file, but a directory.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorFileOutsideSafeArea:
-            //+CO
-            // An internal file operation failed.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorHTTPTooManyRedirects:
-            //+CO
-            // A redirect loop was detected or the
-            // threshold for number of allowable
-            // redirects was exceeded (currently 16).
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorInternationalRoamingOff:
-            //+CO
-            // The attempted connection required
-            // activating a data context while
-            // roaming, but international roaming is
-            // disabled.
-            //-CO
-            result->https_error = HTTPS_RESOURCE_EXHAUSTED;
-            break;
-        case NSURLErrorNetworkConnectionLost:
-            //+CO
-            // A client or server connection was
-            // severed in the middle of an in-progress
-            // load.
-            //-CO
-            //+KM 
-            // this could be a symptom of blocking but will assume not
-            //-KM
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorNoPermissionsToReadFile:
-            //+CO
-            // A resource couldn’t be read because of
-            // insufficient permissions.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorNotConnectedToInternet:
-            //+CO
-            // A network resource was requested, but
-            // an internet connection has not been
-            // established and can’t be established
-            // automatically.
-            //-CO
-            result->https_error = HTTPS_RESOURCE_EXHAUSTED;
-            break;
-        case NSURLErrorRedirectToNonExistentLocation:
-            //+CO
-            // A redirect was specified by way of
-            // server response code, but the server
-            // didn’t accompany this code with a
-            // redirect URL.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorRequestBodyStreamExhausted:
-            //+CO
-            // A body stream was needed but the client
-            // did not provide one.
-            //-CO
-            result->https_error = HTTPS_PARAMETER_ERROR;
-            break;
-        case NSURLErrorResourceUnavailable:
-            //+CO
-            // A requested resource couldn’t be retrieved.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorSecureConnectionFailed:
-            //+CO
-            // An attempt to establish a secure
-            // connection failed for reasons that
-            // can’t be expressed more specifically.
-            //-CO
-            result->https_error = HTTPS_TLS_ERROR;
-            break;
-        case NSURLErrorServerCertificateHasBadDate:
-            //+CO
-            // A server certificate is expired, or is
-            // not yet valid.
-            //-CO
-            result->https_error = HTTPS_TLS_CERT_ERROR;
-            break;
-        case NSURLErrorServerCertificateHasUnknownRoot:
-            //+CO
-            // A server certificate wasn’t signed by
-            // any root server.
-            //-CO
-            result->https_error = HTTPS_TLS_CERT_ERROR;
-            break;
-        case NSURLErrorServerCertificateNotYetValid:
-            //+CO
-            // A server certificate isn’t valid yet.
-            //-CO
-            result->https_error = HTTPS_TLS_CERT_ERROR;
-            break;
-        case NSURLErrorServerCertificateUntrusted:
-            //+CO
-            // A server certificate was signed by a
-            // root server that isn’t trusted.
-            //-CO
-            result->https_error = HTTPS_TLS_CERT_ERROR;
-            break;
-        case NSURLErrorTimedOut:
-            //+CO
-            // An asynchronous operation timed out.
-            //-CO
-            result->https_error = HTTPS_TIMEOUT_ERROR;
-            break;
-        case NSURLErrorUnknown:
-            //+CO
-            // The URL Loading System encountered an
-            // error that it can’t interpret.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorUnsupportedURL:
-            //+CO
-            // A properly formed URL couldn’t be handled by the framework.
-            //-CO
-            result->https_error = HTTPS_PARAMETER_ERROR;
-            break;
-        case NSURLErrorUserAuthenticationRequired:
-            //+CO
-            // Authentication was required to access a resource.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorUserCancelledAuthentication:
-            //+CO
-            // An asynchronous request for
-            // authentication has been canceled by the
-            // user.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        case NSURLErrorZeroByteResource:
-            //+CO
-            // A server reported that a URL has a
-            // non-zero content length, but terminated
-            // the network connection gracefully
-            // without sending any data.
-            //-CO
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        default:
-            result->https_error = HTTPS_GENERIC_ERROR;
-            break;
-        }
-    } else {
+    if (strcmp(error_domain, "NSURLErrorDomain") != 0) {
         // unrecognized error domain
         result->https_error = HTTPS_GENERIC_ERROR;
+        return;
+    }
+    switch(errorCode) {
+        // error codes and descriptions from:
+        // https://developer.apple.com/documentation/foundation/1508628-url_loading_system_error_codes
+        //+KM
+        // it's tedious to list them all and to
+        // list then in order they appear in that
+        // document, but for now that seems like
+        // the best way to make sure that the
+        // important cases are all dealt with.
+        //-KM
+    case NSURLErrorAppTransportSecurityRequiresSecureConnection:
+        //+CO
+        // App Transport Security disallowed a
+        // connection because there is no secure
+        // network connection.
+        //-CO
+        //KM XXX not sure if this is the right https_error
+        result->https_error = HTTPS_TLS_ERROR;
+        break;
+    case NSURLErrorBackgroundSessionInUseByAnotherProcess:
+        //+CO
+        // An app or app extension attempted to
+        // connect to a background session that is
+        // already connected to a process.
+        //-CO
+        result->https_error = HTTPS_RESOURCE_EXHAUSTED;
+        break;
+    case NSURLErrorBackgroundSessionRequiresSharedContainer:
+        //+CO
+        // The shared container identifier of the
+        // URL session configuration is needed but
+        // hasn’t been set.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorBackgroundSessionWasDisconnected:
+        //+CO
+        // The app is suspended or exits while a
+        // background data task is processing.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorBadServerResponse:
+        //+CO
+        // The URL Loading System received bad
+        // data from the server.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorBadURL:
+        //+CO
+        // A malformed URL prevented a URL request from being initiated.
+        //-CO
+        result->https_error = HTTPS_PARAMETER_ERROR;
+        break;
+    case NSURLErrorCallIsActive:
+        //+CO
+        // A connection was attempted while a
+        // phone call was active on a network that
+        // doesn’t support simultaneous phone and
+        // data communication, such as EDGE or
+        // GPRS.
+        //-CO
+        result->https_error = HTTPS_RESOURCE_EXHAUSTED;
+        break;
+    case NSURLErrorCancelled:
+        //+CO
+        // This seems like the expected result
+        // when cancellation of a download has
+        // been requested.  But in that case we
+        // want to make sure that we don't call
+        // the completion callback.
+        //-CO
+        // debug("NSURLErrorCancelled %d\n", request->flags & HTTPS_CANCELLED);
+
+        // we might cancel ourselves for multiple reasons including
+        // received data too big; those are not errors
+        // (but if we cancel ourselves we won't call this routine)
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorCannotCloseFile:
+        //+CO
+        // A download task couldn’t close the downloaded file on disk.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorCannotConnectToHost:
+        //+CO
+        // An attempt to connect to a host failed.
+        // could be either a timeout or connection refused?
+        // (could also be IP blocked)
+        //-CO
+        result->https_error = HTTPS_BLOCKING_ERROR;
+        break;
+    case NSURLErrorCannotCreateFile:
+        //+CO
+        // A download task couldn’t create the
+        // downloaded file on disk because of an
+        // I/O failure.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorCannotDecodeContentData:
+        //+CO
+        // Content data received during a
+        // connection request had an unknown
+        // content encoding.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorCannotDecodeRawData:
+        //+CO
+        // Content data received during a
+        // connection request couldn’t be decoded
+        // for a known content encoding.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorCannotFindHost:
+        //+CO
+        // The host name for a URL couldn’t be resolved.
+        //-CO
+        result->https_error = HTTPS_DNS_ERROR;
+        break;
+    case NSURLErrorCannotLoadFromNetwork:
+        //+CO
+        // A specific request to load an item only
+        // from the cache couldn't be satisfied.
+        //-CO
+        //+KM
+        // Seems like this should not be able
+        // to happen to us since we should
+        // disable any local caches.
+        //-KM
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorCannotMoveFile:
+        //+CO
+        // A downloaded file on disk couldn’t be moved.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorCannotOpenFile:
+        //+CO
+        // A downloaded file on disk couldn’t be opened.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorCannotParseResponse:
+        //+CO
+        // A response to a connection request couldn’t be parsed.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorCannotRemoveFile:
+        //+CO
+        // A downloaded file couldn’t be removed from disk.
+        //-CO
+        //+KM
+        // shouldn't happen, but apparently the URL was accessible.
+        //-KM
+        result->https_error = HTTPS_NO_ERROR;
+        break;
+    case NSURLErrorCannotWriteToFile:
+        //+CO
+        // A download task couldn’t write the file to disk.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorClientCertificateRejected:
+        //+CO
+        // A server certificate was rejected.
+        //-CO
+        result->https_error = HTTPS_TLS_CERT_ERROR;
+        break;
+    case NSURLErrorClientCertificateRequired:
+        //+CO
+        // A client certificate was required to
+        // authenticate an SSL connection during a
+        // connection request.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorDataLengthExceedsMaximum:
+        //+CO
+        // The length of the resource data
+        // exceeded the maximum allowed.
+        //-CO
+        // XXX do we need to detect this and set the truncated flag? (sigh)
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorDataNotAllowed:
+        //+CO
+        // The cellular network disallowed a connection.
+        //-CO
+        result->https_error = HTTPS_RESOURCE_EXHAUSTED;
+        break;
+    case NSURLErrorDNSLookupFailed:
+        //+CO
+        // The host address couldn’t be found via DNS lookup.
+        //-CO
+        result->https_error = HTTPS_DNS_ERROR;
+        break;
+    case NSURLErrorDownloadDecodingFailedMidStream:
+        //+CO
+        // A download task failed to decode an
+        // encoded file during the download.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorDownloadDecodingFailedToComplete:
+        //+CO
+        // A download task failed to decode an encoded file after downloading.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorFileDoesNotExist:
+        //+CO
+        // The specified file doesn’t exist.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorFileIsDirectory:
+        //+CO
+        // A request for an FTP file resulted in
+        // the server responding that the file is
+        // not a plain file, but a directory.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorFileOutsideSafeArea:
+        //+CO
+        // An internal file operation failed.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorHTTPTooManyRedirects:
+        //+CO
+        // A redirect loop was detected or the
+        // threshold for number of allowable
+        // redirects was exceeded (currently 16).
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorInternationalRoamingOff:
+        //+CO
+        // The attempted connection required
+        // activating a data context while
+        // roaming, but international roaming is
+        // disabled.
+        //-CO
+        result->https_error = HTTPS_RESOURCE_EXHAUSTED;
+        break;
+    case NSURLErrorNetworkConnectionLost:
+        //+CO
+        // A client or server connection was
+        // severed in the middle of an in-progress
+        // load.
+        //-CO
+        //+KM
+        // this could be a symptom of blocking but will assume not
+        //-KM
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorNoPermissionsToReadFile:
+        //+CO
+        // A resource couldn’t be read because of
+        // insufficient permissions.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorNotConnectedToInternet:
+        //+CO
+        // A network resource was requested, but
+        // an internet connection has not been
+        // established and can’t be established
+        // automatically.
+        //-CO
+        result->https_error = HTTPS_RESOURCE_EXHAUSTED;
+        break;
+    case NSURLErrorRedirectToNonExistentLocation:
+        //+CO
+        // A redirect was specified by way of
+        // server response code, but the server
+        // didn’t accompany this code with a
+        // redirect URL.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorRequestBodyStreamExhausted:
+        //+CO
+        // A body stream was needed but the client
+        // did not provide one.
+        //-CO
+        result->https_error = HTTPS_PARAMETER_ERROR;
+        break;
+    case NSURLErrorResourceUnavailable:
+        //+CO
+        // A requested resource couldn’t be retrieved.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorSecureConnectionFailed:
+        //+CO
+        // An attempt to establish a secure
+        // connection failed for reasons that
+        // can’t be expressed more specifically.
+        //-CO
+        result->https_error = HTTPS_TLS_ERROR;
+        break;
+    case NSURLErrorServerCertificateHasBadDate:
+        //+CO
+        // A server certificate is expired, or is
+        // not yet valid.
+        //-CO
+        result->https_error = HTTPS_TLS_CERT_ERROR;
+        break;
+    case NSURLErrorServerCertificateHasUnknownRoot:
+        //+CO
+        // A server certificate wasn’t signed by
+        // any root server.
+        //-CO
+        result->https_error = HTTPS_TLS_CERT_ERROR;
+        break;
+    case NSURLErrorServerCertificateNotYetValid:
+        //+CO
+        // A server certificate isn’t valid yet.
+        //-CO
+        result->https_error = HTTPS_TLS_CERT_ERROR;
+        break;
+    case NSURLErrorServerCertificateUntrusted:
+        //+CO
+        // A server certificate was signed by a
+        // root server that isn’t trusted.
+        //-CO
+        result->https_error = HTTPS_TLS_CERT_ERROR;
+        break;
+    case NSURLErrorTimedOut:
+        //+CO
+        // An asynchronous operation timed out.
+        //-CO
+        result->https_error = HTTPS_TIMEOUT_ERROR;
+        break;
+    case NSURLErrorUnknown:
+        //+CO
+        // The URL Loading System encountered an
+        // error that it can’t interpret.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorUnsupportedURL:
+        //+CO
+        // A properly formed URL couldn’t be handled by the framework.
+        //-CO
+        result->https_error = HTTPS_PARAMETER_ERROR;
+        break;
+    case NSURLErrorUserAuthenticationRequired:
+        //+CO
+        // Authentication was required to access a resource.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorUserCancelledAuthentication:
+        //+CO
+        // An asynchronous request for
+        // authentication has been canceled by the
+        // user.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    case NSURLErrorZeroByteResource:
+        //+CO
+        // A server reported that a URL has a
+        // non-zero content length, but terminated
+        // the network connection gracefully
+        // without sending any data.
+        //-CO
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
+    default:
+        result->https_error = HTTPS_GENERIC_ERROR;
+        break;
     }
 }
 
@@ -518,9 +518,9 @@ static int alloc_link(https_request *request)
             links[i].request_id = request_serial++ * NLINK + i;
             links[i].cancelled = NO;
             links[i].internally_cancelled = NO;
-            if (request)
+            if (request) {
                 links[i].request = *request;
-            else {
+            } else {
                 // implement defaults if request==NULL
                 // (bufsize=0, flags=0, timeout_sec=7)
                 memset(&(links[i].request), 0, sizeof(https_request));
@@ -550,24 +550,23 @@ static void free_link(int64_t request_id)
         return;
     }
     int i = request_id % NLINK;
-    if (links[i].request_id == request_id) {
-        links[i].request_id = 0;
-        links[i].cancelled = NO;
-        links[i].internally_cancelled = NO;
-        memset(&(links[i].request), 0, sizeof(https_request));
-        links[i].r = NULL;  // XXX does this decr the ref count for
-                            //     the HTTPSRequest instance?
-        links[i].completion_cb = NULL;
-        if (links[i].result.response_body) {
-            free(links[i].result.response_body);
-            links[i].result.response_body = NULL;
-        }
-        memset((&links[i].result), 0, sizeof(https_result));
-        return;
-    } else {
+    if (links[i].request_id != request_id) {
         // debug("XXX %s links[%d].request_id %" PRId64 " != request_id %" PRId64 "\n",
         //       __func__, i, links[i].request_id, request_id);
+        return;
     }
+    links[i].request_id = 0;
+    links[i].cancelled = NO;
+    links[i].internally_cancelled = NO;
+    memset(&(links[i].request), 0, sizeof(https_request));
+    links[i].r = NULL;  // XXX does this decr the ref count for
+                        //     the HTTPSRequest instance?
+    links[i].completion_cb = NULL;
+    if (links[i].result.response_body) {
+        free(links[i].result.response_body);
+        links[i].result.response_body = NULL;
+    }
+    memset((&links[i].result), 0, sizeof(https_result));
 }
 
 // find the link with the specified request_id
@@ -787,8 +786,7 @@ didCompleteWithError:(NSError *) error
         error_message = [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding];
         error_domain = [[error domain] cStringUsingEncoding:NSUTF8StringEncoding];
         debug("%s my_request_id:%" PRId64 " %s:%s\n", __func__, my_request_id, error_domain, error_message);
-    }
-    else {
+    } else {
         debug("%s my_request_id:%" PRId64 " (task completed no error)\n", __func__, my_request_id);
     }
     if (link_index < 0) {
@@ -803,12 +801,10 @@ didCompleteWithError:(NSError *) error
                 links[link_index].result.https_error = HTTPS_BLOCKING_ERROR;
                 debug("%s my_request_id:%" PRId64 " HTTP code %d indicates possible server-side blocking\n", __func__,
                       my_request_id, statusCode);
-            }
-            else if (links[link_index].internally_cancelled) {
+            } else if (links[link_index].internally_cancelled) {
                 // don't change existing error code if there is one
                 debug("%s: my_request_id:%lld request was internally cancelled\n", __func__, my_request_id);
-            }
-            else {
+            } else {
                 set_https_error(&(links[link_index].result), error_domain, errorCode);
                 debug("%s: my_request_id:%" PRId64 " error:%ld domain:%s message:%s\n", __func__, my_request_id,
                       errorCode, error_domain, error_message);
