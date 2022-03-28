@@ -1794,7 +1794,7 @@ https_request *https_request_alloc(size_t bufsize, unsigned int flags, unsigned 
     return result;
 }
 
-https_request *tryfirst_request_alloc()
+https_request *tryfirst_request_alloc(void)
 {
     https_request *result = https_request_alloc(0, HTTPS_TRYFIRST_FLAGS,
                                                 g_tryfirst_timeout);
@@ -3543,7 +3543,7 @@ void connect_request(network *n, evhttp_request *req)
     c->authority = strdup(evhttp_request_get_uri(c->server_req));
     c->host = strdup(host);
     c->tryfirst_url = strdup(buf);
-    int dns_prefetch_key = dns_prefetch_alloc();
+    int64_t dns_prefetch_key = dns_prefetch_alloc();
     if (dns_prefetch_key >= 0) {
         dns_prefetch(n, dns_prefetch_key, host, n->evdns);
         c->dns_prefetch_key = dns_prefetch_key;
