@@ -128,7 +128,7 @@ typedef struct {
     chunked_range range;
 } direct_request;
 
-#define rdelta(r) ((double)(us_clock() - r->start_time) / 1000.0)
+#define rdelta(r) (r ? ((double)(us_clock() - r->start_time) / 1000.0) : -1)
 
 struct proxy_request {
     network *n;
