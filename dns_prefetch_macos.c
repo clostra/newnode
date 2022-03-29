@@ -32,9 +32,8 @@ void dns_prefetch_callback(DNSServiceRef sdRef, DNSServiceFlags flags, uint32_t 
 
     nn_addrinfo *a = alloc(nn_addrinfo);
     time_t now = time(0);
-    a->ai_addr = calloc(1, sockaddrsize);
+    a->ai_addr = memdup(address, sockaddrsize);
     a->ai_addrlen = sockaddrsize;
-    memcpy((void*)a->ai_addr, (void*)address, sockaddrsize);
     a->ai_expiry = now + ttl;
     debug("%s host:%s address:%s ttl:%d expiry:%s", __func__, result->host, sockaddr_str_addronly(a->ai_addr), ttl, ctime(&a->ai_expiry));
     // this callback will often get called more than once per

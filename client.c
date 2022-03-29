@@ -3443,28 +3443,6 @@ static bool is_ip_literal(const char *host)
     return is_ipv4_literal(host);
 }
 
-int bufferevent_socket_connect_address(bufferevent *bev, sockaddr *address, int addrlen, port_t port)
-{
-    switch (address->sa_family) {
-    case AF_INET: {
-        sockaddr_in v4addr;
-        memcpy(&v4addr, address, addrlen);
-        v4addr.sin_port = htons(port);
-        return bufferevent_socket_connect(bev, (sockaddr*)&v4addr, addrlen);
-    }
-    case AF_INET6: {
-        sockaddr_in6 v6addr;
-        memcpy(&v6addr, address, addrlen);
-        v6addr.sin6_port = htons(port);
-        return bufferevent_socket_connect(bev, (sockaddr*)&v6addr, addrlen);
-    }
-    default:
-        debug("%s: unrecognized family %d\n", __func__, address->sa_family);
-        errno = EAFNOSUPPORT;
-        return -1;
-    }
-}
-
 // this can be used instead of bufferevent_socket_connect_hostname()
 // it will use a prefetched DNS lookup if one is available
 int bufferevent_socket_connect_prefetched_address(connect_req *c, evdns_base *dns_base, unsigned short port)
@@ -3475,13 +3453,14 @@ int bufferevent_socket_connect_prefetched_address(connect_req *c, evdns_base *dn
 
     __block int err = 0;
     choose_addr_cb try_connect = ^bool (nn_addrinfo *nn) {
-        if (!nn || nn->ai_addr == NULL) {
+        if (!nn || !nn->ai_addr) {
             return false;
         }
         sockaddr_storage ss = {};
         sockaddr *s = (sockaddr*)&ss;
         memcpy(s, nn->ai_addr, nn->ai_addrlen);
         sockaddr_set_port(s, port);
+
         //debug("c:%p %s trying to connect to %s\n", c, __func__, sockaddr_str_addronly(nn->ai_addr));
         if (bufferevent_socket_connect(c->direct, s, nn->ai_addrlen) == 0) {
             debug("c:%p %s connecting to %s\n", c, __func__, sockaddr_str_addronly(s));

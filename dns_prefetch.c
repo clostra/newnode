@@ -295,8 +295,7 @@ nn_addrinfo* copy_nn_addrinfo_from_evutil_addrinfo(evutil_addrinfo *p)
     nn_addrinfo *result = alloc(nn_addrinfo);
     result->ai_addrlen = p->ai_addrlen;
     if (p->ai_addr) {
-        result->ai_addr = (sockaddr *)calloc(1, p->ai_addrlen);
-        memcpy(result->ai_addr, p->ai_addr, p->ai_addrlen);
+        result->ai_addr = memdup(p->ai_addr, p->ai_addrlen);
     }
     result->ai_next = copy_nn_addrinfo_from_evutil_addrinfo(p->ai_next);
     return result;
@@ -306,11 +305,11 @@ evutil_addrinfo* copy_evutil_addrinfo_from_nn_addrinfo(nn_addrinfo *nna)
 {
     evutil_addrinfo *first = NULL;
     evutil_addrinfo *prev = NULL;
-    evutil_addrinfo hints;
-    memset(&hints, 0, sizeof(evutil_addrinfo));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
+    evutil_addrinfo hints = {
+        .ai_family = AF_UNSPEC,
+        .ai_socktype = SOCK_STREAM,
+        .ai_protocol = IPPROTO_TCP
+    };
     if (!nna) {
         return NULL;
     }
