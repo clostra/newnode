@@ -2668,17 +2668,15 @@ typedef struct {
 
 char *get_ip_addr_list(connect_req *c)
 {
-    nn_addrinfo *nna;
-
-    nna = dns_prefetch_addrinfo(c->dns_prefetch_key);
+    nn_addrinfo *nna = dns_prefetch_addrinfo(c->dns_prefetch_key);
     if (nna) {
-        char *result = make_ip_addr_list(nna);
-        return result;
+        return make_ip_addr_list(nna);
     }
 
-    evutil_addrinfo *ear;
-    if (newnode_evdns_cache_lookup(c->n->evdns, c->host, NULL, 443, &ear) == 0) {
-        nna = copy_nn_addrinfo_from_evutil_addrinfo(ear);
+    evutil_addrinfo *res;
+    if (newnode_evdns_cache_lookup(c->n->evdns, c->host, NULL, 443, &res) == 0) {
+        nna = copy_nn_addrinfo_from_evutil_addrinfo(res);
+        evutil_freeaddrinfo(res);
         if (nna) {
             char *result = make_ip_addr_list(nna);
             dns_prefetch_freeaddrinfo(nna);
@@ -2687,7 +2685,6 @@ char *get_ip_addr_list(connect_req *c)
     }
 
     debug("c:%p: %s (%.2fms) host:%s no IP addresses available\n", c, __func__, rdelta(c), c->host);
-
     return NULL;
 }
 
@@ -3488,6 +3485,7 @@ int bufferevent_socket_connect_prefetched_address(connect_req *c, evdns_base *dn
     if (newnode_evdns_cache_lookup(dns_base, c->host, NULL, 443, &res) == 0 && res) {
         debug("c:%p %s (%.2fms) host:%s found in evdns cache\n", c, __func__, rdelta(c), c->host);
         nn_addrinfo *result = copy_nn_addrinfo_from_evutil_addrinfo(res);
+        evutil_freeaddrinfo(res);
         if (result) {
             nn_addrinfo *g = choose_addr(result, try_connect);
             if (!g) {

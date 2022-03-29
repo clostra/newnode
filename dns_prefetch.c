@@ -344,7 +344,6 @@ int newnode_evdns_cache_lookup(evdns_base *base, const char *host, evutil_addrin
         .ai_socktype = SOCK_STREAM,
         .ai_protocol = IPPROTO_TCP
     };
-
     if (!hints) {
         hints = &nullhints;
     }
@@ -377,13 +376,14 @@ static void dns_prefetch_internal(network *n, size_t result_index, uint64_t resu
 
     // if this is already in libevent's cache, skip the platform DNS
     // lookup and use the already-cached addresses.
-    evutil_addrinfo *eres;
-    if (newnode_evdns_cache_lookup(base, host, NULL, 443, &eres) == 0) {
-        debug("%s found %s in libevent dns cache (eres:%p)\n", __func__, host, eres);
-        for (evutil_addrinfo *p = eres; p; p=p->ai_next) {
+    evutil_addrinfo *res;
+    if (newnode_evdns_cache_lookup(base, host, NULL, 443, &res) == 0) {
+        debug("%s found %s in libevent dns cache (res:%p)\n", __func__, host, res);
+        for (evutil_addrinfo *p = res; p; p=p->ai_next) {
             debug("%s address=%s\n", __func__, sockaddr_str_addronly(p->ai_addr));
         }
-        dns_prefetch_results[result_index].result = copy_nn_addrinfo_from_evutil_addrinfo(eres);
+        dns_prefetch_results[result_index].result = copy_nn_addrinfo_from_evutil_addrinfo(res);
+        evutil_freeaddrinfo(res);
         return;
     }
     debug("%s did not find %s in libevent dns cache\n", __func__, host);
@@ -457,37 +457,39 @@ void dns_prefetch_store_result(network *n, size_t result_index, uint64_t result_
         dns_prefetch_results[result_index].allocated == true) {
         dns_prefetch_results[result_index].result = nna;
     }
-    if (!fromevdns) {
-        int minttl = minimum_ttl(nna);
+    if (fromevdns) {
+        return;
+    }
+    int minttl = minimum_ttl(nna);
 
-        if (minttl > 0) {
-            // have a ttl obtained from DNS query, add to evdns cache
-            evutil_addrinfo *addrinfo_copy = copy_evutil_addrinfo_from_nn_addrinfo(nna);
+    if (minttl > 0) {
+        // have a ttl obtained from DNS query, add to evdns cache
+        evutil_addrinfo *addrinfo_copy = copy_evutil_addrinfo_from_nn_addrinfo(nna);
+        debug("%s adding (host:%s=>%s) to evdns cache with ttl:%d)\n",
+              __func__, host, make_ip_addr_list(nna), minttl);
+        newnode_evdns_cache_write(n, host, addrinfo_copy, minttl);
+        evutil_freeaddrinfo(addrinfo_copy);
+        return;
+    }
 
-            debug("%s adding (host:%s=>%s) to evdns cache with ttl:%d)\n",
-                  __func__, host, make_ip_addr_list(nna), minttl);
-            newnode_evdns_cache_write(n, host, addrinfo_copy, minttl);
-            evutil_freeaddrinfo(addrinfo_copy);
-        } else {
-            // don't have a ttl from DNS query.  add to evdns cache with
-            // a minimum ttl (like 60 seconds), but don't overwrite
-            // a cache entry that already exists.
-            evutil_addrinfo hints;
-            evutil_addrinfo *result;
-            memset(&hints, 0, sizeof(evutil_addrinfo));
-            hints.ai_socktype = SOCK_STREAM;
-            hints.ai_protocol = IPPROTO_TCP;
-            if (newnode_evdns_cache_lookup(n->evdns, host, &hints, 0, &result) == 0) {
-                debug("%s NOT adding (host:%s=>%s) to evdns cache - already present in cache\n",
-                      __func__, host, make_ip_addr_list(nna));
-            } else {
-                evutil_addrinfo *addrinfo_copy = copy_evutil_addrinfo_from_nn_addrinfo(nna);
-                debug("%s adding (host:%s=>%s) to evdns cache with default ttl:60\n",
-                      __func__, host, make_ip_addr_list(nna));
-                newnode_evdns_cache_write(n, host, addrinfo_copy, 60);
-                evutil_freeaddrinfo(addrinfo_copy);
-            }
-        }
+    // don't have a ttl from DNS query.  add to evdns cache with
+    // a minimum ttl (like 60 seconds), but don't overwrite
+    // a cache entry that already exists.
+    evutil_addrinfo hints = {
+        .ai_socktype = SOCK_STREAM,
+        .ai_protocol = IPPROTO_TCP
+    };
+    evutil_addrinfo *res;
+    if (newnode_evdns_cache_lookup(n->evdns, host, &hints, 0, &res) == 0) {
+        debug("%s NOT adding (host:%s=>%s) to evdns cache - already present in cache\n",
+              __func__, host, make_ip_addr_list(nna));
+        evutil_freeaddrinfo(res);
+    } else {
+        evutil_addrinfo *addrinfo_copy = copy_evutil_addrinfo_from_nn_addrinfo(nna);
+        debug("%s adding (host:%s=>%s) to evdns cache with default ttl:60\n",
+              __func__, host, make_ip_addr_list(nna));
+        newnode_evdns_cache_write(n, host, addrinfo_copy, 60);
+        evutil_freeaddrinfo(addrinfo_copy);
     }
 }
 
