@@ -3209,13 +3209,12 @@ void connect_peer(connect_req *c, bool injector_preference)
 
 // Return whether a request probably failed because of blocking.
 // Blocked requests are cached, other failures are not cached.
-
 bool likely_blocked(https_result *result)
 {
     switch (result->https_error) {
-        // Note: a DNS error might or might not be indicative of
-        // blocking but a lot of DNS errors are temporary.  So they
-        // shouldn't be cached as if they were blocking.
+    // Note: a DNS error might or might not be indicative of
+    // blocking but a lot of DNS errors are temporary.  So they
+    // shouldn't be cached as if they were blocking.
     case HTTPS_TLS_ERROR:
     case HTTPS_TLS_CERT_ERROR:
     case HTTPS_SOCKET_IO_ERROR:
@@ -3234,7 +3233,6 @@ bool likely_blocked(https_result *result)
 // server is still (in most cases) 'success', as getting an authentic 
 // error code to  the browser more quickly is better than doing it 
 // more slowly.
-
 bool direct_likely_to_succeed(https_result *result)
 {
     switch (result->https_error) {
@@ -3272,7 +3270,7 @@ char *https_strerror(https_result *result)
     }
 }
 
-tryfirst_stats *get_tryfirst_stats(const char *host, bool create)
+tryfirst_stats* get_tryfirst_stats(const char *host)
 {
     if (!g_tryfirst) {
         return NULL;
@@ -3284,12 +3282,9 @@ tryfirst_stats *get_tryfirst_stats(const char *host, bool create)
     if (!tryfirst_per_origin_server) {
         tryfirst_per_origin_server = hash_table_create();
     }
-    if (create) {
-        return hash_get_or_insert(tryfirst_per_origin_server, host, ^{
-            return alloc(tryfirst_stats);
-        });
-    }
-    return hash_get(tryfirst_per_origin_server, host);
+    return hash_get_or_insert(tryfirst_per_origin_server, host, ^{
+        return alloc(tryfirst_stats);
+    });
 }
 
 void update_tryfirst_stats(network *n, tryfirst_stats *tfs, https_result *result, char *origin_server)
@@ -3559,7 +3554,7 @@ void connect_request(network *n, evhttp_request *req)
     }
 
     if (g_tryfirst) {
-        tryfirst_stats *tfs = get_tryfirst_stats(host, true);
+        tryfirst_stats *tfs = get_tryfirst_stats(host);
         tryfirst_hint tfh = tfs ? need_tryfirst(host, tfs) : TF_REACHABLE;
 #if FEATURE_RANDOM_SKIP_TRYFIRST
         // If we're acting as a peer, skip tryfirst 25% of the
@@ -3615,7 +3610,7 @@ void connect_request(network *n, evhttp_request *req)
                       c, __func__, c->host, strerror(errno));
                 bufferevent_free(c->direct);
                 c->direct = NULL;
-                goto cleanup;
+                break;
             }
             // concurrently with the above, initiate a "try first" download request
             c->direct_tryfirst_request = tryfirst_request_alloc();
@@ -3756,7 +3751,7 @@ void connect_request(network *n, evhttp_request *req)
         }
 #endif
     }
- cleanup:
+
     evhttp_uri_free(uri);
 }
 
@@ -4031,7 +4026,7 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
 
     debug("c:%p %s (%.2fms) bev:%p SOCKS5 CONNECT %s:%u\n", c, __func__, rdelta(c), bev, host, port);
     if (port == 443 && g_tryfirst && !host_is_ip_literal) {
-        tryfirst_stats *tfs = get_tryfirst_stats(host, true);
+        tryfirst_stats *tfs = get_tryfirst_stats(host);
         tryfirst_hint tfh = tfs ? need_tryfirst(host, tfs) : TF_REACHABLE;
         debug("c:%p %s (%.2fms) need_tryfirst(%s) => %s\n", c, __func__, rdelta(c), host, tryfirst_hint_names[tfh]);
         switch (tfh) {
