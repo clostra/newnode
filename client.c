@@ -3442,7 +3442,7 @@ static bool is_ip_literal(const char *host)
 
 // this can be used instead of bufferevent_socket_connect_hostname()
 // it will use a prefetched DNS lookup if one is available
-int bufferevent_socket_connect_prefetched_address(connect_req *c, evdns_base *dns_base, unsigned short port)
+int bufferevent_socket_connect_prefetched_address(connect_req *c, evdns_base *dns_base, port_t port)
 {
     debug("c:%p %s (%.2fms) host:%s\n", c, __func__, rdelta(c), c->host);
     // trust addresses that we've prefetched ourselves (when
