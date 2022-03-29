@@ -2966,8 +2966,7 @@ void connect_invalid_reply(connect_req *c)
 void connect_done_cb(evhttp_request *req, void *arg)
 {
     connect_req *c = (connect_req *)arg;
-    // this fails if connect_cleanup(c) has already been called, because it has free'd c
-    // debug("c:%p %s (%.2fms) req:%p evcon:%p\n", c, __func__, rdelta(c), req, req ? req->evcon : NULL);
+    debug("c:%p %s (%.2fms) req:%p evcon:%p\n", c, __func__, rdelta(c), req, req ? req->evcon : NULL);
     if (!req) {
         return;
     }
@@ -3479,74 +3478,50 @@ int bufferevent_socket_connect_prefetched_address(connect_req *c, evdns_base *dn
         if (!nn || nn->ai_addr == NULL) {
             return false;
         }
-        sockaddr *s = NULL;
-        // make a copy of the address so we can safely scribble on the port number
-        switch (nn->ai_addr->sa_family) {
-        case AF_INET:
-            s = malloc(nn->ai_addrlen);
-            memcpy(s, nn->ai_addr, nn->ai_addrlen);
-            ((struct sockaddr_in *)s)->sin_port = htons(port);
-            break;
-        case AF_INET6:
-            s = malloc(nn->ai_addrlen);
-            memcpy(s, nn->ai_addr, nn->ai_addrlen);
-            ((struct sockaddr_in6 *)s)->sin6_port = htons(port);
-            break;
-        default:
-            return false;
-        }
+        sockaddr_storage ss = {};
+        sockaddr *s = (sockaddr*)&ss;
+        memcpy(s, nn->ai_addr, nn->ai_addrlen);
+        sockaddr_set_port(s, port);
         //debug("c:%p %s trying to connect to %s\n", c, __func__, sockaddr_str_addronly(nn->ai_addr));
-        int fd = socket(s->sa_family, SOCK_STREAM, 0);
-        if (fd < 0) {
-            err = errno;
-            return false;
-        }
-        if (connect (fd, s, nn->ai_addrlen) == 0) {
-            debug("c:%p %s connect to %s successful\n", c, __func__, sockaddr_str_addronly(s));
-            evutil_make_socket_nonblocking(fd);
-            bufferevent_setfd(c->direct, fd);
-            free(s);
+        if (bufferevent_socket_connect(c->direct, s, nn->ai_addrlen) == 0) {
+            debug("c:%p %s connecting to %s\n", c, __func__, sockaddr_str_addronly(s));
             return true;
         }
         err = errno;
-        debug("c:%p %s: connect to %s failed: %s\n", c, __func__, sockaddr_str_addronly(s), strerror(errno));
-        close(fd);
-        free(s);
+        debug("c:%p %s: connect to %s failed: %s\n", c, __func__, sockaddr_str_addronly(s), strerror(err));
         return false;
     };
     nn_addrinfo *nna = dns_prefetch_addrinfo(c->dns_prefetch_key);
     if (nna) {
         nn_addrinfo *g = choose_addr(nna, try_connect);
-        if (g) {
-            debug("c:%p %s (%.2fms) host:%s now directly connected to prefetched addr %s\n",
-                  c, __func__, rdelta(c), c->host, sockaddr_str_addronly(g->ai_addr));
-            return 0;
-        } else {
+        if (!g) {
             debug("c:%p %s (%.2fms) host:%s unable to connect to any of: %s (%s)\n",
                   c, __func__, rdelta(c), c->host, make_ip_addr_list(nna), strerror(err));
             errno = err;
             return -1;
         }
+        debug("c:%p %s (%.2fms) host:%s now directly connected to prefetched addr %s\n",
+              c, __func__, rdelta(c), c->host, sockaddr_str_addronly(g->ai_addr));
+        return 0;
     }
 
     evutil_addrinfo *res;
     if (newnode_evdns_cache_lookup(dns_base, c->host, NULL, 443, &res) == 0 && res) {
         debug("c:%p %s (%.2fms) host:%s found in evdns cache\n", c, __func__, rdelta(c), c->host);
         nn_addrinfo *result = copy_nn_addrinfo_from_evutil_addrinfo(res);
-        nn_addrinfo *g = choose_addr(result, try_connect);
         if (result) {
-            if (g) {
-                debug("c:%p %s (%.2fms) host:%s directly connected to prefetched addr %s\n",
-                      c, __func__, rdelta(c), c->host, sockaddr_str_addronly(g->ai_addr));
-                dns_prefetch_freeaddrinfo(result);
-                return 0;
-            } else {
+            nn_addrinfo *g = choose_addr(result, try_connect);
+            if (!g) {
                 debug("c:%p %s (%.2fms) host:%s unable to connect to any of: %s (%s)\n",
                       c, __func__, rdelta(c), c->host, make_ip_addr_list(result), strerror(err));
                 dns_prefetch_freeaddrinfo(result);
                 errno = err;
                 return -1;
             }
+            debug("c:%p %s (%.2fms) host:%s directly connected to prefetched addr %s\n",
+                  c, __func__, rdelta(c), c->host, sockaddr_str_addronly(g->ai_addr));
+            dns_prefetch_freeaddrinfo(result);
+            return 0;
         }
     }
 

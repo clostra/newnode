@@ -44,13 +44,13 @@ dns_prefetch_result dns_prefetch_results[NUM_DNS_RESULTS];
 
 static nn_addrinfo* nth_addr(nn_addrinfo *p, int n)
 {
-    if (p == NULL) {
+    if (!p) {
         return NULL;
     }
     if (n == 0) {
         return p;
     }
-    if (p->ai_next == NULL) {
+    if (!p->ai_next) {
         return NULL;
     }
     return nth_addr(p->ai_next, n-1);
@@ -58,11 +58,10 @@ static nn_addrinfo* nth_addr(nn_addrinfo *p, int n)
 
 static int count_addrs(nn_addrinfo *p)
 {
-    int result = 0;
-
-    if (p == NULL) {
+    if (!p) {
         return 0;
     }
+    int result = 0;
     while (p) {
         result++;
         p = p->ai_next;
@@ -137,7 +136,7 @@ static bool has_valid_server_addrs(nn_addrinfo *g)
 // choose address - random selection for now
 nn_addrinfo* choose_addr(nn_addrinfo *g, choose_addr_cb cb)
 {
-    if (g == NULL) {
+    if (!g) {
         return NULL;
     }
     int count = count_addrs(g);
@@ -152,7 +151,7 @@ nn_addrinfo* choose_addr(nn_addrinfo *g, choose_addr_cb cb)
     for (int i = 0; i < count; ++i) {
         int try = (n + (i * (count + 1))) % count;
         nn_addrinfo *result = nth_addr(g, try);
-        if (valid_server_address(result) && cb (result)) {
+        if (valid_server_address(result) && cb(result)) {
             return result;
         }
     }
@@ -187,7 +186,7 @@ static dns_prefetch_result* dns_prefetch_find(int64_t key)
 nn_addrinfo* dns_prefetch_addrinfo(int64_t key)
 {
     dns_prefetch_result *r = dns_prefetch_find(key);
-    if (r != NULL) {
+    if (!r) {
         return r->result;
     }
     return NULL;
@@ -255,23 +254,24 @@ void dns_prefetch_freeaddrinfo(nn_addrinfo *p)
 
 static void dns_prefetch_free_internal(size_t result_index, uint64_t result_id)
 {
-    if (result_index < NUM_DNS_RESULTS) {
-        addrinfo *p, *next;
-
-        if (dns_prefetch_results[result_index].id != result_id) {
-            debug("%s: result_id:%lld does not match [result_index]id:%lld\n",
-                  __func__, (long long) result_id,
-                  (long long) dns_prefetch_results[result_index].id);
-            return;
-        }
-        if (dns_prefetch_results[result_index].allocated == false) {
-            debug("%s: result_index:%lld not allocated\n", __func__, (long long) result_index);
-            return;
-        }
-        dns_prefetch_freeaddrinfo(dns_prefetch_results[result_index].result);
-        dns_prefetch_results[result_index].result = NULL;
-        dns_prefetch_results[result_index].allocated = false;
+    if (result_index >= NUM_DNS_RESULTS) {
+        return;
     }
+    addrinfo *p, *next;
+
+    if (dns_prefetch_results[result_index].id != result_id) {
+        debug("%s: result_id:%lld does not match [result_index]id:%lld\n",
+              __func__, (long long) result_id,
+              (long long) dns_prefetch_results[result_index].id);
+        return;
+    }
+    if (dns_prefetch_results[result_index].allocated == false) {
+        debug("%s: result_index:%lld not allocated\n", __func__, (long long) result_index);
+        return;
+    }
+    dns_prefetch_freeaddrinfo(dns_prefetch_results[result_index].result);
+    dns_prefetch_results[result_index].result = NULL;
+    dns_prefetch_results[result_index].allocated = false;
 }
 
 void dns_prefetch_free(int64_t key)
@@ -282,8 +282,8 @@ void dns_prefetch_free(int64_t key)
     size_t result_index;
     uint64_t result_id;
     PARSE_KEY(key, result_index, result_id);
-    debug("%s key:%lld index:%zd id:%lld\n", __func__, (long long) key, result_index,
-          (long long) result_id);
+    debug("%s key:%lld index:%zd id:%lld\n", __func__, (long long)key, result_index,
+          (long long)result_id);
     dns_prefetch_free_internal(result_index, result_id);
 }
 
@@ -333,7 +333,7 @@ evutil_addrinfo* copy_evutil_addrinfo_from_nn_addrinfo(nn_addrinfo *nna)
 
 void newnode_evdns_cache_write(network *n, const char *nodename, evutil_addrinfo *res, int ttl)
 {
-    evdns_cache_write(n->evdns, (char *) nodename, res, ttl);
+    evdns_cache_write(n->evdns, (char *)nodename, res, ttl);
 }
 
 // allow peek into the evdns cache
@@ -346,7 +346,7 @@ int newnode_evdns_cache_lookup(evdns_base *base, const char *host, evutil_addrin
         .ai_protocol = IPPROTO_TCP
     };
 
-    if (hints == NULL) {
+    if (!hints) {
         hints = &nullhints;
     }
     return evdns_cache_lookup(base, host, hints, port, res);
@@ -361,28 +361,28 @@ static void dns_prefetch_internal(network *n, size_t result_index, uint64_t resu
 {
     // XXX sigh... more failure of cross-compilation to provide working stdint
     debug("%s result_index:%zu result_id:%llu host:%s base:%p\n", __func__, result_index, 
-          (unsigned long long) result_id, host, base);
+          (unsigned long long)result_id, host, base);
     // make sure our cache_entry_id matches cache_index
     // (IOW this entry hasn't been re-allocated to something else)
     if (dns_prefetch_results[result_index].id != result_id) {
         debug("%s id mismatch resul_index.id:%lld result_id:%lld\n", __func__,
-              (long long) dns_prefetch_results[result_index].id,
-              (long long) result_id);
+              (long long)dns_prefetch_results[result_index].id,
+              (long long)result_id);
         return;
     }
 
-    if (dns_prefetch_results[result_index].allocated == false) {
-        debug("%s result_index:%lld not allocated\n", __func__, (long long) result_index);
+    if (!dns_prefetch_results[result_index].allocated) {
+        debug("%s result_index:%lld not allocated\n", __func__, (long long)result_index);
         return;
     }
 
     // if this is already in libevent's cache, skip the platform DNS
     // lookup and use the already-cached addresses.
     evutil_addrinfo *eres;
-    if (newnode_evdns_cache_lookup (base, host, NULL, 443, &eres) == 0) {
+    if (newnode_evdns_cache_lookup(base, host, NULL, 443, &eres) == 0) {
         debug("%s found %s in libevent dns cache (eres:%p)\n", __func__, host, eres);
         for (evutil_addrinfo *p = eres; p; p=p->ai_next) {
-            debug("%s address=%s\n", __func__, sockaddr_str_addronly (p->ai_addr));
+            debug("%s address=%s\n", __func__, sockaddr_str_addronly(p->ai_addr));
         }
         dns_prefetch_results[result_index].result = copy_nn_addrinfo_from_evutil_addrinfo(eres);
         return;
@@ -447,13 +447,13 @@ char *make_ip_addr_list(nn_addrinfo *p)
         p = p->ai_next;
     }
     *ptr++ = '\0';
-    assert((ptr - result) < (int) sizeof(result));
+    assert((ptr - result) < (int)sizeof(result));
     return result;
 }
 
 void dns_prefetch_store_result(network *n, size_t result_index, uint64_t result_id, nn_addrinfo *nna, const char *host, bool fromevdns)
 {
-    debug("%s result_index:%zu result_id:%d host:%s\n", __func__, result_index, (int) result_id, host);
+    debug("%s result_index:%zu result_id:%d host:%s\n", __func__, result_index, (int)result_id, host);
     if (dns_prefetch_results[result_index].id == result_id &&
         dns_prefetch_results[result_index].allocated == true) {
         dns_prefetch_results[result_index].result = nna;
@@ -475,7 +475,7 @@ void dns_prefetch_store_result(network *n, size_t result_index, uint64_t result_
             // a cache entry that already exists.
             evutil_addrinfo hints;
             evutil_addrinfo *result;
-            memset(&hints, 0, sizeof (evutil_addrinfo));
+            memset(&hints, 0, sizeof(evutil_addrinfo));
             hints.ai_socktype = SOCK_STREAM;
             hints.ai_protocol = IPPROTO_TCP;
             if (newnode_evdns_cache_lookup(n->evdns, host, &hints, 0, &result) == 0) {
