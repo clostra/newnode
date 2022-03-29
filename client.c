@@ -2966,7 +2966,8 @@ void connect_invalid_reply(connect_req *c)
 void connect_done_cb(evhttp_request *req, void *arg)
 {
     connect_req *c = (connect_req *)arg;
-    debug("c:%p %s (%.2fms) req:%p evcon:%p\n", c, __func__, rdelta(c), req, req ? req->evcon : NULL);
+    // this fails if connect_cleanup(c) has already been called, because it has free'd c
+    // debug("c:%p %s (%.2fms) req:%p evcon:%p\n", c, __func__, rdelta(c), req, req ? req->evcon : NULL);
     if (!req) {
         return;
     }
@@ -3443,66 +3444,110 @@ static bool is_ip_literal(const char *host)
     return is_ipv4_literal(host);
 }
 
-void bufferevent_socket_connect_address(bufferevent *bev, sockaddr *address, int addrlen, port_t port)
+int bufferevent_socket_connect_address(bufferevent *bev, sockaddr *address, int addrlen, port_t port)
 {
     switch (address->sa_family) {
     case AF_INET: {
         sockaddr_in v4addr;
         memcpy(&v4addr, address, addrlen);
         v4addr.sin_port = htons(port);
-        bufferevent_socket_connect(bev, (sockaddr*)&v4addr, addrlen);
-        break;
+        return bufferevent_socket_connect(bev, (sockaddr*)&v4addr, addrlen);
     }
     case AF_INET6: {
         sockaddr_in6 v6addr;
         memcpy(&v6addr, address, addrlen);
         v6addr.sin6_port = htons(port);
-        bufferevent_socket_connect(bev, (sockaddr*)&v6addr, addrlen);
-        break;
+        return bufferevent_socket_connect(bev, (sockaddr*)&v6addr, addrlen);
     }
     default:
         debug("%s: unrecognized family %d\n", __func__, address->sa_family);
-        break;
+        errno = EAFNOSUPPORT;
+        return -1;
     }
 }
 
 // this can be used instead of bufferevent_socket_connect_hostname()
-// (except that port number is wired to 443)
 // it will use a prefetched DNS lookup if one is available
-void bufferevent_socket_connect_prefetched_address(connect_req *c, evdns_base *dns_base)
+int bufferevent_socket_connect_prefetched_address(connect_req *c, evdns_base *dns_base, unsigned short port)
 {
     debug("c:%p %s (%.2fms) host:%s\n", c, __func__, rdelta(c), c->host);
     // trust addresses that we've prefetched ourselves (when
     // available) over addresses sent to us via CONNECT request
 
+    __block int err = 0;
+    choose_addr_cb try_connect = ^bool (nn_addrinfo *nn) {
+        if (!nn || nn->ai_addr == NULL) {
+            return false;
+        }
+        sockaddr *s = NULL;
+        // make a copy of the address so we can safely scribble on the port number
+        switch (nn->ai_addr->sa_family) {
+        case AF_INET:
+            s = malloc(nn->ai_addrlen);
+            memcpy(s, nn->ai_addr, nn->ai_addrlen);
+            ((struct sockaddr_in *)s)->sin_port = htons(port);
+            break;
+        case AF_INET6:
+            s = malloc(nn->ai_addrlen);
+            memcpy(s, nn->ai_addr, nn->ai_addrlen);
+            ((struct sockaddr_in6 *)s)->sin6_port = htons(port);
+            break;
+        default:
+            return false;
+        }
+        //debug("c:%p %s trying to connect to %s\n", c, __func__, sockaddr_str_addronly(nn->ai_addr));
+        int fd = socket(s->sa_family, SOCK_STREAM, 0);
+        if (fd < 0) {
+            err = errno;
+            return false;
+        }
+        if (connect (fd, s, nn->ai_addrlen) == 0) {
+            debug("c:%p %s connect to %s successful\n", c, __func__, sockaddr_str_addronly(s));
+            evutil_make_socket_nonblocking(fd);
+            bufferevent_setfd(c->direct, fd);
+            free(s);
+            return true;
+        }
+        err = errno;
+        debug("c:%p %s: connect to %s failed: %s\n", c, __func__, sockaddr_str_addronly(s), strerror(errno));
+        close(fd);
+        free(s);
+        return false;
+    };
     nn_addrinfo *nna = dns_prefetch_addrinfo(c->dns_prefetch_key);
     if (nna) {
-        nn_addrinfo *g = choose_addr(nna);
+        nn_addrinfo *g = choose_addr(nna, try_connect);
         if (g) {
-            debug("c:%p %s (%.2fms) host:%s attempting direct connect to prefetched addr %s\n",
+            debug("c:%p %s (%.2fms) host:%s now directly connected to prefetched addr %s\n",
                   c, __func__, rdelta(c), c->host, sockaddr_str_addronly(g->ai_addr));
-            bufferevent_socket_connect_address(c->direct, g->ai_addr, g->ai_addrlen, 443);
-            return;
+            return 0;
+        } else {
+            debug("c:%p %s (%.2fms) host:%s unable to connect to any of: %s (%s)\n",
+                  c, __func__, rdelta(c), c->host, make_ip_addr_list(nna), strerror(err));
+            errno = err;
+            return -1;
         }
     }
 
     evutil_addrinfo *res;
-    if (newnode_evdns_cache_lookup(dns_base, c->host, NULL, 443, &res) == 0) {
+    if (newnode_evdns_cache_lookup(dns_base, c->host, NULL, 443, &res) == 0 && res) {
         debug("c:%p %s (%.2fms) host:%s found in evdns cache\n", c, __func__, rdelta(c), c->host);
         nn_addrinfo *result = copy_nn_addrinfo_from_evutil_addrinfo(res);
-        nn_addrinfo *g = choose_addr(result);
-        if (g && result && g->ai_addr) {
-            debug("%s choose_addr(%s) returned %s\n", __func__, make_ip_addr_list(result),
-                  sockaddr_str_addronly(g->ai_addr));
+        nn_addrinfo *g = choose_addr(result, try_connect);
+        if (result) {
+            if (g) {
+                debug("c:%p %s (%.2fms) host:%s directly connected to prefetched addr %s\n",
+                      c, __func__, rdelta(c), c->host, sockaddr_str_addronly(g->ai_addr));
+                dns_prefetch_freeaddrinfo(result);
+                return 0;
+            } else {
+                debug("c:%p %s (%.2fms) host:%s unable to connect to any of: %s (%s)\n",
+                      c, __func__, rdelta(c), c->host, make_ip_addr_list(result), strerror(err));
+                dns_prefetch_freeaddrinfo(result);
+                errno = err;
+                return -1;
+            }
         }
-        if (g && g->ai_addr) {
-            debug("c:%p %s (%.2fms) host:%s attempting direct connect to evdns cached addr %s\n",
-                  c, __func__, rdelta(c), c->host, sockaddr_str_addronly(g->ai_addr));
-            bufferevent_socket_connect_address(c->direct, g->ai_addr, g->ai_addrlen, 443);
-            dns_prefetch_freeaddrinfo(result);
-            return;
-        }
-        dns_prefetch_freeaddrinfo(result);
     }
 
     // if we don't have any IP addresses for the origin server yet,
@@ -3512,7 +3557,7 @@ void bufferevent_socket_connect_prefetched_address(connect_req *c, evdns_base *d
     // XXX apparently evdns can hang up too long waiting for an AAAA
     //     response so just specify AF_INET for now.
     debug("c:%p %s (%.2fms) using bufferevent_socket_connect_hostname host:%s\n", c, __func__, rdelta(c), c->host);
-    bufferevent_socket_connect_hostname(c->direct, dns_base, AF_INET, c->host, 443);
+    return bufferevent_socket_connect_hostname(c->direct, dns_base, AF_INET, c->host, 443);
 }
 
 void connect_request(network *n, evhttp_request *req)
@@ -3593,7 +3638,12 @@ void connect_request(network *n, evhttp_request *req)
 #if !NO_DIRECT
             bufferevent_setcb(c->direct, NULL, NULL, connect_direct_event_cb, c);
             bufferevent_enable(c->direct, EV_READ);
-            bufferevent_socket_connect_prefetched_address(c, n->evdns);
+            if (bufferevent_socket_connect_prefetched_address(c, n->evdns, 443) < 0) {
+                debug("c:%p %s (%.2fms) bufferevent_socket_connect_prefetched_address failed: %s\n",
+                      c, __func__, rdelta(c), strerror(errno));
+                bufferevent_free(c->direct);
+                c->direct = NULL;
+            }
 #endif // !NO_DIRECT
             break;
 
@@ -3608,7 +3658,13 @@ void connect_request(network *n, evhttp_request *req)
 #if !NO_DIRECT
             bufferevent_setcb(c->direct, NULL, NULL, connect_tryfirst_event_cb, c);
             bufferevent_enable(c->direct, EV_READ);
-            bufferevent_socket_connect_prefetched_address(c, n->evdns);
+            if (bufferevent_socket_connect_prefetched_address(c, n->evdns, 443) < 0) {
+                debug("c:%p %s host:%s bufferevent_socket_connect_prefetched_address failed (%s), skipping try first\n",
+                      c, __func__, c->host, strerror(errno));
+                bufferevent_free(c->direct);
+                c->direct = NULL;
+                goto cleanup;
+            }
             // concurrently with the above, initiate a "try first" download request
             c->direct_tryfirst_request = tryfirst_request_alloc();
             c->tryfirst_pending = true;
@@ -3653,7 +3709,7 @@ void connect_request(network *n, evhttp_request *req)
                         c->direct = NULL;
                         connected(c, direct);
                     } else {
-                        debug("c:%p (%.2fms) %stry first ok; SYN-ACK not yet received from %s; not spliced yet\n",
+                        debug("c:%p (%.2fms) %s try first ok; SYN-ACK not yet received from %s; not spliced yet\n",
                               c, rdelta(c), c->tryfirst_url, c->host);
                     }
                 } else {
@@ -3711,7 +3767,12 @@ void connect_request(network *n, evhttp_request *req)
                     bufferevent_setcb(c->direct, NULL, NULL, connect_direct_event_cb, c);
                     bufferevent_enable(c->direct, EV_READ);
                     // bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, c->host, 443);
-                    bufferevent_socket_connect_prefetched_address(c, n->evdns);
+                    if (bufferevent_socket_connect_prefetched_address(c, n->evdns, 443) < 0) {
+                        debug("c:%p %s (%.2fms) bufferevent_socket_connect_prefetched_address failed: %s\n",
+                              c, __func__, rdelta(c), strerror(errno));
+                        bufferevent_free(c->direct);
+                        c->direct = NULL;
+                    }
                 } else {
                     debug("c:%p %s (%.2fms) %s direct unlikely to succeed\n", c, __func__, rdelta(c),
                           c->tryfirst_url);
@@ -3735,9 +3796,15 @@ void connect_request(network *n, evhttp_request *req)
         connect_peer(c, false);
 #if !NO_DIRECT
         // bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, 443);
-        bufferevent_socket_connect_prefetched_address(c, n->evdns);
+        if (bufferevent_socket_connect_prefetched_address(c, n->evdns, 443) < 0) {
+            debug("c:%p %s (%.2fms) bufferevent_socket_connect_prefetched_address failed: %s\n",
+                  c, __func__, rdelta(c), strerror(errno));
+            bufferevent_free(c->direct);
+            c->direct = NULL;
+        }
 #endif
     }
+ cleanup:
     evhttp_uri_free(uri);
 }
 
@@ -4076,7 +4143,12 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
                         // pending result of the tryfirst attempt, c->direct will contain 0s
                         // when we return it to the caller, and we need to do the connect
                         // ourselves.
-                        bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, c->host, 443);
+                        if (bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, c->host, 443) < 0) {
+                            debug("c:%p %s (%.2fms) bufferevent_socket_connect_hostname(%s) failed: %s\n",
+                                  c, __func__, rdelta(c), c->host, strerror(errno));
+                            bufferevent_free(c->direct);
+                            c->direct = NULL;
+                        }
                     } else {
                         debug("c:%p %s (%.2fms) %s direct unlikely to succeed\n", c, __func__, rdelta(c),
                               c->tryfirst_url);

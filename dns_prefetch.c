@@ -135,7 +135,7 @@ static bool has_valid_server_addrs(nn_addrinfo *g)
 }
 
 // choose address - random selection for now
-nn_addrinfo* choose_addr(nn_addrinfo *g)
+nn_addrinfo* choose_addr(nn_addrinfo *g, choose_addr_cb cb)
 {
     if (g == NULL) {
         return NULL;
@@ -152,7 +152,7 @@ nn_addrinfo* choose_addr(nn_addrinfo *g)
     for (int i = 0; i < count; ++i) {
         int try = (n + (i * (count + 1))) % count;
         nn_addrinfo *result = nth_addr(g, try);
-        if (valid_server_address(result)) {
+        if (valid_server_address(result) && cb (result)) {
             return result;
         }
     }
