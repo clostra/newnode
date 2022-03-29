@@ -301,14 +301,14 @@ void platform_dns_prefetch(network *n, int result_index, unsigned int result_id,
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetchResult(JNIEnv *env, jobject thiz, jint result_index, jint result_id, jstring host, jobjectArray addresses)
 {
-    struct nn_addrinfo *result = NULL;
-    struct nn_addrinfo *lastitem = NULL;
+    nn_addrinfo *result = NULL;
+    nn_addrinfo *lastitem = NULL;
 
     if (result_id < 0) {
         return;
     }
 
-    if (dns_prefetch_results[result_index].id != (unsigned int) result_id ||
+    if (dns_prefetch_results[result_index].id != (unsigned int)result_id ||
         dns_prefetch_results[result_index].allocated != true) {
         return;
     }
@@ -324,25 +324,23 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetc
     for (int i = 0; i < n_addresses; ++i) {
         jstring string = (jstring) ((*env)->GetObjectArrayElement(env, addresses, i));
         const char *utf8string = (*env)->GetStringUTFChars(env, string, 0);
-        struct addrinfo hints;
-        struct addrinfo *temp;
 
         debug("storeDnsPrefetchResult host:%s address[%d] = %s\n", hoststr, i, utf8string);
-        memset(&hints, 0, sizeof(struct addrinfo));
-        hints.ai_family = AF_UNSPEC;
-        hints.ai_flags = AI_NUMERICHOST;
-        int err;
-        temp = NULL;
-        if ((err = getaddrinfo(utf8string, NULL, &hints, &temp)) == 0) {
-            struct nn_addrinfo *n = (struct nn_addrinfo *) calloc(1, sizeof (struct nn_addrinfo));
+        addrinfo hints = {
+            .ai_family = AF_UNSPEC,
+            .ai_flags = AI_NUMERICHOST
+        };
+        addrinfo *temp = NULL;
+        int err = getaddrinfo(utf8string, NULL, &hints, &temp);
+        if (err == 0) {
+            nn_addrinfo *n = alloc(nn_addrinfo);
             debug("storeDnsPrefetchResult i:%d result:%p lastitem:%p n:%p\n", i, result, lastitem, n);
             if (n && temp && temp->ai_addr) {
                 n->ai_addrlen = temp->ai_addrlen;
-                n->ai_addr = (struct sockaddr *) calloc(1, temp->ai_addrlen);
-                memcpy(n->ai_addr, temp->ai_addr, temp->ai_addrlen);
+                n->ai_addr = memdup(temp->ai_addr, temp->ai_addrlen);
                 n->ai_next = NULL;
                 // append to linked list
-                if (result == NULL) {
+                if (!result) {
                     result = n;
                 } else {
                     lastitem->ai_next = n;
@@ -357,7 +355,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetc
         }
         (*env)->ReleaseStringUTFChars(env, string, utf8string);
     }
-    // struct nn_addrinfo *p;
+    // nn_addrinfo *p;
     // debug("storeDnsPrefetchResult:\n");
     // for (p = result; p; p = p->ai_next) {
     //     debug("    %s\n", sockaddr_str(p->ai_addr));
@@ -627,8 +625,8 @@ bool vpn_protect(int socket)
     return r;
 }
 
-int __real_bind(int socket, const struct sockaddr *address, socklen_t length);
-int __wrap_bind(int socket, const struct sockaddr *address, socklen_t length)
+int __real_bind(int socket, const sockaddr *address, socklen_t length);
+int __wrap_bind(int socket, const sockaddr *address, socklen_t length)
 {
     //debug("bind %d %s\n", socket, sockaddr_str(address));
     if (!sockaddr_is_localhost(address, length) && !vpn_protect(socket)) {
@@ -639,8 +637,8 @@ int __wrap_bind(int socket, const struct sockaddr *address, socklen_t length)
     return __real_bind(socket, address, length);
 }
 
-int __real_connect(int socket, const struct sockaddr *address, socklen_t length);
-int __wrap_connect(int socket, const struct sockaddr *address, socklen_t length)
+int __real_connect(int socket, const sockaddr *address, socklen_t length);
+int __wrap_connect(int socket, const sockaddr *address, socklen_t length)
 {
     //debug("connect %d %s\n", socket, sockaddr_str(address));
     sockaddr_storage ss;
@@ -655,8 +653,8 @@ int __wrap_connect(int socket, const struct sockaddr *address, socklen_t length)
     return __real_connect(socket, address, length);
 }
 
-ssize_t __real_sendto(int socket, const void *buffer, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len);
-ssize_t __wrap_sendto(int socket, const void *buffer, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len)
+ssize_t __real_sendto(int socket, const void *buffer, size_t length, int flags, const sockaddr *dest_addr, socklen_t dest_len);
+ssize_t __wrap_sendto(int socket, const void *buffer, size_t length, int flags, const sockaddr *dest_addr, socklen_t dest_len)
 {
     //debug("sendto %d %s\n", socket, sockaddr_str(dest_addr));
     sockaddr_storage ss;
