@@ -4198,7 +4198,7 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
         char host[NI_MAXHOST];
         getnameinfo((sockaddr*)&sin, sizeof(sin), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
         connect_req *c = socks_connect_request(n, bev, host, ntohs(sin.sin_port), true);
-        if (c) {
+        if (c->direct) {
             if (bufferevent_socket_connect(c->direct, (sockaddr*)&sin, sizeof(sin))) {
                 bufferevent_free(c->direct);
                 c->direct = NULL;
@@ -4228,9 +4228,11 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
         bufferevent_setcb(bev, NULL, NULL, socks_event_cb, ctx);
 
         connect_req *c = socks_connect_request(n, bev, host, port, false);
-        if (c) {
+        if (c->direct) {
             // XXX: disable IPv6, since evdns waits for *both* and the v6 request often times out
             // TODO: if the request is from a peer, use LEDBAT: setsocketopt(sock, SOL_SOCKET, O_TRAFFIC_CLASS, SO_TC_BK, sizeof(int))
+            printf("direct:%p evnds:%p host:%s port:%d\n", c->direct, n->evdns, host, port);
+            fprintf(stderr, "direct:%p evnds:%p host:%s port:%d\n", c->direct, n->evdns, host, port);
             if (bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port)) {
                 bufferevent_free(c->direct);
                 c->direct = NULL;
@@ -4260,7 +4262,7 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
         char host[NI_MAXHOST];
         getnameinfo((sockaddr*)&sin6, sizeof(sin6), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
         connect_req *c = socks_connect_request(n, bev, host, ntohs(sin6.sin6_port), true);
-        if (c) {
+        if (c->direct) {
             if (bufferevent_socket_connect(c->direct, (sockaddr*)&sin6, sizeof(sin6))) {
                 bufferevent_free(c->direct);
                 c->direct = NULL;
