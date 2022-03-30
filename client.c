@@ -2766,7 +2766,7 @@ void connect_send_error(connect_req *c, int error, const char *reason)
 void connect_cleanup(connect_req *c)
 {
     debug("c:%p %s (%.2fms)\n", c, __func__, rdelta(c));
-    if (c->dont_free || !connect_exhausted(c) || c->tryfirst_pending ) {
+    if (c->dont_free || !connect_exhausted(c) || c->tryfirst_pending) {
         return;
     }
     assert(!c->server_req);
@@ -3590,6 +3590,8 @@ void connect_request(network *n, evhttp_request *req)
                       c, __func__, rdelta(c), strerror(errno));
                 bufferevent_free(c->direct);
                 c->direct = NULL;
+                connect_send_error(c, 502, "Bad Gateway (unreachable)");
+                connect_cleanup(c);
             }
 #endif // !NO_DIRECT
             break;
@@ -3610,6 +3612,8 @@ void connect_request(network *n, evhttp_request *req)
                       c, __func__, c->host, strerror(errno));
                 bufferevent_free(c->direct);
                 c->direct = NULL;
+                connect_send_error(c, 502, "Bad Gateway (unreachable)");
+                connect_cleanup(c);
                 break;
             }
             // concurrently with the above, initiate a "try first" download request
@@ -3719,6 +3723,8 @@ void connect_request(network *n, evhttp_request *req)
                               c, __func__, rdelta(c), strerror(errno));
                         bufferevent_free(c->direct);
                         c->direct = NULL;
+                        connect_send_error(c, 502, "Bad Gateway (unreachable)");
+                        connect_cleanup(c);
                     }
                 } else {
                     debug("c:%p %s (%.2fms) %s direct unlikely to succeed\n", c, __func__, rdelta(c),
@@ -3748,6 +3754,8 @@ void connect_request(network *n, evhttp_request *req)
                   c, __func__, rdelta(c), strerror(errno));
             bufferevent_free(c->direct);
             c->direct = NULL;
+            connect_send_error(c, 502, "Bad Gateway (unreachable)");
+            connect_cleanup(c);
         }
 #endif
     }
@@ -4013,7 +4021,7 @@ void socks_event_cb(bufferevent *bev, short events, void *ctx)
     bufferevent_free(bev);
 }
 
-bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *host, port_t port, bool host_is_ip_literal)
+connect_req* socks_connect_request(network *n, bufferevent *bev, const char *host, port_t port, bool host_is_ip_literal)
 {
     connect_req *c = alloc(connect_req);
     c->n = n;
@@ -4095,6 +4103,8 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
                                   c, __func__, rdelta(c), c->host, strerror(errno));
                             bufferevent_free(c->direct);
                             c->direct = NULL;
+                            connect_send_error(c, 502, "Bad Gateway (unreachable)");
+                            connect_cleanup(c);
                         }
                     } else {
                         debug("c:%p %s (%.2fms) %s direct unlikely to succeed\n", c, __func__, rdelta(c),
@@ -4121,7 +4131,8 @@ bufferevent* socks_connect_request(network *n, bufferevent *bev, const char *hos
             connect_peer(c, false);
         }
     }
-    return c->direct;
+
+    return c;
 }
 
 void socks_read_req_cb(bufferevent *bev, void *ctx);
@@ -4186,9 +4197,14 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
 
         char host[NI_MAXHOST];
         getnameinfo((sockaddr*)&sin, sizeof(sin), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
-        bufferevent *b = socks_connect_request(n, bev, host, ntohs(sin.sin_port), true);
-        if (b) {
-            bufferevent_socket_connect(b, (sockaddr*)&sin, sizeof(sin));
+        connect_req *c = socks_connect_request(n, bev, host, ntohs(sin.sin_port), true);
+        if (c) {
+            if (bufferevent_socket_connect(c->direct, (sockaddr*)&sin, sizeof(sin))) {
+                bufferevent_free(c->direct);
+                c->direct = NULL;
+                connect_send_error(c, 502, "Bad Gateway (unreachable)");
+                connect_cleanup(c);
+            }
         }
         break;
     }
@@ -4211,11 +4227,16 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
         evbuffer_drain(input, 4 + sizeof(uint8_t) + p[4] + sizeof(port_t));
         bufferevent_setcb(bev, NULL, NULL, socks_event_cb, ctx);
 
-        bufferevent *b = socks_connect_request(n, bev, host, port, false);
-        if (b) {
+        connect_req *c = socks_connect_request(n, bev, host, port, false);
+        if (c) {
             // XXX: disable IPv6, since evdns waits for *both* and the v6 request often times out
             // TODO: if the request is from a peer, use LEDBAT: setsocketopt(sock, SOL_SOCKET, O_TRAFFIC_CLASS, SO_TC_BK, sizeof(int))
-            bufferevent_socket_connect_hostname(b, n->evdns, AF_INET, host, port);
+            if (bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port)) {
+                bufferevent_free(c->direct);
+                c->direct = NULL;
+                connect_send_error(c, 502, "Bad Gateway (unreachable)");
+                connect_cleanup(c);
+            }
         }
         break;
     }
@@ -4238,9 +4259,14 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
 
         char host[NI_MAXHOST];
         getnameinfo((sockaddr*)&sin6, sizeof(sin6), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
-        bufferevent *b = socks_connect_request(n, bev, host, ntohs(sin6.sin6_port), true);
-        if (b) {
-            bufferevent_socket_connect(b, (sockaddr*)&sin6, sizeof(sin6));
+        connect_req *c = socks_connect_request(n, bev, host, ntohs(sin6.sin6_port), true);
+        if (c) {
+            if (bufferevent_socket_connect(c->direct, (sockaddr*)&sin6, sizeof(sin6))) {
+                bufferevent_free(c->direct);
+                c->direct = NULL;
+                connect_send_error(c, 502, "Bad Gateway (unreachable)");
+                connect_cleanup(c);
+            }
         }
         break;
     }
