@@ -4231,8 +4231,6 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
         if (c->direct) {
             // XXX: disable IPv6, since evdns waits for *both* and the v6 request often times out
             // TODO: if the request is from a peer, use LEDBAT: setsocketopt(sock, SOL_SOCKET, O_TRAFFIC_CLASS, SO_TC_BK, sizeof(int))
-            printf("direct:%p evnds:%p host:%s port:%d\n", c->direct, n->evdns, host, port);
-            fprintf(stderr, "direct:%p evnds:%p host:%s port:%d\n", c->direct, n->evdns, host, port);
             if (bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port)) {
                 bufferevent_free(c->direct);
                 c->direct = NULL;
