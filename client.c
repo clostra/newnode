@@ -4131,6 +4131,13 @@ void query_ipinfo(network *n)
     free(request);
 }
 
+void network_ifchange(network *n)
+{
+    g_ifchange_time = time(NULL);
+    timer_cancel(g_ifchange_timer);
+    g_ifchange_timer = timer_start(n, 5 * 1000, ^{ query_ipinfo(n); });
+}
+
 network* client_init(const char *app_name, const char *app_id, port_t *port, https_callback https_cb)
 {
     //network_set_log_level(1);
@@ -4246,20 +4253,12 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         };
         cb();
         timer_repeating(n, 25 * 60 * 1000, cb);
-        maybe_update_ipinfo(n);
         // random intervals between 6-12 hours
         timer_repeating(n, 1000 * (6 + randombytes_uniform(6)) * 60 * 60, ^{ send_heartbeat(n); });
-        query_ipinfo(n);
+        network_ifchange(n);
     });
 
     return n;
-}
-
-void network_change(network *n)
-{
-    g_ifchange_time = time(NULL);
-    timer_cancel(g_ifchange_timer);
-    g_ifchange_timer = timer_start(n, 5 * 1000, ^{ query_ipinfo(n); });
 }
 
 network* newnode_init(const char *app_name, const char *app_id, port_t *port, https_callback https_cb)

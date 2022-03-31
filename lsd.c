@@ -134,8 +134,8 @@ void route_read_cb(evutil_socket_t fd, short events, void *arg)
     char buf[2048];
     recv(fd, buf, sizeof(buf), 0);
     lsd_setup(n);
-    extern void network_change(network *n);
-    network_change(n);
+    extern void network_ifchange(network *n);
+    network_ifchange(n);
 }
 
 void lsd_setup(network *n)
