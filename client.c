@@ -215,6 +215,7 @@ int g_asn = -1;                         // autonomous system number (if returned
 time_t g_ipinfo_timestamp = 0;          // timestamp of last ipinfo request
 time_t g_ipinfo_logged_timestamp = 0;   // last logged g_ipinfo_timestamp
 time_t g_ifchange_time = 0;             // time when network config change was detected (if supported)
+timer *g_ifchange_timer;
 
 bool g_tryfirst = true;                 // set to false to disable try first
 unsigned int g_tryfirst_timeout = 7;    // seconds
@@ -4026,36 +4027,32 @@ port_t recreate_listener(network *n, port_t port)
 
 void maybe_update_ipinfo(network *n)
 {
-    if (g_ip[0] != '\0' && g_country[0] != '\0' && g_asn > 0) {
-        if (g_ipinfo_timestamp > g_ipinfo_logged_timestamp) {
-            char urlbuf[1024];
-            // copy g_ipinfo_timestamp so that the callback below
-            // will record the timestamp that reflects the
-            // data in the URL (which might have changed
-            // by the time the callback gets called)
-            time_t last_ipinfo_timestamp = g_ipinfo_timestamp;
-
-            // update server with a GET request
-            // XXX maybe add timestamp of the ipinfo?
-            snprintf(urlbuf, sizeof(urlbuf),
-                     "https://stats.newnode.com/collect?v=1" // version = 1
-                     "&tid=UA-149896478-2"                   // our id
-                     "&npa=1"                        // disable ad personalization
-                     "&ds=ipinfo.io"                 // data source
-                     "&cid=%"PRIu64""                    // client id
-                     "&geoid=%s"                         // geographical location = country code
-                     "&t=event"                          // hit type = event
-                     "&ni=1"                             // non interaction hit = 1
-                     "&an=%s"                            // application name
-                     "&aid=%s"                           // application ID
-                     "&ec=ipinfo"                        // event category
-                     "&ea=q"                             // event action
-                     "&el=ASN"                           // event label
-                     "&ev=%d",                           // event value (AS #)
-                     g_cid, g_country, g_app_name, g_app_id, g_asn);
-            stats_queue_append(n, urlbuf, NULL);
-        }
+    if (g_ip[0] == '\0' || g_country[0] == '\0' || g_asn == 0) {
+        return;
     }
+    if (g_ipinfo_timestamp <= g_ipinfo_logged_timestamp) {
+        return;
+    }
+    char urlbuf[1024];
+    // update server with a GET request
+    // XXX maybe add timestamp of the ipinfo?
+    snprintf(urlbuf, sizeof(urlbuf),
+             "https://stats.newnode.com/collect?v=1" // version = 1
+             "&tid=UA-149896478-2"                   // our id
+             "&npa=1"                        // disable ad personalization
+             "&ds=ipinfo.io"                 // data source
+             "&cid=%"PRIu64""                    // client id
+             "&geoid=%s"                         // geographical location = country code
+             "&t=event"                          // hit type = event
+             "&ni=1"                             // non interaction hit = 1
+             "&an=%s"                            // application name
+             "&aid=%s"                           // application ID
+             "&ec=ipinfo"                        // event category
+             "&ea=q"                             // event action
+             "&el=ASN"                           // event label
+             "&ev=%d",                           // event value (AS #)
+             g_cid, g_country, g_app_name, g_app_id, g_asn);
+    stats_queue_append(n, urlbuf, NULL);
 }
 
 void query_ipinfo(network *n)
@@ -4249,15 +4246,7 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         };
         cb();
         timer_repeating(n, 25 * 60 * 1000, cb);
-        timer_repeating(n, 1 * 60 * 1000, ^{
-            // wait ~2 minutes in case network config changes several
-            // times in a short interval
-            if ((g_ifchange_time - g_ipinfo_timestamp) > 120) {
-                query_ipinfo(n);
-            } else {
-                maybe_update_ipinfo(n);
-            }
-        });
+        maybe_update_ipinfo(n);
         // random intervals between 6-12 hours
         timer_repeating(n, 1000 * (6 + randombytes_uniform(6)) * 60 * 60, ^{ send_heartbeat(n); });
         query_ipinfo(n);
@@ -4266,9 +4255,11 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
     return n;
 }
 
-void network_change(void)
+void network_change(network *n)
 {
-    g_ifchange_time = time(0);
+    g_ifchange_time = time(NULL);
+    timer_cancel(g_ifchange_timer);
+    g_ifchange_timer = timer_start(n, 5 * 1000, ^{ query_ipinfo(n); });
 }
 
 network* newnode_init(const char *app_name, const char *app_id, port_t *port, https_callback https_cb)
