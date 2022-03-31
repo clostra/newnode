@@ -3114,13 +3114,13 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
     } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
         int err = bufferevent_get_error(bev);
         debug("c:%p (%.2fms) bev:%p error:%d %s\n", c, rdelta(c), bev, err, strerror(err));
-        int code = 502;
-        const char *reason = "Bad Gateway";
         switch (err) {
         case ENETUNREACH: connect_direct_error(c, SOCKS5_REPLY_NETUNREACH, 523, "Net Is Unreachable"); break;
         case EHOSTUNREACH: connect_direct_error(c, SOCKS5_REPLY_HOSTUNREACH, 523, "Origin Is Unreachable"); break;
         case ECONNREFUSED: connect_direct_error(c, SOCKS5_REPLY_CONNREFUSED, 521, "Web Server Is Down"); break;
         case ETIMEDOUT: connect_direct_error(c, SOCKS5_REPLY_TIMEDOUT, 504, "Gateway Timeout"); break;
+        default:
+        case 0: connect_direct_error(c, SOCKS5_REPLY_NETUNREACH, 502, "Bad Gateway (general)"); break;
         }
     } else if (events & BEV_EVENT_CONNECTED) {
         connect_direct_completed(c, bev);
