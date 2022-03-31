@@ -69,7 +69,7 @@ static int count_addrs(nn_addrinfo *p)
     return result;
 }
 
-bool valid_server_address(nn_addrinfo *g)
+bool valid_server_address(sockaddr *s)
 {
     // Which kinds of addresses are valid?
     //
@@ -93,10 +93,6 @@ bool valid_server_address(nn_addrinfo *g)
     // usable.  So for instance an IPv6 address is not valid for us if
     // we don't have any active IPv6 interfaces.
 
-    if (!g) {
-        return false;
-    }
-    sockaddr *s = g->ai_addr;
     if (!s) {
         return false;
     }
@@ -123,16 +119,6 @@ bool valid_server_address(nn_addrinfo *g)
     return true;
 }
 
-static bool has_valid_server_addrs(nn_addrinfo *g)
-{
-    for (nn_addrinfo *p = g; p; p = p->ai_next) {
-        if (valid_server_address(p)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 // choose address - random selection for now
 nn_addrinfo* choose_addr(nn_addrinfo *g, choose_addr_cb cb)
 {
@@ -144,14 +130,11 @@ nn_addrinfo* choose_addr(nn_addrinfo *g, choose_addr_cb cb)
     if (count == 0) {
         return NULL;
     }
-    if (!has_valid_server_addrs(g)) {
-        return NULL;
-    }
     int n = randombytes_uniform(count);
     for (int i = 0; i < count; ++i) {
         int try = (n + (i * (count + 1))) % count;
         nn_addrinfo *result = nth_addr(g, try);
-        if (valid_server_address(result) && cb(result)) {
+        if (cb(result)) {
             return result;
         }
     }
@@ -292,12 +275,15 @@ nn_addrinfo* copy_nn_addrinfo_from_evutil_addrinfo(evutil_addrinfo *p)
     if (!p) {
         return NULL;
     }
-    nn_addrinfo *result = alloc(nn_addrinfo);
-    result->ai_addrlen = p->ai_addrlen;
-    if (p->ai_addr) {
+    nn_addrinfo *result = NULL;
+    if (valid_server_address(p->ai_addr)) {
+        result = alloc(nn_addrinfo);
+        result->ai_addrlen = p->ai_addrlen;
         result->ai_addr = memdup(p->ai_addr, p->ai_addrlen);
+        result->ai_next = copy_nn_addrinfo_from_evutil_addrinfo(p->ai_next);
+    } else {
+        result = copy_nn_addrinfo_from_evutil_addrinfo(p->ai_next);
     }
-    result->ai_next = copy_nn_addrinfo_from_evutil_addrinfo(p->ai_next);
     return result;
 }
 
@@ -360,6 +346,7 @@ static void dns_prefetch_internal(network *n, size_t result_index, uint64_t resu
     // XXX sigh... more failure of cross-compilation to provide working stdint
     debug("%s result_index:%zu result_id:%llu host:%s base:%p\n", __func__, result_index, 
           (unsigned long long)result_id, host, base);
+
     // make sure our cache_entry_id matches cache_index
     // (IOW this entry hasn't been re-allocated to something else)
     if (dns_prefetch_results[result_index].id != result_id) {
@@ -371,6 +358,17 @@ static void dns_prefetch_internal(network *n, size_t result_index, uint64_t resu
 
     if (!dns_prefetch_results[result_index].allocated) {
         debug("%s result_index:%lld not allocated\n", __func__, (long long)result_index);
+        return;
+    }
+
+    sockaddr_storage ss = {};
+    int socklen = sizeof(ss);
+    int error = evutil_parse_sockaddr_port(host, (sockaddr*)&ss, &socklen);
+    if (!error) {
+        nn_addrinfo *result = alloc(nn_addrinfo);
+        result->ai_addrlen = socklen;
+        result->ai_addr = memdup(&ss, socklen);
+        dns_prefetch_results[result_index].result = result;
         return;
     }
 

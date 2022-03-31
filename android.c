@@ -469,9 +469,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
         int link_index = alloc_link(request);
         if (link_index < 0) {
             network_async(n, ^{
-                https_result fake_result;
-                memset(&fake_result, 0, sizeof(https_result));
-                fake_result.https_error = HTTPS_RESOURCE_EXHAUSTED;
+                https_result fake_result = {.https_error = HTTPS_RESOURCE_EXHAUSTED};
                 cb(false, &fake_result);
             });
             return 0;
@@ -482,7 +480,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
         // TODO: use us_clock()
         clock_gettime(CLOCK_REALTIME, &now);
         result->req_time = now.tv_sec;
-        debug("g_https_cb(%s) request_id:%lld link_index:%d\n", url, (long long) request_id, link_index);
+        debug("g_https_cb(%s) request_id:%lld link_index:%d\n", url, (long long)request_id, link_index);
         result->xfer_start_time_us = us_clock();
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshadow"

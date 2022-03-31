@@ -10,7 +10,7 @@
 
 struct nn_addrinfo {
     socklen_t ai_addrlen;
-    struct sockaddr *ai_addr;
+    sockaddr *ai_addr;
     time_t ai_expiry;
     struct nn_addrinfo *ai_next;
 };
@@ -26,7 +26,6 @@ typedef struct {
 extern dns_prefetch_result dns_prefetch_results[];
 
 typedef bool (^choose_addr_cb)(nn_addrinfo *addr);
-bool valid_server_address(nn_addrinfo *g);
 nn_addrinfo *choose_addr(nn_addrinfo *g, choose_addr_cb cb);
 char *make_ip_addr_list(nn_addrinfo *p);
 nn_addrinfo *dns_prefetch_addrinfo(int64_t key);
