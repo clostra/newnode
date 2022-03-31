@@ -3428,7 +3428,6 @@ connect_req* connect_request(connect_req *c, const char *host, port_t port)
 
     if (!host) {
         connect_direct_error(c, SOCKS5_REPLY_AFNOSUPPORT, 400, "Invalid Host");
-        connect_cleanup(c);
         return NULL;
     }
 
