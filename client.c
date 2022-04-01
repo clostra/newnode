@@ -3297,16 +3297,9 @@ const char* tryfirst_hint_names[] = { "REACHABLE", "UNREACHABLE", "CONNECT_BEFOR
 
 static bool is_ip_literal(const char *host)
 {
-    addrinfo hints = {
-        .ai_family = AF_UNSPEC,
-        .ai_flags = AI_NUMERICHOST
-    };
-    addrinfo *res;
-    int error = getaddrinfo(host, NULL, &hints, &res);
-    if (!error) {
-        freeaddrinfo(res);
-    }
-    return !error;
+    sockaddr_storage ss = {};
+    int socklen = sizeof(ss);
+    return !evutil_parse_sockaddr_port(host, (sockaddr*)&ss, &socklen);
 }
 
 tryfirst_hint need_tryfirst(const char *host, tryfirst_stats *tfs)
