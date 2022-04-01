@@ -97,18 +97,16 @@ bool valid_server_address(sockaddr *s)
         return false;
     }
     switch (s->sa_family) {
-    case AF_INET:
-        if (IN_LOOPBACK(((sockaddr_in *)s)->sin_addr.s_addr)) {
-            return false;
-        } else if (IN_MULTICAST(((sockaddr_in *)s)->sin_addr.s_addr)) {
+    case AF_INET: {
+        in_addr_t a = ((sockaddr_in *)s)->sin_addr.s_addr;
+        if (IN_LOOPBACK(a) || IN_MULTICAST(a)) {
             return false;
         }
         break;
+    }
     case AF_INET6: {
         in6_addr *a6 = &(((sockaddr_in6 *)s)->sin6_addr);
-        if (IN6_IS_ADDR_LOOPBACK(a6)) {
-            return false;
-        } else if (IN6_IS_ADDR_MULTICAST(a6)) {
+        if (IN6_IS_ADDR_LOOPBACK(a6) || IN6_IS_ADDR_MULTICAST(a6)) {
             return false;
         }
         break;
