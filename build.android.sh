@@ -15,7 +15,7 @@ function build_android {
 
     cd libsodium
     test -f configure || ./autogen.sh
-    test -f libsodium-android-$CPU_ARCH/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
+    test -f libsodium-android-$SODIUM_CPU_ARCH/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
     cd ..
     LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-android-$SODIUM_CPU_ARCH/include
     LIBSODIUM=libsodium/libsodium-android-$SODIUM_CPU_ARCH/lib/libsodium.a
