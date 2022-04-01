@@ -387,6 +387,43 @@ void close_cb(evhttp_connection *evcon, void *ctx)
     connect_cleanup(c, 0);
 }
 
+bool valid_server_address(const char *host)
+{
+    sockaddr_storage ss = {};
+    int socklen = sizeof(ss);
+    if (evutil_parse_sockaddr_port(host, (sockaddr*)&ss, &socklen)) {
+        // XXX: we should parse dns responses too
+        return true;
+    }
+    const sockaddr *s = (const sockaddr *)&ss;
+    switch (s->sa_family) {
+    case AF_INET: {
+        in_addr_t a = ((sockaddr_in *)s)->sin_addr.s_addr;
+        if (IN_LOOPBACK(a) ||
+            IN_ANY_LOCAL(a) ||
+            IN_PRIVATE(a) ||
+            IN_ZERONET(a) ||
+            IN_MULTICAST(a)) {
+            return false;
+        }
+        break;
+    }
+    case AF_INET6: {
+        in6_addr *a6 = &(((sockaddr_in6 *)s)->sin6_addr);
+        if (IN6_IS_ADDR_LOOPBACK(a6) ||
+            IN6_IS_ADDR_LINKLOCAL(a6) ||
+            IN6_IS_ADDR_SITELOCAL(a6) ||
+            IN6_IS_ADDR_MULTICAST(a6)) {
+            return false;
+        }
+        break;
+    }
+    default:
+        return false;
+    }
+    return true;
+}
+
 void connect_request(network *n, evhttp_request *req)
 {
     char buf[2048];
@@ -408,6 +445,12 @@ void connect_request(network *n, evhttp_request *req)
     } else if (port != 443) {
         evhttp_uri_free(uri);
         evhttp_send_error(req, 403, "Port is not 443");
+        return;
+    }
+
+    if (!valid_server_address(host)) {
+        evhttp_uri_free(uri);
+        evhttp_send_error(req, 403, "Forbidden");
         return;
     }
 
@@ -441,7 +484,6 @@ void http_request_cb(evhttp_request *req, void *arg)
     }
 
     if (req->type == EVHTTP_REQ_TRACE) {
-
         char *useragent = (char*)evhttp_find_header(req->input_headers, "User-Agent");
         debug("%s:%d %s %s %s\n", e_host, e_port, useragent, evhttp_method(req->type), evhttp_request_get_uri(req));
 
@@ -492,6 +534,13 @@ void http_request_cb(evhttp_request *req, void *arg)
     }
 
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(req);
+
+    const char *host = evhttp_uri_get_host(uri);
+    if (!valid_server_address(host)) {
+        evhttp_send_error(req, 403, "Forbidden");
+        return;
+    }
+
     // TODO: could look up uri in a table of {uri => headers}
     evhttp_connection *evcon = make_connection(n, uri);
     if (!evcon) {
