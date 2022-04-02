@@ -32,6 +32,9 @@ typedef struct network network;
 #define memeq(a, b, len) (memcmp(a, b, len) == 0)
 #define memdup(m, len) memcpy(malloc(len), m, len)
 
+#ifndef IN_LINKLOCALNETNUM
+#define IN_LINKLOCALNETNUM (u_int32_t)0xA9FE0000 /* 169.254.0.0 */
+#endif
 #ifndef IN_LINKLOCAL
 #define IN_LINKLOCAL(i) (((u_int32_t)(i) & IN_CLASSB_NET) == IN_LINKLOCALNETNUM)
 #endif
