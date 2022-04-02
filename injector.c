@@ -6,6 +6,9 @@
 #include <errno.h>
 #include <sys/socket.h>
 #include <sys/queue.h>
+#ifdef __linux__
+#include <linux/tcp.h>
+#endif
 
 #include <sodium.h>
 
@@ -460,7 +463,20 @@ void connect_request(network *n, evhttp_request *req)
 
     evhttp_connection_set_closecb(req->evcon, close_cb, c);
 
-    c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
+    evutil_socket_t fd = -1;
+#ifdef TCP_FASTOPEN_CONNECT
+    // TODO: IPv6
+    fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    evutil_make_socket_closeonexec(fd);
+    evutil_make_socket_nonblocking(fd);
+#endif
+    c->direct = bufferevent_socket_new(n->evbase, fd, BEV_OPT_CLOSE_ON_FREE);
+#ifdef TCP_FASTOPEN_CONNECT
+    int on = 1;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_FASTOPEN_CONNECT, (void*)&on, sizeof(on)) < 0) {
+        debug("failed to set TCP_FASTOPEN_CONNECT %d %s\n", errno, strerror(errno));
+    }
+#endif
     bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
     const timeval conn_tv = { 45, 0 };
     bufferevent_set_timeouts(c->direct, &conn_tv, &conn_tv);
