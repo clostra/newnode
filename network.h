@@ -32,8 +32,22 @@ typedef struct network network;
 #define memeq(a, b, len) (memcmp(a, b, len) == 0)
 #define memdup(m, len) memcpy(malloc(len), m, len)
 
+#ifndef IN_LINKLOCAL
+#define IN_LINKLOCAL(i) (((u_int32_t)(i) & IN_CLASSB_NET) == IN_LINKLOCALNETNUM)
+#endif
 #ifndef IN_LOOPBACK
 #define IN_LOOPBACK(a) ((((long int) (a)) & 0xff000000) == 0x7f000000)
+#endif
+#ifndef IN_PRIVATE
+#define IN_PRIVATE(i) ((((u_int32_t)(i) & 0xff000000) == 0x0a000000) || \
+                       (((u_int32_t)(i) & 0xfff00000) == 0xac100000) || \
+                       (((u_int32_t)(i) & 0xffff0000) == 0xc0a80000))
+#endif
+#ifndef IN_LOCAL_GROUP
+#define IN_LOCAL_GROUP(i) (((u_int32_t)(i) & 0xffffff00) == 0xe0000000)
+#endif
+#ifndef IN_ANY_LOCAL
+#define IN_ANY_LOCAL(i) (IN_LINKLOCAL(i) || IN_LOCAL_GROUP(i))
 #endif
 
 #ifdef __APPLE__
