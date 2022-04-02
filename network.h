@@ -41,6 +41,9 @@ typedef struct network network;
 #ifndef IN_LOOPBACK
 #define IN_LOOPBACK(a) ((((long int) (a)) & 0xff000000) == 0x7f000000)
 #endif
+#ifndef IN_ZERONET
+#define IN_ZERONET(i) (((u_int32_t)(i) & 0xff000000) == 0)
+#endif
 #ifndef IN_PRIVATE
 #define IN_PRIVATE(i) ((((u_int32_t)(i) & 0xff000000) == 0x0a000000) || \
                        (((u_int32_t)(i) & 0xfff00000) == 0xac100000) || \
