@@ -398,7 +398,7 @@ bool valid_server_address(const char *host)
     const sockaddr *s = (const sockaddr *)&ss;
     switch (s->sa_family) {
     case AF_INET: {
-        in_addr_t a = ((sockaddr_in *)s)->sin_addr.s_addr;
+        in_addr_t a = ntohl(((sockaddr_in *)s)->sin_addr.s_addr);
         if (IN_LOOPBACK(a) ||
             IN_ANY_LOCAL(a) ||
             IN_PRIVATE(a) ||

@@ -98,7 +98,7 @@ bool valid_server_address(sockaddr *s)
     }
     switch (s->sa_family) {
     case AF_INET: {
-        in_addr_t a = ((sockaddr_in *)s)->sin_addr.s_addr;
+        in_addr_t a = ntohl(((sockaddr_in *)s)->sin_addr.s_addr);
         if (IN_LOOPBACK(a) || IN_MULTICAST(a)) {
             return false;
         }
