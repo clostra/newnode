@@ -24,23 +24,31 @@
 #define MIN(a, b) (((a)<(b))?(a):(b))
 #endif
 
+typedef struct sockaddr sockaddr;
+typedef struct evbuffer evbuffer;
+typedef struct evbuffer_cb_info evbuffer_cb_info;
+typedef struct event_base event_base;
+typedef struct bufferevent bufferevent;
+typedef struct bufferevent_ops bufferevent_ops;
+typedef struct bufferevent_private bufferevent_private;
+
 /* prototypes */
-static int be_utp_enable(struct bufferevent *, short);
-static int be_utp_disable(struct bufferevent *, short);
-static void be_utp_destruct(struct bufferevent *);
-static int be_utp_flush(struct bufferevent *, short, enum bufferevent_flush_mode);
-static int be_utp_ctrl(struct bufferevent *, enum bufferevent_ctrl_op, union bufferevent_ctrl_data *);
+static int be_utp_enable(bufferevent *, short);
+static int be_utp_disable(bufferevent *, short);
+static void be_utp_destruct(bufferevent *);
+static int be_utp_flush(bufferevent *, short, enum bufferevent_flush_mode);
+static int be_utp_ctrl(bufferevent *, enum bufferevent_ctrl_op, union bufferevent_ctrl_data *);
 
 
-struct bufferevent_utp {
-    struct bufferevent_private bev;
+typedef struct {
+    bufferevent_private bev;
     utp_context *utp_ctx;
     utp_socket *utp;
-};
+} bufferevent_utp;
 
-const struct bufferevent_ops bufferevent_ops_utp = {
+const bufferevent_ops bufferevent_ops_utp = {
     "utp",
-    evutil_offsetof(struct bufferevent_utp, bev.bev),
+    evutil_offsetof(bufferevent_utp, bev.bev),
     be_utp_enable,
     be_utp_disable,
     NULL, /* unlink */
@@ -52,32 +60,29 @@ const struct bufferevent_ops bufferevent_ops_utp = {
 
 /* Given a bufferevent, return a pointer to the bufferevent_utp that
  * contains it, if any. */
-struct bufferevent_utp *
-bufferevent_utp_upcast(const struct bufferevent *bev)
+bufferevent_utp* bufferevent_utp_upcast(const bufferevent *bev)
 {
-    struct bufferevent_utp *bev_o;
+    bufferevent_utp *bev_o;
     if (!BEV_IS_UTP(bev))
         return NULL;
     bev_o = (void*)( ((char*)bev) -
-             evutil_offsetof(struct bufferevent_utp, bev.bev));
+             evutil_offsetof(bufferevent_utp, bev.bev));
     EVUTIL_ASSERT(BEV_IS_UTP(&bev_o->bev.bev));
     return bev_o;
 }
 
-void
-bufferevent_socket_set_conn_address_utp_(struct bufferevent *bev,
-    utp_socket *utp)
+void bufferevent_socket_set_conn_address_utp_(bufferevent *bev, utp_socket *utp)
 {
-    struct bufferevent_private *bev_p = BEV_UPCAST(bev);
+    bufferevent_private *bev_p = BEV_UPCAST(bev);
 
     socklen_t len = sizeof(bev_p->conn_address);
 
-    struct sockaddr *addr = (struct sockaddr *)&bev_p->conn_address;
+    sockaddr *addr = (sockaddr *)&bev_p->conn_address;
     if (addr->sa_family != AF_UNSPEC)
         utp_getpeername(utp, addr, &len);
 }
 
-ssize_t evbuffer_utp_write_atmost(struct evbuffer *buffer, utp_socket *utp, ev_ssize_t howmuch)
+ssize_t evbuffer_utp_write_atmost(evbuffer *buffer, utp_socket *utp, ev_ssize_t howmuch)
 {
     ssize_t total = 0;
     while (evbuffer_get_length(buffer)) {
@@ -103,10 +108,10 @@ ssize_t evbuffer_utp_write_atmost(struct evbuffer *buffer, utp_socket *utp, ev_s
     return total;
 }
 
-void bufferevent_utp_flush(struct bufferevent_utp *bev_utp)
+void bufferevent_utp_flush(bufferevent_utp *bev_utp)
 {
-    struct bufferevent *bufev = &bev_utp->bev.bev;
-    struct bufferevent_private *bufev_p = BEV_UPCAST(bufev);
+    bufferevent *bufev = &bev_utp->bev.bev;
+    bufferevent_private *bufev_p = BEV_UPCAST(bufev);
     int res = 0;
     short what = BEV_EVENT_WRITING;
     ev_ssize_t atmost = -1;
@@ -154,14 +159,14 @@ void bufferevent_utp_flush(struct bufferevent_utp *bev_utp)
 
 uint64 utp_on_state_change(utp_callback_arguments *a)
 {
-    struct bufferevent *bufev = (struct bufferevent*)utp_get_userdata(a->socket);
+    bufferevent *bufev = (bufferevent*)utp_get_userdata(a->socket);
     
     if (!bufev) {
         return 0;
     }
     
-    struct bufferevent_private *bufev_p = BEV_UPCAST(bufev);
-    struct bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
+    bufferevent_private *bufev_p = BEV_UPCAST(bufev);
+    bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
 
     bufferevent_incref_and_lock_(bufev);
 
@@ -197,8 +202,8 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
 
 uint64 utp_on_error(utp_callback_arguments *a)
 {
-    struct bufferevent *bufev = (struct bufferevent*)utp_get_userdata(a->socket);
-    struct bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
+    bufferevent *bufev = (bufferevent*)utp_get_userdata(a->socket);
+    bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
 
     bufferevent_incref_and_lock_(bufev);
 
@@ -214,10 +219,10 @@ uint64 utp_on_error(utp_callback_arguments *a)
 
 uint64 utp_on_read(utp_callback_arguments *a)
 {
-    struct bufferevent *bufev = (struct bufferevent*)utp_get_userdata(a->socket);
-    struct bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
-    struct bufferevent_private *bufev_p = BEV_UPCAST(bufev);
-    struct evbuffer *input;
+    bufferevent *bufev = (bufferevent*)utp_get_userdata(a->socket);
+    bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
+    bufferevent_private *bufev_p = BEV_UPCAST(bufev);
+    evbuffer *input;
     int res = 0;
     short what = BEV_EVENT_READING;
 
@@ -254,14 +259,13 @@ uint64 utp_on_read(utp_callback_arguments *a)
     return 0;
 }
 
-static void
-bufferevent_utp_outbuf_cb(struct evbuffer *buf,
-    const struct evbuffer_cb_info *cbinfo,
+static void bufferevent_utp_outbuf_cb(evbuffer *buf,
+    const evbuffer_cb_info *cbinfo,
     void *arg)
 {
-    struct bufferevent *bufev = arg;
-    struct bufferevent_private *bufev_p = BEV_UPCAST(bufev);
-    struct bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
+    bufferevent *bufev = arg;
+    bufferevent_private *bufev_p = BEV_UPCAST(bufev);
+    bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
 
     if (cbinfo->n_added &&
         (bufev->enabled & EV_WRITE) &&
@@ -275,10 +279,9 @@ bufferevent_utp_outbuf_cb(struct evbuffer *buf,
     }
 }
 
-static void
-bufferevent_utp_readcb(evutil_socket_t fd, short event, void *arg)
+static void bufferevent_utp_readcb(evutil_socket_t fd, short event, void *arg)
 {
-    struct bufferevent *bufev = arg;
+    bufferevent *bufev = arg;
     short what = BEV_EVENT_READING;
 
     bufferevent_incref_and_lock_(bufev);
@@ -293,10 +296,9 @@ bufferevent_utp_readcb(evutil_socket_t fd, short event, void *arg)
     bufferevent_decref_and_unlock_(bufev);
 }
 
-static void
-bufferevent_utp_writecb(evutil_socket_t fd, short event, void *arg)
+static void bufferevent_utp_writecb(evutil_socket_t fd, short event, void *arg)
 {
-    struct bufferevent *bufev = arg;
+    bufferevent *bufev = arg;
     short what = BEV_EVENT_WRITING;
 
     bufferevent_incref_and_lock_(bufev);
@@ -311,12 +313,10 @@ bufferevent_utp_writecb(evutil_socket_t fd, short event, void *arg)
     bufferevent_decref_and_unlock_(bufev);
 }
 
-int
-bufferevent_utp_connect(struct bufferevent *bev,
-    const struct sockaddr *sa, int socklen)
+int bufferevent_utp_connect(bufferevent *bev, const sockaddr *sa, int socklen)
 {
-    struct bufferevent_utp *bev_utp = bufferevent_utp_upcast(bev);
-    struct bufferevent_private *bufev_p = BEV_UPCAST(bev);
+    bufferevent_utp *bev_utp = bufferevent_utp_upcast(bev);
+    bufferevent_private *bufev_p = BEV_UPCAST(bev);
 
     utp_socket *utp;
     int r = 0;
@@ -359,12 +359,12 @@ done:
     return result;
 }
 
-struct bufferevent *
-bufferevent_utp_new(struct event_base *base, utp_context *utp_ctx, utp_socket *utp, int options)
+bufferevent *
+bufferevent_utp_new(event_base *base, utp_context *utp_ctx, utp_socket *utp, int options)
 {
-    struct bufferevent_utp *bev_utp = mm_calloc(1, sizeof(struct bufferevent_utp));
-    struct bufferevent *bufev;
-    struct bufferevent_private *bev_p;
+    bufferevent_utp *bev_utp = mm_calloc(1, sizeof(bufferevent_utp));
+    bufferevent *bufev;
+    bufferevent_private *bev_p;
 
     if (!bev_utp) {
         return NULL;
@@ -402,15 +402,15 @@ bufferevent_utp_new(struct event_base *base, utp_context *utp_ctx, utp_socket *u
     return bufev;
 }
 
-utp_socket* bufferevent_get_utp(const struct bufferevent *bev)
+utp_socket* bufferevent_get_utp(const bufferevent *bev)
 {
-    struct bufferevent_utp *bev_utp = bufferevent_utp_upcast(bev);
-    struct bufferevent_private *bufev_p = BEV_UPCAST(bev);
+    bufferevent_utp *bev_utp = bufferevent_utp_upcast(bev);
+    bufferevent_private *bufev_p = BEV_UPCAST(bev);
     return bev_utp->utp;
 }
 
 static int
-be_utp_enable(struct bufferevent *bufev, short event)
+be_utp_enable(bufferevent *bufev, short event)
 {
     if (event & EV_READ &&
         bufferevent_add_event_(&bufev->ev_read, &bufev->timeout_read) == -1)
@@ -422,9 +422,9 @@ be_utp_enable(struct bufferevent *bufev, short event)
 }
 
 static int
-be_utp_disable(struct bufferevent *bufev, short event)
+be_utp_disable(bufferevent *bufev, short event)
 {
-    struct bufferevent_private *bufev_p = BEV_UPCAST(bufev);
+    bufferevent_private *bufev_p = BEV_UPCAST(bufev);
     if (event & EV_READ) {
         if (event_del(&bufev->ev_read) == -1)
             return -1;
@@ -438,9 +438,9 @@ be_utp_disable(struct bufferevent *bufev, short event)
 }
 
 static void
-be_utp_destruct(struct bufferevent *bufev)
+be_utp_destruct(bufferevent *bufev)
 {
-    struct bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
+    bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
 
     if ((bev_utp->bev.options & BEV_OPT_CLOSE_ON_FREE) && bev_utp->utp != NULL) {
         utp_set_userdata(bev_utp->utp, NULL);
@@ -449,17 +449,17 @@ be_utp_destruct(struct bufferevent *bufev)
 }
 
 static int
-be_utp_flush(struct bufferevent *bev, short iotype,
+be_utp_flush(bufferevent *bev, short iotype,
     enum bufferevent_flush_mode mode)
 {
     return 0;
 }
 
 static int
-be_utp_ctrl(struct bufferevent *bev, enum bufferevent_ctrl_op op,
+be_utp_ctrl(bufferevent *bev, enum bufferevent_ctrl_op op,
     union bufferevent_ctrl_data *data)
 {
-    struct bufferevent_utp *bev_utp = bufferevent_utp_upcast(bev);
+    bufferevent_utp *bev_utp = bufferevent_utp_upcast(bev);
     switch (op) {
     case BEV_CTRL_GET_FD:
         data->fd = EVUTIL_INVALID_SOCKET;
