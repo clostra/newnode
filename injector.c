@@ -453,7 +453,7 @@ void connect_request(network *n, evhttp_request *req)
 
     if (!valid_server_address(host)) {
         evhttp_uri_free(uri);
-        evhttp_send_error(req, 403, "Forbidden");
+        evhttp_send_error(req, 523, "Origin Is Unreachable");
         return;
     }
 
@@ -553,7 +553,7 @@ void http_request_cb(evhttp_request *req, void *arg)
 
     const char *host = evhttp_uri_get_host(uri);
     if (!valid_server_address(host)) {
-        evhttp_send_error(req, 403, "Forbidden");
+        evhttp_send_error(req, 523, "Origin Is Unreachable");
         return;
     }
 
