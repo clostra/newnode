@@ -88,7 +88,7 @@ ssize_t evbuffer_filter(evbuffer *in, evbuffer *out, bool (^cb)(evbuffer_iovec v
     return evbuffer_add_buffer(out, in);
 }
 
-ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
+ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, evbuffer *response, obfoo *o)
 {
     //debug("%s: o:%p state:%d incoming:%d\n", __func__, o, o->state, o->incoming);
     switch(o->state) {
@@ -124,7 +124,7 @@ ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
             crypto_generichash_update(&state, o->rx, sizeof(o->rx));
             crypto_generichash_final(&state, o->synchash, sizeof(o->synchash));
 
-            obfoo_write_intro(o, o->output);
+            obfoo_write_intro(o, response);
         } else {
             evbuffer *buf = evbuffer_new();
 
@@ -145,7 +145,7 @@ ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
             obfoo_encrypt(o, r.buf, r.buf, crypt_len);
             evbuffer_add(buf, r.buf, crypt_len);
 
-            evbuffer_add_buffer(o->output, buf);
+            evbuffer_add_buffer(response, buf);
             evbuffer_free(buf);
 
             // encrypt vc from the other side
@@ -204,7 +204,7 @@ ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o)
             randombytes_buf(r.ci.pad, r.ci.pad_len);
             size_t crypt_len = sizeof(r.ci) + r.ci.pad_len;
             obfoo_encrypt(o, r.buf, r.buf, crypt_len);
-            evbuffer_add(o->output, r.buf, crypt_len);
+            evbuffer_add(response, r.buf, crypt_len);
         }
 
         o->state = OF_STATE_DISCARD;
