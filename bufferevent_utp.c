@@ -18,6 +18,7 @@
 
 #include "libevent/mm-internal.h"
 
+#include "obfoo.h"
 #include "bufferevent_utp.h"
 
 #ifndef MIN
@@ -44,6 +45,9 @@ typedef struct {
     bufferevent_private bev;
     utp_context *utp_ctx;
     utp_socket *utp;
+    obfoo *obfoo;
+    evbuffer *obfoo_input;
+    evbuffer *obfoo_output;
 } bufferevent_utp;
 
 const bufferevent_ops bufferevent_ops_utp = {
@@ -81,16 +85,12 @@ void bufferevent_socket_set_conn_address_utp_(bufferevent *bev, utp_socket *utp)
     }
 }
 
-ssize_t evbuffer_utp_write_atmost(evbuffer *buffer, utp_socket *utp, ev_ssize_t howmuch)
+ssize_t evbuffer_utp_write(evbuffer *buffer, utp_socket *utp)
 {
     ssize_t total = 0;
     while (evbuffer_get_length(buffer)) {
         // the libutp interface for write is Very Broken.
         ssize_t len = MIN(1500, evbuffer_get_length(buffer));
-        len = MIN(len, howmuch);
-        if (len == 0) {
-            break;
-        }
         unsigned char *buf = evbuffer_pullup(buffer, len);
         ssize_t r = utp_write(utp, buf, len);
         if (r < 0) {
@@ -101,13 +101,12 @@ ssize_t evbuffer_utp_write_atmost(evbuffer *buffer, utp_socket *utp, ev_ssize_t 
             break;
         }
         total += r;
-        howmuch -= r;
         evbuffer_drain(buffer, r);
     }
     return total;
 }
 
-void bufferevent_utp_flush(bufferevent_utp *bev_utp)
+static void bufferevent_utp_flush_to_obfoo(bufferevent_utp *bev_utp)
 {
     bufferevent *bufev = &bev_utp->bev.bev;
     bufferevent_private *bufev_p = BEV_UPCAST(bufev);
@@ -124,7 +123,12 @@ void bufferevent_utp_flush(bufferevent_utp *bev_utp)
     ssize_t res = -1;
     if (evbuffer_get_length(bufev->output)) {
         evbuffer_unfreeze(bufev->output, 1);
-        ssize_t res = evbuffer_utp_write_atmost(bufev->output, bev_utp->utp, atmost);
+        // XXX: observe "atmost" to support rate-limiting
+        size_t len = evbuffer_get_length(bufev->output);
+        res = obfoo_output_filter(bufev->output, bev_utp->obfoo_output, bev_utp->obfoo);
+        if (res == 0) {
+            res = len;
+        }
         evbuffer_freeze(bufev->output, 1);
         if (res == -1) {
             what |= BEV_EVENT_ERROR;
@@ -156,6 +160,23 @@ void bufferevent_utp_flush(bufferevent_utp *bev_utp)
     bufferevent_decref_and_unlock_(bufev);
 }
 
+static void bufferevent_utp_flush_to_utp(bufferevent_utp *bev_utp)
+{
+    bufferevent *bufev = &bev_utp->bev.bev;
+
+    bufferevent_incref_and_lock_(bufev);
+
+    evbuffer_unfreeze(bev_utp->obfoo_output, 1);
+    ssize_t fres = evbuffer_utp_write(bev_utp->obfoo_output, bev_utp->utp);
+    evbuffer_freeze(bev_utp->obfoo_output, 1);
+    if (fres == -1) {
+        bufferevent_disable(bufev, EV_WRITE);
+        bufferevent_run_eventcb_(bufev, BEV_EVENT_WRITING | BEV_EVENT_ERROR, 0);
+    }
+
+    bufferevent_decref_and_unlock_(bufev);
+}
+
 uint64 utp_on_state_change(utp_callback_arguments *a)
 {
     bufferevent *bufev = (bufferevent*)utp_get_userdata(a->socket);
@@ -173,6 +194,7 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
     case UTP_STATE_CONNECT:
         bufev_p->connecting = 0;
         bufferevent_socket_set_conn_address_utp_(bufev, bev_utp->utp);
+        bufferevent_utp_flush_to_utp(bev_utp);
         bufferevent_run_eventcb_(bufev, BEV_EVENT_CONNECTED, 0);
         if (!(bufev->enabled & EV_WRITE) ||
             bufev_p->write_suspended) {
@@ -181,7 +203,7 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
         }
         BEV_RESET_GENERIC_WRITE_TIMEOUT(bufev);
     case UTP_STATE_WRITABLE:
-        bufferevent_utp_flush(bev_utp);
+        bufferevent_utp_flush_to_obfoo(bev_utp);
         break;
     case UTP_STATE_EOF:
         bufferevent_disable(bufev, EV_READ);
@@ -227,11 +249,9 @@ uint64 utp_on_read(utp_callback_arguments *a)
 
     BEV_RESET_GENERIC_READ_TIMEOUT(bufev);
 
-    evbuffer *input = bufev->input;
-
-    evbuffer_unfreeze(input, 0);
-    int res = evbuffer_add(input, a->buf, a->len);
-    evbuffer_freeze(input, 0);
+    evbuffer_unfreeze(bev_utp->obfoo_input, 0);
+    int res = evbuffer_add(bev_utp->obfoo_input, a->buf, a->len);
+    evbuffer_freeze(bev_utp->obfoo_input, 0);
 
     if (res == -1) {
         /* error case */
@@ -239,7 +259,24 @@ uint64 utp_on_read(utp_callback_arguments *a)
         goto error;
     }
 
-    bufferevent_decrement_read_buckets_(bufev_p, res);
+    of_state s = bev_utp->obfoo->state;
+
+    evbuffer_unfreeze(bufev->input, 0);
+    ssize_t fres = obfoo_input_filter(bev_utp->obfoo_input, bufev->input, bev_utp->obfoo_output, bev_utp->obfoo);
+    evbuffer_freeze(bufev->input, 0);
+
+    if (fres < 0) {
+        /* error case */
+        what |= BEV_EVENT_ERROR;
+        goto error;
+    }
+
+    bufferevent_decrement_read_buckets_(bufev_p, fres);
+
+    if (s < OF_STATE_DISCARD && bev_utp->obfoo->state >= OF_STATE_DISCARD) {
+        // writing is now possible, flush
+        bufferevent_utp_flush_to_obfoo(bev_utp);
+    }
 
     /* Invoke the user callback - must always be called last */
     bufferevent_trigger_nolock_(bufev, EV_READ, 0);
@@ -256,9 +293,7 @@ uint64 utp_on_read(utp_callback_arguments *a)
     return 0;
 }
 
-static void bufferevent_utp_outbuf_cb(evbuffer *buf,
-    const evbuffer_cb_info *cbinfo,
-    void *arg)
+static void bufferevent_utp_outbuf_cb(evbuffer *buf, const evbuffer_cb_info *cbinfo, void *arg)
 {
     bufferevent *bufev = arg;
     bufferevent_private *bufev_p = BEV_UPCAST(bufev);
@@ -272,7 +307,7 @@ static void bufferevent_utp_outbuf_cb(evbuffer *buf,
         if (bufferevent_add_event_(&bufev->ev_write, &bufev->timeout_write) == -1) {
             /* Should we log this? */
         }
-        bufferevent_utp_flush(bev_utp);
+        bufferevent_utp_flush_to_obfoo(bev_utp);
     }
 }
 
@@ -304,6 +339,15 @@ static void bufferevent_utp_writecb(evutil_socket_t fd, short event, void *arg)
     bufferevent_decref_and_unlock_(bufev);
 }
 
+static void obfoo_output_cb(evbuffer *buf, const evbuffer_cb_info *cbinfo, void *arg)
+{
+    bufferevent *bufev = arg;
+    bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
+    if (cbinfo->n_added) {
+        bufferevent_utp_flush_to_utp(bev_utp);
+    }
+}
+
 int bufferevent_utp_connect(bufferevent *bev, const sockaddr *sa, int socklen)
 {
     bufferevent_utp *bev_utp = bufferevent_utp_upcast(bev);
@@ -326,12 +370,15 @@ int bufferevent_utp_connect(bufferevent *bev, const sockaddr *sa, int socklen)
     }
     if (sa) {
         int r = utp_connect(utp, sa, socklen);
-        if (r < 0)
+        if (r < 0) {
             goto freesock;
+        }
     }
     utp_set_userdata(utp, bev);
     bev_utp->utp = utp;
     if (!be_utp_enable(bev, EV_WRITE)) {
+        bev_utp->obfoo->incoming = false;
+        obfoo_write_intro(bev_utp->obfoo, bev_utp->obfoo_output);
         bufev_p->connecting = 1;
         result = 0;
         goto done;
@@ -373,6 +420,12 @@ bufferevent_utp_new(event_base *base, utp_context *utp_ctx, utp_socket *utp, int
         bufferevent_enable_locking_(bufev, NULL);
     }
 
+    bev_utp->obfoo = obfoo_new();
+    bev_utp->obfoo_input = evbuffer_new();
+    bev_utp->obfoo_output = evbuffer_new();
+    evbuffer_add_cb(bev_utp->obfoo_output, obfoo_output_cb, bufev);
+    bev_utp->obfoo->incoming = true;
+
     if (utp) {
         utp_set_userdata(utp, bufev);
         bev_utp->utp = utp;
@@ -398,8 +451,7 @@ utp_socket* bufferevent_get_utp(const bufferevent *bev)
     return bev_utp->utp;
 }
 
-static int
-be_utp_enable(bufferevent *bufev, short event)
+static int be_utp_enable(bufferevent *bufev, short event)
 {
     if (event & EV_READ &&
         bufferevent_add_event_(&bufev->ev_read, &bufev->timeout_read) == -1) {
@@ -412,8 +464,7 @@ be_utp_enable(bufferevent *bufev, short event)
     return 0;
 }
 
-static int
-be_utp_disable(bufferevent *bufev, short event)
+static int be_utp_disable(bufferevent *bufev, short event)
 {
     bufferevent_private *bufev_p = BEV_UPCAST(bufev);
     if (event & EV_READ) {
@@ -430,8 +481,7 @@ be_utp_disable(bufferevent *bufev, short event)
     return 0;
 }
 
-static void
-be_utp_destruct(bufferevent *bufev)
+static void be_utp_destruct(bufferevent *bufev)
 {
     bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
 
@@ -439,17 +489,18 @@ be_utp_destruct(bufferevent *bufev)
         utp_set_userdata(bev_utp->utp, NULL);
         utp_close(bev_utp->utp);
     }
+    evbuffer_free(bev_utp->obfoo_input);
+    evbuffer_free(bev_utp->obfoo_output);
+    obfoo_free(bev_utp->obfoo);
 }
 
-static int
-be_utp_flush(bufferevent *bev, short iotype,
+static int be_utp_flush(bufferevent *bev, short iotype,
     enum bufferevent_flush_mode mode)
 {
     return 0;
 }
 
-static int
-be_utp_ctrl(bufferevent *bev, enum bufferevent_ctrl_op op,
+static int be_utp_ctrl(bufferevent *bev, enum bufferevent_ctrl_op op,
     union bufferevent_ctrl_data *data)
 {
     bufferevent_utp *bev_utp = bufferevent_utp_upcast(bev);
