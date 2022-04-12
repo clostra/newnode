@@ -67,7 +67,7 @@ else
     FLAGS="$FLAGS -O0 -fsanitize=address -fsanitize=undefined"
 fi
 
-CFLAGS="$FLAGS -std=gnu11"
+CFLAGS="$FLAGS -std=gnu17"
 if uname|grep -i Darwin >/dev/null; then
     CFLAGS="$CFLAGS -fobjc-arc -fmodules"
 fi
