@@ -96,7 +96,7 @@ clang $CFLAGS $CDEPS -c dns_prefetch.c
 case $(uname -s):$(uname -m) in
     Darwin:*) 
         clang $CFLAGS $CDEPS -c dns_prefetch_macos.c
-        clang -framework Foundation $CDEPS -I. -o client client_main.c ios/HTTPSRequest.m *.o $CLIBS -lpthread
+        clang -framework Foundation $CFLAGS $CDEPS -I. -o client client_main.c ios/HTTPSRequest.m *.o $CLIBS -lpthread
         ;;
     *)
         clang $CFLAGS $CDEPS -c https_wget.c
