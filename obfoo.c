@@ -85,7 +85,11 @@ ssize_t evbuffer_filter(evbuffer *in, evbuffer *out, bool (^cb)(evbuffer_iovec v
             break;
         }
     }
-    return evbuffer_add_buffer(out, in);
+    ssize_t len = evbuffer_get_length(in);
+    if (evbuffer_add_buffer(out, in) < 0) {
+        return -1;
+    }
+    return len;
 }
 
 ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, evbuffer *response, obfoo *o)
@@ -215,7 +219,7 @@ ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, evbuffer *response, obfo
         evbuffer_drain(in, discard);
         o->discarding -= discard;
         if (o->discarding) {
-            return discard;
+            return 0;
         }
         o->state = OF_STATE_READY;
     }
