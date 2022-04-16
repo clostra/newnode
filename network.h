@@ -10,7 +10,10 @@
 
 #include "utp.h"
 
-typedef struct network network;
+#define TS(x) typedef struct x x
+#define TE(x) typedef enum x x
+
+TS(network);
 
 #include "dht.h"
 
@@ -70,39 +73,41 @@ typedef struct network network;
     (((a)->s6_addr[0] == 0xfc) || ((a)->s6_addr[0] == 0xfd))
 #endif
 
-typedef struct event_base event_base;
-typedef struct evdns_base evdns_base;
-typedef struct event event;
-typedef struct evhttp evhttp;
-typedef struct evhttp_bound_socket evhttp_bound_socket;
-typedef struct evwatch evwatch;
-typedef struct evwatch_check_cb_info evwatch_check_cb_info;
-typedef struct evwatch_prepare_cb_info evwatch_prepare_cb_info;
-typedef struct evdns_getaddrinfo_request evdns_getaddrinfo_request;
-typedef struct evbuffer evbuffer;
-typedef struct evbuffer_ptr evbuffer_ptr;
-typedef struct evbuffer_iovec evbuffer_iovec;
-typedef struct evbuffer_cb_info evbuffer_cb_info;
-typedef struct evbuffer_file_segment evbuffer_file_segment;
-typedef struct evconnlistener evconnlistener;
-typedef struct evutil_addrinfo evutil_addrinfo;
-typedef struct bufferevent bufferevent;
-typedef struct timeval timeval;
-typedef struct timespec timespec;
-typedef struct tm tm;
-typedef struct addrinfo addrinfo;
-typedef struct rlimit rlimit;
-typedef struct in_addr in_addr;
-typedef struct in6_addr in6_addr;
-typedef struct sockaddr sockaddr;
-typedef struct sockaddr_in sockaddr_in;
-typedef struct sockaddr_in6 sockaddr_in6;
-typedef struct sockaddr_un sockaddr_un;
-typedef struct sockaddr_storage sockaddr_storage;
-typedef enum bufferevent_flush_mode bufferevent_flush_mode;
-typedef enum bufferevent_filter_result bufferevent_filter_result;
+TS(event_base);
+TS(evdns_base);
+TS(event);
+TS(evhttp);
+TS(evhttp_bound_socket);
+TS(evwatch);
+TS(evwatch_check_cb_info);
+TS(evwatch_prepare_cb_info);
+TS(evdns_getaddrinfo_request);
+TS(evbuffer);
+TS(evbuffer_ptr);
+TS(evbuffer_iovec);
+TS(evbuffer_cb_info);
+TS(evbuffer_file_segment);
+TS(evconnlistener);
+TS(evutil_addrinfo);
+TS(bufferevent);
+TS(utp_iovec);
+TS(timeval);
+TS(timespec);
+TS(tm);
+TS(addrinfo);
+TS(rlimit);
+TS(in_addr);
+TS(in6_addr);
+TS(sockaddr);
+TS(sockaddr_in);
+TS(sockaddr_in6);
+TS(sockaddr_un);
+TS(sockaddr_storage);
+TS(ip);
+TE(bufferevent_flush_mode);
+TE(bufferevent_filter_result);
 typedef in_port_t port_t;
-typedef struct ip ip;
+
 
 #include "timer.h"
 
