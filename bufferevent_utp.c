@@ -125,7 +125,7 @@ static void bufferevent_utp_flush_to_obfoo(bufferevent_utp *bev_utp)
         evbuffer_unfreeze(bufev->output, 1);
         // XXX: observe "atmost" to support rate-limiting
         size_t len = evbuffer_get_length(bufev->output);
-        res = obfoo_output_filter(bufev->output, bev_utp->obfoo_output, bev_utp->obfoo);
+        res = obfoo_output_filter(bev_utp->obfoo, bufev->output, bev_utp->obfoo_output);
         if (res == 0) {
             res = len;
         }
@@ -262,7 +262,7 @@ uint64 utp_on_read(utp_callback_arguments *a)
     of_state s = bev_utp->obfoo->state;
 
     evbuffer_unfreeze(bufev->input, 0);
-    ssize_t fres = obfoo_input_filter(bev_utp->obfoo_input, bufev->input, bev_utp->obfoo_output, bev_utp->obfoo);
+    ssize_t fres = obfoo_input_filter(bev_utp->obfoo, bev_utp->obfoo_input, bufev->input, bev_utp->obfoo_output);
     evbuffer_freeze(bufev->input, 0);
 
     if (fres < 0) {

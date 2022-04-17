@@ -97,7 +97,7 @@ void ubev_read_cb(bufferevent *bev, void *ctx)
 {
     //debug("%s %p\n", __func__, ctx);
     utp_bufferevent* u = (utp_bufferevent*)ctx;
-    obfoo_output_filter(bufferevent_get_input(u->bev), u->utp_output, u->obfoo);
+    obfoo_output_filter(u->obfoo, bufferevent_get_input(u->bev), u->utp_output);
 }
 
 void utp_bufferevent_flush(utp_bufferevent *u)
@@ -142,7 +142,7 @@ uint64 utp_on_read(utp_callback_arguments *a)
         }
         evbuffer_add(u->utp_input, a->buf, a->len);
         of_state s = u->obfoo->state;
-        if (obfoo_input_filter(u->utp_input, bufferevent_get_output(u->bev), u->utp_output, u->obfoo) < 0) {
+        if (obfoo_input_filter(u->obfoo, u->utp_input, bufferevent_get_output(u->bev), u->utp_output) < 0) {
             ubev_utp_close(u);
             ubev_bev_graceful_close(u);
             return 0;
