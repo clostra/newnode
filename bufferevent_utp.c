@@ -234,10 +234,11 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
             bufferevent_utp_bevout_to_obout(bev_utp);
             break;
         case UTP_STATE_EOF:
-            bev_utp->pending_eof = true;
             if (bufev->enabled & EV_READ) {
                 bufferevent_disable(bufev, EV_READ);
                 bufferevent_run_eventcb_(bufev, BEV_EVENT_READING | BEV_EVENT_EOF, 0);
+            } else {
+                bev_utp->pending_eof = true;
             }
             break;
         case UTP_STATE_DESTROYING:
