@@ -335,9 +335,7 @@ static void bufferevent_utp_bevout_cb(evbuffer *buf, const evbuffer_cb_info *cbi
         !bufev_p->write_suspended) {
         /* Somebody added data to the buffer, and we would like to
          * write, and we were not writing.  So, start writing. */
-        if (bufferevent_add_event_(&bufev->ev_write, &bufev->timeout_write) == -1) {
-            /* Should we log this? */
-        }
+        BEV_RESET_GENERIC_WRITE_TIMEOUT(bufev);
         bufferevent_utp_bevout_to_obout(bev_utp);
     }
 }
@@ -479,9 +477,7 @@ static int be_utp_enable(bufferevent *bufev, short event)
     bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
     bool error_sent = false;
     if (event & EV_READ) {
-        if (bufferevent_add_event_(&bufev->ev_read, &bufev->timeout_read) == -1) {
-            return -1;
-        }
+        BEV_RESET_GENERIC_READ_TIMEOUT(bufev);
         if (bev_utp->pending_eof) {
             event_active(&bufev->ev_read, BEV_EVENT_EOF, 0);
         } else if (bev_utp->pending_error) {
@@ -490,9 +486,7 @@ static int be_utp_enable(bufferevent *bufev, short event)
         }
     }
     if (event & EV_WRITE) {
-        if (bufferevent_add_event_(&bufev->ev_write, &bufev->timeout_write) == -1) {
-            return -1;
-        }
+        BEV_RESET_GENERIC_WRITE_TIMEOUT(bufev);
         if (bev_utp->utp_writable) {
             error_sent = error_sent || !bufferevent_utp_bevout_to_obout(bev_utp);
         }
