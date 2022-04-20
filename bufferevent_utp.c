@@ -192,7 +192,7 @@ static bool bufferevent_utp_flush_to_utp(bufferevent_utp *bev_utp)
 
 const char* utp_state(int state)
 {
-	switch (state) {
+    switch (state) {
     case UTP_STATE_CONNECT: return "UTP_STATE_CONNECT";
     case UTP_STATE_WRITABLE : return "UTP_STATE_WRITABLE";
     case UTP_STATE_EOF: return "UTP_STATE_EOF";
