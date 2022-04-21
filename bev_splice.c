@@ -13,6 +13,7 @@ void bev_splice_shutdown_write(bufferevent *bev)
 {
     if (!evbuffer_get_length(bufferevent_get_output(bev))) {
         bufferevent_disable(bev, EV_WRITE);
+        // XXX: utp_shutdown()
         shutdown(bufferevent_getfd(bev), SHUT_WR);
     }
 }
@@ -64,6 +65,7 @@ void bev_splice_event_cb(bufferevent *bev, short events, void *ctx)
         evbuffer_clear(bufferevent_get_input(other));
         evbuffer_clear(bufferevent_get_output(bev));
         bufferevent_disable(other, EV_READ);
+        // XXX: utp_shutdown()
         shutdown(bufferevent_getfd(other), SHUT_RD);
     }
 
