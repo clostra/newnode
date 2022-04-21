@@ -1,4 +1,4 @@
-void HTTPSRequest_init();
+void HTTPSRequest_init(void);
 
 @interface HTTPSRequest: NSObject <NSURLSessionDelegate, NSURLSessionTaskDelegate, NSURLSessionDataDelegate>
 - (void)cancel;

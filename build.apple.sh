@@ -65,7 +65,7 @@ function build_apple {
     clang $CFLAGS -c dht/dht.c -o dht_dht.o
     for file in bev_splice.c base64.c client.c dht.c d2d.c dns_prefetch.c dns_prefetch_macos.c http.c log.c lsd.c \
                 icmp_handler.c hash_table.c merkle_tree.c network.c \
-                obfoo.c sha1.c timer.c thread.c utp_bufferevent.c; do
+                obfoo.c sha1.c timer.c thread.c bufferevent_utp.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBUGSNAG_CFLAGS -c $file
     done
     clang -fobjc-arc -fobjc-weak -fmodules $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBUGSNAG_CFLAGS -I ios -c ios/NetService.m ios/Bluetooth.m ios/HTTPSRequest.m ios/Framework/NewNode.m
@@ -104,19 +104,19 @@ function build_apple {
 }
 
 cd libsodium
-test -f libsodium-apple/ios/lib/libsodium.a || ./dist-build/apple-xcframework.sh
+test -d libsodium-apple/Clibsodium.xcframework || ./dist-build/apple-xcframework.sh
 cd ..
+LIBSODIUM_XCF=libsodium/libsodium-apple/Clibsodium.xcframework
 
 
 XCODEDIR=$(xcode-select -p)
 
 
-LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-apple/ios-simulators/include
-LIBSODIUM=libsodium/libsodium-apple/ios-simulators/lib/libsodium.a
+LIBSODIUM_CFLAGS=-I$LIBSODIUM_XCF/ios-arm64_i386_x86_64-simulator/Headers
+LIBSODIUM=$LIBSODIUM_XCF/ios-arm64_i386_x86_64-simulator/libsodium.a
 BASEDIR="${XCODEDIR}/Platforms/iPhoneSimulator.platform/Developer"
 SDK="${BASEDIR}/SDKs/iPhoneSimulator.sdk"
 IOS_SIMULATOR_VERSION_MIN=11
-
 ARCH=x86_64
 CFLAGS="-arch $ARCH -isysroot ${SDK} -mios-simulator-version-min=${IOS_SIMULATOR_VERSION_MIN}"
 LDFLAGS="-arch $ARCH"
@@ -124,31 +124,24 @@ TRIPLE=x86_64-apple-darwin
 build_apple
 
 
-LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-apple/ios/include
-LIBSODIUM=libsodium/libsodium-apple/ios/lib/libsodium.a
+LIBSODIUM_CFLAGS=-I$LIBSODIUM_XCF/ios-arm64_armv7_armv7s/Headers
+LIBSODIUM=$LIBSODIUM_XCF/ios-arm64_armv7_armv7s/libsodium.a
 BASEDIR="${XCODEDIR}/Platforms/iPhoneOS.platform/Developer"
 SDK="${BASEDIR}/SDKs/iPhoneOS.sdk"
 IOS_VERSION_MIN=11
-
 ARCH=arm64
 CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -mios-version-min=${IOS_VERSION_MIN} -fembed-bitcode"
 LDFLAGS="-arch $ARCH"
 TRIPLE=arm-apple-darwin
 build_apple
 
-rm -rf fat-apple-darwin
-mkdir fat-apple-darwin
-lipo -create arm-apple-darwin/libnewnode.a -output fat-apple-darwin/libnewnode.a
-
-
-LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-apple/catalyst/include
-LIBSODIUM=libsodium/libsodium-apple/catalyst/lib/libsodium.a
+LIBSODIUM_CFLAGS=-I$LIBSODIUM_XCF/ios-arm64_x86_64-maccatalyst/Headers
+LIBSODIUM=$LIBSODIUM_XCF/ios-arm64_x86_64-maccatalyst/libsodium.a
 BASEDIR="${XCODEDIR}/Platforms/MacOSX.platform/Developer"
 SDK="${BASEDIR}/SDKs/MacOSX.sdk"
-
 ARCH=x86_64
-CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -target $ARCH-apple-ios13.0-macabi -fembed-bitcode -iframework $SDK/System/iOSSupport/System/Library/Frameworks"
-LDFLAGS="-arch $ARCH  -target $ARCH-apple-ios13.0-macabi"
+CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -target $ARCH-apple-ios-macabi -fembed-bitcode -iframework $SDK/System/iOSSupport/System/Library/Frameworks"
+LDFLAGS="-arch $ARCH  -target $ARCH-apple-ios-macabi"
 TRIPLE=x86_64-apple-ios
 build_apple
 
@@ -181,7 +174,7 @@ echo 'module NewNode {
 XCFRAMEWORK="NewNode.xcframework"
 rm -rf $XCFRAMEWORK || true
 XCFRAMEWORK_ARGS=""
-for triple in x86_64-apple-darwin fat-apple-darwin x86_64-apple-ios; do
+for triple in x86_64-apple-darwin arm-apple-darwin x86_64-apple-ios; do
   XCFRAMEWORK_ARGS+=" -library $triple/libnewnode.a"
   XCFRAMEWORK_ARGS+=" -headers $headers"
 done

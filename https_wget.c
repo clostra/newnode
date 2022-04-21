@@ -740,7 +740,6 @@ void evdns_callback(int errcode, evutil_addrinfo *addr, void *ptr)
 
 void platform_dns_prefetch(network *n, int result_index, unsigned int result_id, const char *host)
 {
-    evdns_getaddrinfo_request *req;
     evutil_addrinfo hints = {
         .ai_family = AF_UNSPEC,
         .ai_socktype = SOCK_STREAM,
@@ -751,7 +750,7 @@ void platform_dns_prefetch(network *n, int result_index, unsigned int result_id,
     ud->id = result_id;
     ud->index = result_index;
     ud->n = n;
-    req = evdns_getaddrinfo(n->evdns, host, NULL, &hints, evdns_callback, ud);
+    evdns_getaddrinfo_request *req = evdns_getaddrinfo(n->evdns, host, NULL, &hints, evdns_callback, ud);
     if (!req) {
         debug("evdns_getaddrinfo(%s) returned immediately\n", host);
     }

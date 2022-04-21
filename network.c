@@ -34,7 +34,7 @@
 #include "timer.h"
 #include "network.h"
 #include "icmp_handler.h"
-#include "utp_bufferevent.h"
+#include "bufferevent_utp.h"
 
 
 uint64 utp_on_firewall(utp_callback_arguments *a)
@@ -73,7 +73,7 @@ void map6to4(const in6_addr *in, in_addr *out)
     ((uint8_t *)&out->s_addr)[3] = in->s6_addr[15];
 }
 
-int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
+ssize_t udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
 {
     ddebug("sendto(%zd, %s)\n", len, sockaddr_str(sa));
 
@@ -410,6 +410,12 @@ void evdns_log_cb(int severity, const char *msg)
 
 bufferevent* create_bev(event_base *base, void *userdata)
 {
+    network *n = (network*)userdata;
+    if (n->accepting_utp) {
+        utp_socket *s = n->accepting_utp;
+        n->accepting_utp = NULL;
+        return bufferevent_utp_new(base, n->utp, s, BEV_OPT_CLOSE_ON_FREE);
+    }
     return bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 }
 
@@ -584,20 +590,25 @@ bool sockaddr_is_localhost(const sockaddr *sa, socklen_t salen)
     return false;
 }
 
-bool bufferevent_is_localhost(const bufferevent *bev)
+int bufferevent_getpeername(const bufferevent *bev, sockaddr *address, socklen_t *address_len)
 {
-    int fd = bufferevent_getfd((bufferevent*)bev);
-    sockaddr_storage ss;
-    socklen_t len = sizeof(ss);
-    getsockname(fd, (sockaddr *)&ss, &len);
-    // AF_LOCAL is from socketpair(), which means utp
-    if (ss.ss_family == AF_LOCAL) {
-        return false;
+    if (BEV_IS_UTP(bev)) {
+        utp_socket *utp = bufferevent_get_utp(bev);
+        return utp_getpeername(utp, address, address_len);
     }
-    return sockaddr_is_localhost((sockaddr *)&ss, len);
+    evutil_socket_t fd = bufferevent_getfd((bufferevent*)bev);
+    return getpeername(fd, address, address_len);
 }
 
-void set_max_nofile()
+bool bufferevent_is_localhost(const bufferevent *bev)
+{
+    sockaddr_storage ss;
+    socklen_t len = sizeof(ss);
+    bufferevent_getpeername(bev, (sockaddr*)&ss, &len);
+    return sockaddr_is_localhost((sockaddr*)&ss, len);
+}
+
+void set_max_nofile(void)
 {
     rlimit nofile;
     int r = getrlimit(RLIMIT_NOFILE, &nofile);
@@ -716,7 +727,7 @@ network* network_setup(char *address, port_t port)
     }
     // don't add any content type automatically
     evhttp_set_default_content_type(n->http, NULL);
-    evhttp_set_bevcb(n->http, create_bev, NULL);
+    evhttp_set_bevcb(n->http, create_bev, n);
     evhttp_set_timeout(n->http, 50);
 
     if (evthread_make_base_notifiable(n->evbase)) {

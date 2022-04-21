@@ -6,6 +6,9 @@
 #include <errno.h>
 #include <sys/socket.h>
 #include <sys/queue.h>
+#ifdef __linux__
+#include <linux/tcp.h>
+#endif
 
 #include <sodium.h>
 
@@ -24,7 +27,6 @@
 #include "bev_splice.h"
 #include "merkle_tree.h"
 #include "stall_detector.h"
-#include "utp_bufferevent.h"
 #include "http.h"
 
 
@@ -387,6 +389,43 @@ void close_cb(evhttp_connection *evcon, void *ctx)
     connect_cleanup(c, 0);
 }
 
+bool valid_server_address(const char *host)
+{
+    sockaddr_storage ss = {};
+    int socklen = sizeof(ss);
+    if (evutil_parse_sockaddr_port(host, (sockaddr*)&ss, &socklen)) {
+        // XXX: we should parse dns responses too
+        return true;
+    }
+    const sockaddr *s = (const sockaddr *)&ss;
+    switch (s->sa_family) {
+    case AF_INET: {
+        in_addr_t a = ntohl(((sockaddr_in *)s)->sin_addr.s_addr);
+        if (IN_LOOPBACK(a) ||
+            IN_ANY_LOCAL(a) ||
+            IN_PRIVATE(a) ||
+            IN_ZERONET(a) ||
+            IN_MULTICAST(a)) {
+            return false;
+        }
+        break;
+    }
+    case AF_INET6: {
+        in6_addr *a6 = &(((sockaddr_in6 *)s)->sin6_addr);
+        if (IN6_IS_ADDR_LOOPBACK(a6) ||
+            IN6_IS_ADDR_LINKLOCAL(a6) ||
+            IN6_IS_ADDR_SITELOCAL(a6) ||
+            IN6_IS_ADDR_MULTICAST(a6)) {
+            return false;
+        }
+        break;
+    }
+    default:
+        return false;
+    }
+    return true;
+}
+
 void connect_request(network *n, evhttp_request *req)
 {
     char buf[2048];
@@ -411,13 +450,32 @@ void connect_request(network *n, evhttp_request *req)
         return;
     }
 
+    if (!valid_server_address(host)) {
+        evhttp_uri_free(uri);
+        evhttp_send_error(req, 523, "Origin Is Unreachable");
+        return;
+    }
+
     connect_req *c = alloc(connect_req);
     c->server_req = req;
     c->start_time = us_clock();
 
     evhttp_connection_set_closecb(req->evcon, close_cb, c);
 
-    c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
+    evutil_socket_t fd = -1;
+#ifdef TCP_FASTOPEN_CONNECT
+    // TODO: IPv6
+    fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    evutil_make_socket_closeonexec(fd);
+    evutil_make_socket_nonblocking(fd);
+#endif
+    c->direct = bufferevent_socket_new(n->evbase, fd, BEV_OPT_CLOSE_ON_FREE);
+#ifdef TCP_FASTOPEN_CONNECT
+    int on = 1;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_FASTOPEN_CONNECT, (void*)&on, sizeof(on)) < 0) {
+        debug("failed to set TCP_FASTOPEN_CONNECT %d %s\n", errno, strerror(errno));
+    }
+#endif
     bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
     const timeval conn_tv = { 45, 0 };
     bufferevent_set_timeouts(c->direct, &conn_tv, &conn_tv);
@@ -441,7 +499,6 @@ void http_request_cb(evhttp_request *req, void *arg)
     }
 
     if (req->type == EVHTTP_REQ_TRACE) {
-
         char *useragent = (char*)evhttp_find_header(req->input_headers, "User-Agent");
         debug("%s:%d %s %s %s\n", e_host, e_port, useragent, evhttp_method(req->type), evhttp_request_get_uri(req));
 
@@ -492,6 +549,13 @@ void http_request_cb(evhttp_request *req, void *arg)
     }
 
     const evhttp_uri *uri = evhttp_request_get_evhttp_uri(req);
+
+    const char *host = evhttp_uri_get_host(uri);
+    if (!valid_server_address(host)) {
+        evhttp_send_error(req, 523, "Origin Is Unreachable");
+        return;
+    }
+
     // TODO: could look up uri in a table of {uri => headers}
     evhttp_connection *evcon = make_connection(n, uri);
     if (!evcon) {
@@ -606,4 +670,4 @@ static_assert(20 >= crypto_generichash_BYTES_MIN, "dht hash must fit in generich
     return network_loop(n);
 }
 
-void network_change() {}
+void network_ifchange(network *n) {}

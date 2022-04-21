@@ -9,7 +9,7 @@
 
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
-int64_t do_https(network *, unsigned short port, const char *url, https_complete_callback cb, https_request *request);
+int64_t do_https(network *, port_t port, const char *url, https_complete_callback cb, https_request *request);
 #endif
 
 https_request *https_request_alloc(size_t bufsize, unsigned int flags, unsigned timeout);

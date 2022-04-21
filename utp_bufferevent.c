@@ -97,7 +97,7 @@ void ubev_read_cb(bufferevent *bev, void *ctx)
 {
     //debug("%s %p\n", __func__, ctx);
     utp_bufferevent* u = (utp_bufferevent*)ctx;
-    obfoo_output_filter(bufferevent_get_input(u->bev), u->utp_output, u->obfoo);
+    obfoo_output_filter(u->obfoo, bufferevent_get_input(u->bev), u->utp_output);
 }
 
 void utp_bufferevent_flush(utp_bufferevent *u)
@@ -142,7 +142,7 @@ uint64 utp_on_read(utp_callback_arguments *a)
         }
         evbuffer_add(u->utp_input, a->buf, a->len);
         of_state s = u->obfoo->state;
-        if (obfoo_input_filter(u->utp_input, bufferevent_get_output(u->bev), u->obfoo) < 0) {
+        if (obfoo_input_filter(u->obfoo, u->utp_input, bufferevent_get_output(u->bev), u->utp_output) < 0) {
             ubev_utp_close(u);
             ubev_bev_graceful_close(u);
             return 0;
@@ -281,7 +281,6 @@ utp_bufferevent* utp_bufferevent_new(event_base *base, utp_socket *s, int fd)
     u->obfoo = obfoo_new();
     u->utp_output = evbuffer_new();
     evbuffer_add_cb(u->utp_output, utp_outbuf_cb, u);
-    u->obfoo->output = u->utp_output;
     u->obfoo->incoming = true;
     bufferevent_setcb(u->bev, ubev_read_cb, ubev_write_cb, ubev_event_cb, u);
     bufferevent_enable(u->bev, EV_READ|EV_WRITE);
@@ -326,7 +325,7 @@ bufferevent* utp_socket_create_bev(event_base *base, utp_socket *s)
     u->other_bev = bufferevent_socket_new(base, fds[1], BEV_OPT_CLOSE_ON_FREE);
     bufferevent_incref(u->other_bev);
     u->obfoo->incoming = false;
-    obfoo_write_intro(u->obfoo, u->obfoo->output);
+    obfoo_write_intro(u->obfoo, u->utp_output);
     return u->other_bev;
 }
 
