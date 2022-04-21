@@ -27,7 +27,6 @@
 #include "bev_splice.h"
 #include "merkle_tree.h"
 #include "stall_detector.h"
-#include "utp_bufferevent.h"
 #include "http.h"
 
 

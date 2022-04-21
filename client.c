@@ -41,7 +41,7 @@
 #include "constants.h"
 #include "bev_splice.h"
 #include "hash_table.h"
-#include "utp_bufferevent.h"
+#include "bufferevent_utp.h"
 #include "dns_prefetch.h"
 #include "g_https_cb.h"
 
@@ -292,11 +292,14 @@ bool via_contains(const char *via, char v)
 
 bool bufferevent_is_utp(bufferevent *bev)
 {
-    int fd = bufferevent_getfd(bev);
+    if (BEV_IS_UTP(bev)) {
+        return true;
+    }
+    evutil_socket_t fd = bufferevent_getfd(bev);
     sockaddr_storage ss;
     socklen_t len = sizeof(ss);
     getpeername(fd, (sockaddr *)&ss, &len);
-    // AF_LOCAL is from socketpair(), which means utp
+    // AF_LOCAL is from socketpair(), which means utp_bufferevent
     return ss.ss_family == AF_LOCAL;
 }
 
@@ -307,8 +310,11 @@ void on_utp_connect(network *n, peer_connection *pc)
     getnameinfo(ss, sockaddr_get_length(ss), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
     bufferevent_disable(pc->bev, EV_READ|EV_WRITE);
     assert(pc->bev);
-    assert(bufferevent_getfd(pc->bev) != -1);
+    // XXX: hack around evhttp requiring fd != -1 to assume the bev is connected. it doesn't have to be a valid fd, though.
+    // https://github.com/libevent/libevent/issues/1268
+    bufferevent_setfd(pc->bev, -2);
     pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, pc->bev, host, sockaddr_get_port(ss));
+    bufferevent_setfd(pc->bev, EVUTIL_INVALID_SOCKET);
     debug("on_utp_connect %s bev:%p evcon:%p\n", sockaddr_str(ss), pc->bev, pc->evcon);
     pc->bev = NULL;
 
@@ -343,7 +349,7 @@ void bev_event_cb(bufferevent *bufev, short events, void *arg)
 {
     peer_connection *pc = (peer_connection *)arg;
     assert(pc->bev == bufev);
-    debug("bev_event_cb pc:%p peer:%p events:0x%x %s\n", pc, pc->peer, events, bev_events_to_str(events));
+    debug("%s pc:%p peer:%p events:0x%x %s\n", __func__, pc, pc->peer, events, bev_events_to_str(events));
     if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
         bufferevent_free(pc->bev);
         pc->bev = NULL;
@@ -380,13 +386,13 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
     peer_connection *pc = alloc(peer_connection);
     pc->n = n;
     pc->peer = p;
-    pc->bev = utp_socket_create_bev(n->evbase, s);
+    pc->bev = bufferevent_utp_new(n->evbase, n->utp, NULL, BEV_OPT_CLOSE_ON_FREE);
     if (!pc->bev) {
-        debug("utp_socket_create_bev could not allocate %s\n", peer_addr_str(p));
+        debug("bufferevent_utp_new could not allocate %s\n", peer_addr_str(p));
         free(pc);
         return NULL;
     }
-    utp_connect(s, (const sockaddr*)&p->addr, sockaddr_get_length((const sockaddr*)&p->addr));
+    bufferevent_utp_connect(pc->bev, (const sockaddr*)&p->addr, sockaddr_get_length((const sockaddr*)&p->addr));
     bufferevent_setcb(pc->bev, NULL, NULL, bev_event_cb, pc);
     bufferevent_enable(pc->bev, EV_READ);
     return pc;
@@ -2380,9 +2386,9 @@ bool filter_peer(peer *peer, evhttp_request *server_req, const char *via)
         return false;
     }
     sockaddr_storage ss;
-    int fd = bufferevent_getfd(evhttp_connection_get_bufferevent(server_req->evcon));
     socklen_t len = sizeof(ss);
-    getsockname(fd, (sockaddr *)&ss, &len);
+    bufferevent *bev = evhttp_connection_get_bufferevent(server_req->evcon);
+    bufferevent_getpeername(bev, (sockaddr*)&ss, &len);
     return sockaddr_eq((const sockaddr*)&ss, (const sockaddr*)&peer->addr) || via_contains(via, peer->via);
 }
 
@@ -2682,7 +2688,9 @@ void connect_tryfirst_requests_cancel(connect_req *c)
 void free_write_cb(bufferevent *bev, void *ctx)
 {
     debug("%s bev:%p\n", __func__, bev);
-    bufferevent_free(bev);
+    if (!evbuffer_get_length(bufferevent_get_output(bev))) {
+        bufferevent_free_checked(bev);
+    }
 }
 
 void socks_error(bufferevent *bev, uint8_t resp)

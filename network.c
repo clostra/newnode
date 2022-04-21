@@ -34,7 +34,7 @@
 #include "timer.h"
 #include "network.h"
 #include "icmp_handler.h"
-#include "utp_bufferevent.h"
+#include "bufferevent_utp.h"
 
 
 uint64 utp_on_firewall(utp_callback_arguments *a)
@@ -410,6 +410,12 @@ void evdns_log_cb(int severity, const char *msg)
 
 bufferevent* create_bev(event_base *base, void *userdata)
 {
+    network *n = (network*)userdata;
+    if (n->accepting_utp) {
+        utp_socket *s = n->accepting_utp;
+        n->accepting_utp = NULL;
+        return bufferevent_utp_new(base, n->utp, s, BEV_OPT_CLOSE_ON_FREE);
+    }
     return bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 }
 
@@ -584,17 +590,22 @@ bool sockaddr_is_localhost(const sockaddr *sa, socklen_t salen)
     return false;
 }
 
+int bufferevent_getpeername(const bufferevent *bev, sockaddr *address, socklen_t *address_len)
+{
+    if (BEV_IS_UTP(bev)) {
+        utp_socket *utp = bufferevent_get_utp(bev);
+        return utp_getpeername(utp, address, address_len);
+    }
+    evutil_socket_t fd = bufferevent_getfd((bufferevent*)bev);
+    return getpeername(fd, address, address_len);
+}
+
 bool bufferevent_is_localhost(const bufferevent *bev)
 {
-    int fd = bufferevent_getfd((bufferevent*)bev);
     sockaddr_storage ss;
     socklen_t len = sizeof(ss);
-    getsockname(fd, (sockaddr *)&ss, &len);
-    // AF_LOCAL is from socketpair(), which means utp
-    if (ss.ss_family == AF_LOCAL) {
-        return false;
-    }
-    return sockaddr_is_localhost((sockaddr *)&ss, len);
+    bufferevent_getpeername(bev, (sockaddr*)&ss, &len);
+    return sockaddr_is_localhost((sockaddr*)&ss, len);
 }
 
 void set_max_nofile(void)
@@ -716,7 +727,7 @@ network* network_setup(char *address, port_t port)
     }
     // don't add any content type automatically
     evhttp_set_default_content_type(n->http, NULL);
-    evhttp_set_bevcb(n->http, create_bev, NULL);
+    evhttp_set_bevcb(n->http, create_bev, n);
     evhttp_set_timeout(n->http, 50);
 
     if (evthread_make_base_notifiable(n->evbase)) {

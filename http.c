@@ -19,7 +19,6 @@
 #include "network.h"
 #include "constants.h"
 #include "hash_table.h"
-#include "utp_bufferevent.h"
 #include "http.h"
 
 
@@ -229,19 +228,18 @@ uint64 utp_on_accept(utp_callback_arguments *a)
     if (utp_getpeername(a->socket, (sockaddr *)&addr, &addrlen) == -1) {
         debug("utp_getpeername failed\n");
     }
-#ifdef __APPLE__
-    addr.ss_len = addrlen;
-#endif
-    ddebug("utp_on_accept %p %s\n", a->socket, sockaddr_str((const sockaddr*)&addr));
+    debug("%s %p %s\n", __func__, a->socket, sockaddr_str((const sockaddr*)&addr));
     add_sockaddr(n, (sockaddr *)&addr, addrlen);
-    int fd = utp_socket_create_fd(n->evbase, a->socket);
-    if (fd < 0) {
-        debug("%s failed %d %s\n", __func__, errno, strerror(errno));
-        utp_close(a->socket);
+    // XXX: hack around evhttp_get_request() only taking fds
+    // https://github.com/libevent/libevent/issues/1268
+    assert(!n->accepting_utp);
+    n->accepting_utp = a->socket;
+    evhttp_connection *evcon = evhttp_get_request(n->http, EVUTIL_INVALID_SOCKET, (sockaddr *)&addr, addrlen);
+    if (!evcon) {
+        debug("%s evhttp_get_request failed\n", __func__);
+        assert(evcon);
         return 0;
     }
-    evutil_make_socket_closeonexec(fd);
-    evutil_make_socket_nonblocking(fd);
-    evhttp_get_request(n->http, fd, (sockaddr *)&addr, addrlen);
+    assert(!n->accepting_utp);
     return 1;
 }

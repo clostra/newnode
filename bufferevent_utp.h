@@ -3,6 +3,11 @@
 
 #include "libevent/bufferevent-internal.h"
 
+
+uint64 utp_on_error(utp_callback_arguments *a);
+uint64 utp_on_read(utp_callback_arguments *a);
+uint64 utp_on_state_change(utp_callback_arguments *a);
+
 extern const struct bufferevent_ops bufferevent_ops_utp;
 
 #define BEV_IS_UTP(bevp) ((bevp)->be_ops == &bufferevent_ops_utp)

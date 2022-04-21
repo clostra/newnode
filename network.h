@@ -122,6 +122,7 @@ struct network {
     int fd;
     event udp_event;
     utp_context *utp;
+    utp_socket *accepting_utp;
     dht *dht;
     timer *dht_timer;
     evhttp *http;
@@ -145,6 +146,7 @@ bool sockaddr_eq(const sockaddr * sa, const sockaddr * sb);
 const char* sockaddr_str(const sockaddr *ss);
 const char* sockaddr_str_addronly(const sockaddr *ss);
 bool sockaddr_is_localhost(const sockaddr *sa, socklen_t salen);
+int bufferevent_getpeername(const bufferevent *bev, sockaddr *address, socklen_t *address_len);
 bool bufferevent_is_localhost(const bufferevent *bev);
 
 ssize_t udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);

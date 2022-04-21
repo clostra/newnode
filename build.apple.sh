@@ -65,7 +65,7 @@ function build_apple {
     clang $CFLAGS -c dht/dht.c -o dht_dht.o
     for file in bev_splice.c base64.c client.c dht.c d2d.c dns_prefetch.c dns_prefetch_macos.c http.c log.c lsd.c \
                 icmp_handler.c hash_table.c merkle_tree.c network.c \
-                obfoo.c sha1.c timer.c thread.c utp_bufferevent.c; do
+                obfoo.c sha1.c timer.c thread.c bufferevent_utp.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBUGSNAG_CFLAGS -c $file
     done
     clang -fobjc-arc -fobjc-weak -fmodules $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBUGSNAG_CFLAGS -I ios -c ios/NetService.m ios/Bluetooth.m ios/HTTPSRequest.m ios/Framework/NewNode.m
