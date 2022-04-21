@@ -228,7 +228,7 @@ uint64 utp_on_accept(utp_callback_arguments *a)
     if (utp_getpeername(a->socket, (sockaddr *)&addr, &addrlen) == -1) {
         debug("utp_getpeername failed\n");
     }
-    debug("%s %p %s\n", __func__, a->socket, sockaddr_str((const sockaddr*)&addr));
+    //debug("%s %p %s\n", __func__, a->socket, sockaddr_str((const sockaddr*)&addr));
     add_sockaddr(n, (sockaddr *)&addr, addrlen);
     // XXX: hack around evhttp_get_request() only taking fds
     // https://github.com/libevent/libevent/issues/1268
