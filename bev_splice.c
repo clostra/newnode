@@ -36,8 +36,10 @@ void bev_splice_write_cb(bufferevent *bev, void *ctx)
 
 void bev_splice_free_write_cb(bufferevent *bev, void *ctx)
 {
-    bufferevent_disable(bev, EV_WRITE);
-    bufferevent_free_checked(bev);
+    if (!evbuffer_get_length(bufferevent_get_output(bev))) {
+        bufferevent_disable(bev, EV_WRITE);
+        bufferevent_free_checked(bev);
+    }
 }
 
 void bev_splice_free_event_cb(bufferevent *bev, short events, void *ctx)
