@@ -4,6 +4,7 @@
 
 #include "log.h"
 #include "bev_splice.h"
+#include "bufferevent_utp.h"
 #include "assert.h"
 
 
@@ -13,8 +14,11 @@ void bev_splice_shutdown_write(bufferevent *bev)
 {
     if (!evbuffer_get_length(bufferevent_get_output(bev))) {
         bufferevent_disable(bev, EV_WRITE);
-        // XXX: utp_shutdown()
-        shutdown(bufferevent_getfd(bev), SHUT_WR);
+        if (BEV_IS_UTP(bev)) {
+            utp_shutdown(bufferevent_get_utp(bev), SHUT_WR);
+        } else {
+            shutdown(bufferevent_getfd(bev), SHUT_WR);
+        }
     }
 }
 
@@ -65,8 +69,11 @@ void bev_splice_event_cb(bufferevent *bev, short events, void *ctx)
         evbuffer_clear(bufferevent_get_input(other));
         evbuffer_clear(bufferevent_get_output(bev));
         bufferevent_disable(other, EV_READ);
-        // XXX: utp_shutdown()
-        shutdown(bufferevent_getfd(other), SHUT_RD);
+        if (BEV_IS_UTP(bev)) {
+            utp_shutdown(bufferevent_get_utp(bev), SHUT_RD);
+        } else {
+            shutdown(bufferevent_getfd(other), SHUT_RD);
+        }
     }
 
     if (!bufferevent_get_enabled(bev)) {
