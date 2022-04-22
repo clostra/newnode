@@ -221,8 +221,12 @@ int header_cb(evhttp_request *req, void *arg)
 void error_cb(evhttp_request_error error, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("p:%p (%.2fms) error_cb %d\n", p, pdelta(p), error);
+    debug("p:%p (%.2fms) %s %d\n", p, pdelta(p), __func__, error);
+    assert(p->req);
     p->req = NULL;
+    if (error == EVREQ_HTTP_REQUEST_CANCEL) {
+        return;
+    }
     if (p->server_req) {
         if (p->server_req->evcon) {
             evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);

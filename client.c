@@ -1317,7 +1317,7 @@ void direct_error_cb(evhttp_request_error error, void *arg)
 {
     direct_request *d = (direct_request*)arg;
     proxy_request *p = d->p;
-    debug("d:%p direct_error_cb %d %s\n", d, error, evhttp_request_error_str(error));
+    debug("d:%p %s %d %s\n", d, __func__, error, evhttp_request_error_str(error));
     assert(d->req);
     d->req = NULL;
     if (error == EVREQ_HTTP_REQUEST_CANCEL) {
@@ -2519,7 +2519,7 @@ void trace_request_cleanup(trace_request *t)
 void trace_error_cb(evhttp_request_error error, void *arg)
 {
     trace_request *t = (trace_request*)arg;
-    debug("t:%p trace_error_cb %d %s\n", t, error, evhttp_request_error_str(error));
+    debug("t:%p %s %d %s\n", t, __func__, error, evhttp_request_error_str(error));
     if (error != EVREQ_HTTP_REQUEST_CANCEL && t->pc->peer->is_injector) {
         injector_reachable = 0;
     }
