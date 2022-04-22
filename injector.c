@@ -221,7 +221,7 @@ int header_cb(evhttp_request *req, void *arg)
 void error_cb(evhttp_request_error error, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("p:%p (%.2fms) error_cb %d\n", p, pdelta(p), error);
+    debug("p:%p (%.2fms) %s %d\n", p, pdelta(p), __func__, error);
     p->req = NULL;
     if (p->server_req) {
         if (p->server_req->evcon) {
