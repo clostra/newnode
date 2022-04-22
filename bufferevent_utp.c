@@ -249,10 +249,6 @@ uint64 utp_on_error(utp_callback_arguments *a)
 
     bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
 
-    bev_utp->utp = NULL;
-    BEV_DEL_GENERIC_READ_TIMEOUT(bufev);
-    BEV_DEL_GENERIC_WRITE_TIMEOUT(bufev);
-
     int error;
     switch (a->error_code) {
     case UTP_ECONNREFUSED: error = ECONNREFUSED; break;
@@ -262,6 +258,11 @@ uint64 utp_on_error(utp_callback_arguments *a)
     case -1: error = EINVAL; break;
     }
     EVUTIL_SET_SOCKET_ERROR(error);
+
+    bev_utp->utp = NULL;
+    BEV_DEL_GENERIC_READ_TIMEOUT(bufev);
+    BEV_DEL_GENERIC_WRITE_TIMEOUT(bufev);
+    bufferevent_disable(bufev, EV_WRITE);
 
     if (bufev->enabled & EV_READ) {
         bufferevent_run_eventcb_(bufev, BEV_EVENT_READING | BEV_EVENT_ERROR, 0);
