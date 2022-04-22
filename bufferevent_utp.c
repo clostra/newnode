@@ -215,7 +215,6 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
             break;
         }
         BEV_RESET_GENERIC_WRITE_TIMEOUT(bufev);
-        bufferevent_utp_obout_to_utp(bev_utp);
     case UTP_STATE_WRITABLE:
         bev_utp->utp_writable = true;
         bufferevent_utp_obout_to_utp(bev_utp);
@@ -229,10 +228,11 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
         }
         break;
     case UTP_STATE_DESTROYING:
-        bufferevent_decref(bufev);
         bev_utp->utp = NULL;
         BEV_DEL_GENERIC_READ_TIMEOUT(bufev);
         BEV_DEL_GENERIC_WRITE_TIMEOUT(bufev);
+        bufferevent_disable(bufev, EV_WRITE);
+        bufferevent_decref(bufev);
         break;
     }
 
