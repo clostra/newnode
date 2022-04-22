@@ -80,9 +80,7 @@ bufferevent_utp* bufferevent_utp_upcast(const bufferevent *bev)
     return bev_o;
 }
 
-typedef void (^locked_callback)(void);
-
-static inline void bufferevent_locked(bufferevent *bufev, locked_callback cb)
+static inline void bufferevent_locked(bufferevent *bufev, void (^cb)(void))
 {
     bufferevent_incref_and_lock_(bufev);
     cb();
