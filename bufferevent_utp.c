@@ -229,6 +229,7 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
         }
         break;
     case UTP_STATE_DESTROYING:
+        bufferevent_decref(bufev);
         bev_utp->utp = NULL;
         BEV_DEL_GENERIC_READ_TIMEOUT(bufev);
         BEV_DEL_GENERIC_WRITE_TIMEOUT(bufev);
@@ -398,12 +399,12 @@ int bufferevent_utp_connect(bufferevent *bev, const sockaddr *sa, int socklen)
     if (sa) {
         if (utp_connect(utp, sa, socklen) < 0) {
             if (ownutp) {
-                utp_set_userdata(utp, NULL);
                 utp_close(utp);
             }
             return result;
         }
     }
+    bufferevent_incref(bev);
     utp_set_userdata(utp, bev);
     bev_utp->utp = utp;
     if (!be_utp_enable(bev, EV_WRITE)) {
@@ -446,6 +447,7 @@ bufferevent* bufferevent_utp_new(event_base *base, utp_context *utp_ctx, utp_soc
     evbuffer_freeze(bev_utp->obfoo_output, 1);
 
     if (utp) {
+        bufferevent_incref(bufev);
         utp_set_userdata(utp, bufev);
         bev_utp->utp = utp;
     }
@@ -503,6 +505,7 @@ static void be_utp_destruct(bufferevent *bufev)
     bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
 
     if ((bev_utp->bev.options & BEV_OPT_CLOSE_ON_FREE) && bev_utp->utp) {
+        bufferevent_decref(bufev);
         utp_set_userdata(bev_utp->utp, NULL);
         utp_close(bev_utp->utp);
     }
