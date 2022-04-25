@@ -1352,8 +1352,10 @@ void direct_request_done_cb(evhttp_request *req, void *arg)
         direct_request_process_chunks(d, req);
 
         return_connection(d->evcon);
-        d->evcon = NULL;
+    } else {
+        evhttp_connection_free_on_completion(d->evcon);
     }
+    d->evcon = NULL;
     if (req->type == EVHTTP_REQ_GET) {
         const char *content_range = evhttp_find_header(req->input_headers, "Content-Range");
         if (content_range) {
