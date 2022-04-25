@@ -102,10 +102,10 @@ void request_done_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
     if (!req) {
-        debug("p:%p request_done_cb %p\n", p, req);
+        debug("p:%p %s %p\n", p, __func__, req);
         return;
     }
-    debug("p:%p (%.2fms) request_done_cb %p\n", p, pdelta(p), req);
+    debug("p:%p (%.2fms) %s %p\n", p, pdelta(p), __func__, req);
     p->req = NULL;
     if (p->server_req && p->server_req->evcon) {
         evhttp_connection_set_closecb(p->server_req->evcon, NULL, NULL);
@@ -165,8 +165,10 @@ void request_done_cb(evhttp_request *req, void *arg)
     }
     if (req->response_code != 0) {
         return_connection(p->evcon);
-        p->evcon = NULL;
+    } else {
+        evhttp_connection_free_on_completion(p->evcon);
     }
+    p->evcon = NULL;
     request_cleanup(p);
 }
 
@@ -201,7 +203,7 @@ void hash_headers(evkeyvalq *in, crypto_generichash_state *content_state)
 int header_cb(evhttp_request *req, void *arg)
 {
     proxy_request *p = (proxy_request*)arg;
-    debug("p:%p (%.2fms) header_cb %d %s\n", p, pdelta(p), req->response_code, req->response_code_line);
+    debug("p:%p (%.2fms) %s %d %s\n", p, pdelta(p), __func__, req->response_code, req->response_code_line);
 
     const char *response_header_whitelist[] = hashed_headers;
     for (size_t i = 0; i < lenof(response_header_whitelist); i++) {
@@ -364,7 +366,7 @@ void connected(connect_req *c, bufferevent *other)
 void connect_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p (%.2fms) connect_event_cb bev:%p req:%s events:0x%x %s\n", c, cdelta(c), bev, evhttp_request_get_uri(c->server_req), events, bev_events_to_str(events));
+    debug("c:%p (%.2fms) %s bev:%p req:%s events:0x%x %s\n", c, cdelta(c), __func__, bev, evhttp_request_get_uri(c->server_req), events, bev_events_to_str(events));
 
     if (events & BEV_EVENT_TIMEOUT) {
         connect_cleanup(c, ETIMEDOUT);
@@ -380,10 +382,10 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
     }
 }
 
-void close_cb(evhttp_connection *evcon, void *ctx)
+void connect_evcon_close_cb(evhttp_connection *evcon, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p (%.2fms) close_cb\n", c, cdelta(c));
+    debug("c:%p (%.2fms) %s\n", c, cdelta(c), __func__);
     evhttp_connection_set_closecb(evcon, NULL, NULL);
     c->server_req = NULL;
     if (c->direct) {
@@ -464,7 +466,7 @@ void connect_request(network *n, evhttp_request *req)
     c->server_req = req;
     c->start_time = us_clock();
 
-    evhttp_connection_set_closecb(req->evcon, close_cb, c);
+    evhttp_connection_set_closecb(req->evcon, connect_evcon_close_cb, c);
 
     evutil_socket_t fd = -1;
 #ifdef TCP_FASTOPEN_CONNECT
