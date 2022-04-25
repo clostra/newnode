@@ -3,7 +3,7 @@
 	url = https://github.com/clostra/libutp
 [submodule "libsodium"]
 	path = libsodium
-	url = https://github.com/jedisct1/libsodium
+	url = https://github.com/clostra/libsodium
 [submodule "blocksruntime"]
 	path = blocksruntime
 	url = https://github.com/mackyle/blocksruntime.git
