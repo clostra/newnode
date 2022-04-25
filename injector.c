@@ -165,8 +165,10 @@ void request_done_cb(evhttp_request *req, void *arg)
     }
     if (req->response_code != 0) {
         return_connection(p->evcon);
-        p->evcon = NULL;
+    } else {
+        evhttp_connection_free_on_completion(p->evcon);
     }
+    p->evcon = NULL;
     request_cleanup(p);
 }
 
