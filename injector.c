@@ -380,10 +380,10 @@ void connect_event_cb(bufferevent *bev, short events, void *ctx)
     }
 }
 
-void close_cb(evhttp_connection *evcon, void *ctx)
+void connect_evcon_close_cb(evhttp_connection *evcon, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
-    debug("c:%p (%.2fms) close_cb\n", c, cdelta(c));
+    debug("c:%p (%.2fms) %s\n", c, cdelta(c), __func__);
     evhttp_connection_set_closecb(evcon, NULL, NULL);
     c->server_req = NULL;
     if (c->direct) {
@@ -464,7 +464,7 @@ void connect_request(network *n, evhttp_request *req)
     c->server_req = req;
     c->start_time = us_clock();
 
-    evhttp_connection_set_closecb(req->evcon, close_cb, c);
+    evhttp_connection_set_closecb(req->evcon, connect_evcon_close_cb, c);
 
     evutil_socket_t fd = -1;
 #ifdef TCP_FASTOPEN_CONNECT
