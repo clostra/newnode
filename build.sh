@@ -101,4 +101,5 @@ case $(uname -s):$(uname -m) in
         clang $CFLAGS $CDEPS -c https_wget.c
         ;;
 esac
-clang $CFLAGS $CDEPS -o client client_main.c client.c *.o $CLIBS
+clang $CFLAGS $CDEPS -c client.c
+clang $CFLAGS $CDEPS -o client client_main.c *.o $CLIBS
