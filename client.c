@@ -3585,7 +3585,7 @@ void http_connect_request(network *n, evhttp_request *req)
 int evhttp_parse_firstline_(evhttp_request *, evbuffer*);
 int evhttp_parse_headers_(evhttp_request *, evbuffer*);
 
-void http_request_cb(evhttp_request *req, void *arg)
+static void http_request_cb(evhttp_request *req, void *arg)
 {
     network *n = (network*)arg;
     const char *e_host;
