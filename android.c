@@ -59,7 +59,7 @@ static int alloc_link(https_request *hr)
             links[i].completion_cb = NULL;
             memset(&(links[i].result), 0, sizeof(https_result));
             if (hr) {
-                if (hr->flags & HTTPS_USE_HEAD) {
+                if ((hr->flags & HTTPS_METHOD_MASK) == HTTPS_METHOD_HEAD) {
                     links[i].result.result_flags |= HTTPS_REQUEST_USE_HEAD;
                 }
                 if (hr->flags & HTTPS_ONE_BYTE) {
@@ -262,9 +262,9 @@ JNIEnv* get_env()
 // the query if it arrives in time, otherwise NN will use evdns
 // (sigh).
 
-void platform_dns_prefetch(network *n, int result_index, unsigned int result_id, const char *host)
+void platform_dns_prefetch(network *n, size_t result_index, uint64_t result_id, const char *host)
 {
-    debug("%s result_index:%d result_id:%u host:%s\n", __func__, result_index, result_id, host);
+    debug("%s result_index:%zu result_id:%" PRIu64 " host:%s\n", __func__, result_index, result_id, host);
     if (!newNode) {
         return;
     }
@@ -283,13 +283,13 @@ void platform_dns_prefetch(network *n, int result_index, unsigned int result_id,
         );
         CALL_VOID(cNewNode, newNode,
                   dnsPrefetch,      // shorthand form of method name
-                  Ljava/lang/String;II,  // parameter types:
+                  Ljava/lang/String;IJ,  // parameter types:
                                          // (1) String hostname (Ljava/lang/String;)
                                          // (2) int result_index (I)
-                                         // (3) int result_id (I)
+                                         // (3) long result_id (J)
                   JSTR(host),       // url (encoded as Java String)
                   (jint) result_index,
-                  (jint) result_id);
+                  (jlong) result_id);
         CATCH(
             debug("%s exception line %d\n", __func__, __LINE__);
             return;
@@ -299,12 +299,12 @@ void platform_dns_prefetch(network *n, int result_index, unsigned int result_id,
 
 // updates global array dns_prefetch_results[result_index].result with the results of DNS lookup of 'host'.
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetchResult(JNIEnv *env, jobject thiz, jint result_index, jint result_id, jstring host, jobjectArray addresses)
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetchResult(JNIEnv *env, jobject thiz, jint result_index, jlong result_id, jstring host, jobjectArray addresses)
 {
     nn_addrinfo *result = NULL;
     nn_addrinfo *lastitem = NULL;
 
-    if (result_id < 0) {
+    if (result_id < 0 || result_index < 0) {
         return;
     }
 
@@ -316,8 +316,8 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetc
     const char *hoststr = (*env)->GetStringUTFChars(env, host, NULL);
     int n_addresses = (*env)->GetArrayLength(env, addresses);
 
-    debug("storeDnsPrefetchResult result_index:%d result_id:%d host:%s n_addresses:%d\n",
-          result_index, result_id, hoststr, n_addresses);
+    debug("storeDnsPrefetchResult result_index:%d result_id:%lld host:%s n_addresses:%d\n",
+          result_index, (long long) result_id, hoststr, n_addresses);
 
     // convert each text address to binary form using getaddrinfo()
     // then add the result of that conversion to the end of the linked list
@@ -477,6 +477,10 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
         jlong request_id = links[link_index].request_id;
         https_result *result = &(links[link_index].result);
         timespec now;
+        jbyteArray request_body;
+        jobjectArray request_header_names = 0;
+        jobjectArray request_header_values = 0;
+
         // TODO: use us_clock()
         clock_gettime(CLOCK_REALTIME, &now);
         result->req_time = now.tv_sec;
@@ -486,6 +490,41 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
 #pragma clang diagnostic ignored "-Wshadow"
         JNIEnv *env = get_env();
 #pragma clang diagnostic pop
+        if (request->request_body && request->request_body_size > 0) {
+            request_body = (*env)->NewByteArray(env, request->request_body_size);
+            (*env)->SetByteArrayRegion(env, request_body, 0, request->request_body_size, (signed char *) request->request_body);
+        }
+        else {
+            request_body = (*env)->NewByteArray(env, 0);
+        }
+        if (request->request_headers) {
+            int nheaders;
+            for (nheaders = 0; request->request_headers[nheaders]; ++nheaders);
+            if (request->request_body_content_type) {
+                ++nheaders;
+            }
+            request_header_names = (*env)->NewObjectArray(env, nheaders, (*env)->FindClass(env, "java/lang/String"), 0);
+            request_header_values = (*env)->NewObjectArray(env, nheaders, (*env)->FindClass(env, "java/lang/String"), 0);
+            for (int i = 0; request->request_headers[i]; ++i) {
+                char *colon = strchr(request->request_headers[i], ':');
+                if (colon) {
+                    char *name = strndup(request->request_headers[i], colon - request->request_headers[i]);
+                    char *value = colon + 1;
+                    // debug("%s setting header[%d] %s=%s\n", __func__, i, name, value);
+                    (*env)->SetObjectArrayElement(env, request_header_names, i, (jstring) (*env)->NewStringUTF(env, name));
+                    (*env)->SetObjectArrayElement(env, request_header_values, i, (jstring) (*env)->NewStringUTF(env, value));
+                    free(name);
+                }
+            }
+            if (request->request_body_content_type) {
+                (*env)->SetObjectArrayElement(env, request_header_names, nheaders - 1, JSTR("Content-Type"));
+                (*env)->SetObjectArrayElement(env, request_header_values, nheaders - 1, (jstring) (*env)->NewStringUTF(env, request->request_body_content_type));
+            }
+        }
+        else {
+            request_header_names = (*env)->NewObjectArray(env, 0, (*env)->FindClass(env, "java/lang/String"), 0);
+            request_header_values = (*env)->NewObjectArray(env, 0, (*env)->FindClass(env, "java/lang/String"), 0);
+        }
         jvm_frame(env, ^{
             if (!newNode) {
                 network_async(n, ^{
@@ -515,7 +554,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
             // debug("           flags=%s\n", expand_flags(request->flags));
             CALL_VOID(cNewNode, newNode, 
                       http,                     // shorthand form of method name
-                      Ljava/lang/String;JIIIJI, // parameter types:
+                      Ljava/lang/String;JIIIJI[Ljava/lang/String;[Ljava/lang/String;[B, // parameter types:
                                                 // (1) String url (Ljava/lang/String;)
                                                 // (2) long cbc (J)
                                                 // (3) int request_flags (I)
@@ -523,13 +562,19 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
                                                 // (5) int bufsize (I)
                                                 // (6) long request_id (J)
                                                 // (7) int newnode_port (I)
+                                                // (8) String request_header_names[] (passed as Object array)
+                                                // (9) String request_header_values[] (passed as Object array)
+                                                // (10) byte request_body[]
                       JSTR(url),                // url (encoded as Java String)
                       (jlong)cbc,               // callback pointer (encoded as long)
                       (jint)(request->flags),   // request flags
                       (jint)(request->timeout_sec * 1000), // timeout_msec
                       (jint)(request->bufsize), // bufsize
-                      (jlong) request_id,        // request_id
-                      (jint) newnode_port);        // http_port
+                      (jlong) request_id,       // request_id
+                      (jint) newnode_get_port(n),
+                      request_header_names,
+                      request_header_values,
+                      request_body);
             CATCH(
                   network_async(n, ^{
                       if (links[link_index].request_id == request_id) {

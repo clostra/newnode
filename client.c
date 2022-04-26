@@ -25,7 +25,7 @@
 
 #include "dht/dht.h"
 
-#include "features.h"
+#include "nn_features.h"
 #include "ui.h"
 #include "log.h"
 #include "lsd.h"
@@ -599,11 +599,9 @@ void peer_disconnect(peer_connection *pc)
     debug("disconnecting pc:%p\n", pc);
     if (pc->evcon) {
         evhttp_connection_free(pc->evcon);
-        pc->evcon = NULL;
     }
     if (pc->bev) {
         bufferevent_free(pc->bev);
-        pc->bev = NULL;
     }
     free(pc);
 }
@@ -1794,8 +1792,8 @@ https_request *https_request_alloc(size_t bufsize, unsigned int flags, unsigned 
 {
     https_request *result = alloc(https_request);
 
-    if (bufsize > 0) {
-        result->buf = malloc(bufsize);
+    if ((flags & HTTPS_METHOD_MASK) == 0) {
+        flags |= HTTPS_METHOD_GET;
     }
     result->bufsize = bufsize;
     result->flags = flags;
@@ -1922,6 +1920,7 @@ void stats_queue_cb(network *n)
                 stats_queue_restart_timer(n, 0);
             }
         }, req);
+        free(req);
         stats_queue_running = false;
         return;
     }
@@ -2764,15 +2763,12 @@ void connect_cleanup(connect_req *c)
     }
     if (c->pending_bev) {
         bufferevent_free(c->pending_bev);
-        c->pending_bev = NULL;
     }
     if (c->intro_data) {
         evbuffer_free(c->intro_data);
-        c->intro_data = NULL;
     }
     if (c->pc) {
         peer_disconnect(c->pc);
-        c->pc = NULL;
     }
     free(c->authority);
     free(c->host);
@@ -3454,7 +3450,7 @@ connect_req* connect_request(connect_req *c, const char *host, port_t port)
     if (dns_prefetch_key >= 0) {
         dns_prefetch(n, dns_prefetch_key, host, n->evdns);
         c->dns_prefetch_key = dns_prefetch_key;
-        debug("dns_prefetch_key = %lld index:%d id:%u\n",
+        debug("dns_prefetch_key = %lld index:%zu id:%" PRIu64 "\n",
               (long long)dns_prefetch_key,
               dns_prefetch_index(dns_prefetch_key),
               dns_prefetch_id(dns_prefetch_key));

@@ -1,7 +1,8 @@
 #ifndef BUGSNAG_REPORT_H
 #define BUGSNAG_REPORT_H
 
-#include "../deps/parson/parson.h"
+//#include "../deps/parson/parson.h"
+#include "../../../parson/parson.h"
 #include <time.h>
 
 // Number of frames in a stacktrace
