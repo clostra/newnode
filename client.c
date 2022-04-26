@@ -25,7 +25,7 @@
 
 #include "dht/dht.h"
 
-#include "features.h"
+#include "nn_features.h"
 #include "ui.h"
 #include "log.h"
 #include "lsd.h"
@@ -1794,8 +1794,8 @@ https_request *https_request_alloc(size_t bufsize, unsigned int flags, unsigned 
 {
     https_request *result = alloc(https_request);
 
-    if (bufsize > 0) {
-        result->buf = malloc(bufsize);
+    if ((flags & HTTPS_METHOD_MASK) == 0) {
+        flags |= HTTPS_METHOD_GET;
     }
     result->bufsize = bufsize;
     result->flags = flags;
@@ -1922,6 +1922,7 @@ void stats_queue_cb(network *n)
                 stats_queue_restart_timer(n, 0);
             }
         }, req);
+        free(req);
         stats_queue_running = false;
         return;
     }
@@ -3454,7 +3455,7 @@ connect_req* connect_request(connect_req *c, const char *host, port_t port)
     if (dns_prefetch_key >= 0) {
         dns_prefetch(n, dns_prefetch_key, host, n->evdns);
         c->dns_prefetch_key = dns_prefetch_key;
-        debug("dns_prefetch_key = %lld index:%d id:%u\n",
+        debug("dns_prefetch_key = %lld index:%zu id:%" PRIu64 "\n",
               (long long)dns_prefetch_key,
               dns_prefetch_index(dns_prefetch_key),
               dns_prefetch_id(dns_prefetch_key));

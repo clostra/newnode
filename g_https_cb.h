@@ -46,19 +46,31 @@ typedef enum {
 } https_error;
 
 typedef struct https_request {
-    char *buf;
-    size_t bufsize;
+    char *request_body;
+    unsigned request_body_size;
+    char *request_body_content_type;
+    char **request_headers;
+    unsigned bufsize;
     int flags;
-#define HTTPS_DIRECT 01
-#define HTTPS_USE_HEAD 020
-#define HTTPS_ONE_BYTE 040
-#define HTTPS_NO_REDIRECT 0100
-#define HTTPS_NO_RETRIES 0200
-#define HTTPS_OPTION_MASK (HTTPS_DIRECT|HTTPS_USE_HEAD|HTTPS_ONE_BYTE|HTTPS_NO_REDIRECT|HTTPS_NO_RETRIES)
+#define HTTPS_METHOD_MASK 07
+#define HTTPS_METHOD_GET 00
+#define HTTPS_METHOD_PUT 01
+#define HTTPS_METHOD_HEAD 02
+#define HTTPS_METHOD_POST 03
+#define HTTPS_DIRECT 010
+#define HTTPS_ONE_BYTE 020
+#define HTTPS_NO_REDIRECT 040
+#define HTTPS_NO_RETRIES 0100
+// leave option space for NN SDK clients
+#define HTTPS_CLIENT_OPTION_MASK 0xffff0000
+#define HTTPS_CLIENT_OPTION(n) ((n) << 16)
+// HTTPS_OPTION_MASK is used on iOS/MacOS to decide which pre-configured session to use
+#define HTTPS_OPTION_MASK (HTTPS_DIRECT|HTTPS_ONE_BYTE|HTTPS_NO_REDIRECT|HTTPS_NO_RETRIES)
+// and these are option bits used by particular kinds of sessions on iOS/MacOS
 #define HTTPS_TRYFIRST_FLAGS (HTTPS_DIRECT|HTTPS_ONE_BYTE|HTTPS_NO_REDIRECT|HTTPS_NO_RETRIES)
 #define HTTPS_STATS_FLAGS (0)
 #define HTTPS_GEOIP_FLAGS (HTTPS_DIRECT)
-    int timeout_sec;
+    int timeout_sec;                    // 0 = arbitrarily long, though maybe not forever
 } https_request;
 
 typedef struct https_result {
@@ -67,9 +79,9 @@ typedef struct https_result {
                                         // by completion callback
     size_t response_length;
     int result_flags;
-#define HTTPS_RESULT_TRUNCATED 02
-#define HTTPS_REQUEST_USE_HEAD 04        // copied from request
-#define HTTPS_REQUEST_ONE_BYTE 010        // copied from request
+#define HTTPS_RESULT_TRUNCATED 01
+#define HTTPS_REQUEST_USE_HEAD 02        // set if HTTPS_METHOD_HEAD used
+#define HTTPS_REQUEST_ONE_BYTE 04        // set if HTTPS_ONE_BYTE is used
     time_t req_time;
     uint64_t xfer_start_time_us;
     uint64_t xfer_time_us;

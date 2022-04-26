@@ -479,7 +479,7 @@ static NSURLSession *sessionForRequest(network *n, https_request *hr, id delegat
         }
         return tryfirstURLSession;
     default:
-        debug("sessionForOptions: returning custom session\n");
+        debug("sessionForOptions: flags=0x%x returning custom session\n", hr->flags);
         config = sessionConfig(n, hr->flags);
         // NB: need to invalidate this session when finished with it, else it will leak memory
         // no delegate for this one, b/c we don't know what the session needs anyway
@@ -530,10 +530,12 @@ static int alloc_link(https_request *request)
             links[i].completion_cb = NULL;
             memset((&links[i].result), 0, sizeof(https_result));
             if (request) {
-                if (request->flags & HTTPS_USE_HEAD)
+                if ((request->flags & HTTPS_METHOD_MASK) == HTTPS_METHOD_HEAD) {
                     links[i].result.result_flags |= HTTPS_REQUEST_USE_HEAD;
-                if (request->flags & HTTPS_ONE_BYTE)
+                }
+                if (request->flags & HTTPS_ONE_BYTE) {
                     links[i].result.result_flags |= HTTPS_REQUEST_ONE_BYTE;
+                }
             }
             links[i].result.request_id = links[i].request_id;
             return i;
@@ -598,6 +600,24 @@ void cancel_https_request(network *n, int64_t request_id)
     [links[link_index].r cancel];
 }
 
+static char *method_string(int flags)
+{
+    static char buf[20];
+    switch (flags & HTTPS_METHOD_MASK) {
+    case HTTPS_METHOD_GET:
+        return "GET";
+    case HTTPS_METHOD_HEAD:
+        return "HEAD";
+    case HTTPS_METHOD_POST:
+        return "POST";
+    case HTTPS_METHOD_PUT:
+        return "PUT";
+    default:
+        snprintf(buf, sizeof(buf), "method %d", flags & HTTPS_METHOD_MASK);
+        return buf;
+    }
+}
+
 @implementation HTTPSRequest
 { 
     bool needs_invalidation;
@@ -636,8 +656,8 @@ void cancel_https_request(network *n, int64_t request_id)
     needs_invalidation = NO;
     completion_cb = cb;
     int64_t my_request_id = links[link_index].request_id;
-    debug("%s: my_request_id:%" PRId64 " url:%s\n", __func__, my_request_id, 
-          [[ns_url absoluteString] UTF8String]);
+    debug("%s: my_request_id:%" PRId64 " url:%s method:%s\n", __func__, my_request_id, 
+          [[ns_url absoluteString] UTF8String], method_string(req->flags));
 
     // we need to store some things in the links[] array so that the
     // delegate called by the data task can access them, since the
@@ -660,6 +680,8 @@ void cancel_https_request(network *n, int64_t request_id)
     if (session != geoipURLSession && session != statsURLSession && session != tryfirstURLSession)
         needs_invalidation = YES;    
 
+    NSData *request_body;
+
     // bypass local URL resource cache
     // (remote cache is presumably ok, we want the same behavior we'd normally get from the
     // publicly accessible server even if it's fronted by a cache)
@@ -668,13 +690,47 @@ void cancel_https_request(network *n, int64_t request_id)
                                            //     currently in effect for a web browser on the platform
     ns_request.HTTPShouldUsePipelining = NO;
     ns_request.HTTPShouldHandleCookies = NO;
-    if (req->flags & HTTPS_USE_HEAD)
-        ns_request.HTTPMethod = @"HEAD";
-    else if (req->flags & HTTPS_ONE_BYTE)
-        [ns_request setValue:@"bytes=0-1" forHTTPHeaderField:@"Range"];
-    if (req->timeout_sec > 0)
-        [ns_request setTimeoutInterval:req->timeout_sec];
 
+    switch (req->flags & HTTPS_METHOD_MASK) {
+    case HTTPS_METHOD_GET:
+        break;
+    case HTTPS_METHOD_PUT:
+        ns_request.HTTPMethod = @"PUT";
+	if (req->request_body_content_type)
+	    [ns_request setValue:@(req->request_body_content_type) forHTTPHeaderField:@"Content-Type"];
+	request_body = [NSData dataWithBytes:req->request_body length:req->request_body_size];
+	[ns_request setHTTPBody:request_body];
+	break;
+    case HTTPS_METHOD_HEAD:
+        ns_request.HTTPMethod = @"HEAD";
+        break;
+    case HTTPS_METHOD_POST:
+        ns_request.HTTPMethod = @"POST";
+	if (req->request_body_content_type)
+	    [ns_request setValue:@(req->request_body_content_type) forHTTPHeaderField:@"Content-Type"];
+	request_body = [NSData dataWithBytes:req->request_body length:req->request_body_size];
+	[ns_request setHTTPBody:request_body];
+	break;
+    }
+    if (req->flags & HTTPS_ONE_BYTE) {
+        [ns_request setValue:@"bytes=0-1" forHTTPHeaderField:@"Range"];
+    }
+    if (req->timeout_sec > 0) {
+        [ns_request setTimeoutInterval:req->timeout_sec];
+    }
+    if (req->request_headers) {
+        for (int i = 0; req->request_headers[i]; ++i) {
+            char *colon = strchr(req->request_headers[i], ':');
+            if (colon) {
+                char *name = strndup(req->request_headers[i], colon - req->request_headers[i]);
+                char *value = colon + 1;
+                if (strcasecmp(name, "content-type") != 0 && strcasecmp(name, "range") != 0) {
+                    [ns_request setValue:@(value) forHTTPHeaderField:@(name)];
+                }
+                free(name);
+            }
+        }
+    }
     task = [session dataTaskWithRequest:ns_request];
     task.taskDescription = [NSString stringWithFormat:@"%lld", my_request_id];
     // task.prefersIncrementalDelivery = YES;   // this is the default

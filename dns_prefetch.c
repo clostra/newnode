@@ -1,4 +1,4 @@
-#include "features.h"
+#include "nn_features.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -235,7 +235,7 @@ void dns_prefetch_freeaddrinfo(nn_addrinfo *p)
 
 static void dns_prefetch_free_internal(size_t result_index, uint64_t result_id)
 {
-    if (result_index >= NUM_DNS_RESULTS) {
+    if (result_index < 0 || result_index >= NUM_DNS_RESULTS) {
         return;
     }
     addrinfo *p, *next;
@@ -314,9 +314,13 @@ evutil_addrinfo* copy_evutil_addrinfo_from_nn_addrinfo(nn_addrinfo *nna)
     return first;
 }
 
-void newnode_evdns_cache_write(network *n, const char *nodename, evutil_addrinfo *res, int ttl)
+void newnode_evdns_cache_write(network *n, const char *nodename, evutil_addrinfo *res, time_t ttl)
 {
-    evdns_cache_write(n->evdns, (char *)nodename, res, ttl);
+    // max DNS TTL per RFC 2181 = 2^31 - 1
+    if (ttl > 2147483647) {
+        ttl = 2147483647;
+    }
+    evdns_cache_write(n->evdns, (char *)nodename, res, (int) ttl);
 }
 
 // allow peek into the evdns cache
@@ -345,6 +349,9 @@ static void dns_prefetch_internal(network *n, size_t result_index, uint64_t resu
     debug("%s result_index:%zu result_id:%llu host:%s base:%p\n", __func__, result_index, 
           (unsigned long long)result_id, host, base);
 
+    if (result_index < 0) {
+        return;
+    }
     // make sure our cache_entry_id matches cache_index
     // (IOW this entry hasn't been re-allocated to something else)
     if (dns_prefetch_results[result_index].id != result_id) {
@@ -392,7 +399,7 @@ static void dns_prefetch_internal(network *n, size_t result_index, uint64_t resu
 void dns_prefetch(network *n, uint64_t key, const char *host, evdns_base *base)
 {
     size_t index;
-    uint32_t id;
+    uint64_t id;
     PARSE_KEY(key, index, id);
     if (key <= 0) {
         return;
@@ -400,7 +407,7 @@ void dns_prefetch(network *n, uint64_t key, const char *host, evdns_base *base)
     dns_prefetch_internal(n, index, id, host, base);
 }
 
-static int minimum_ttl(nn_addrinfo *nna)
+static time_t minimum_ttl(nn_addrinfo *nna)
 {
     time_t now = time(0);
     nn_addrinfo *p;
@@ -449,6 +456,9 @@ char *make_ip_addr_list(nn_addrinfo *p)
 void dns_prefetch_store_result(network *n, size_t result_index, uint64_t result_id, nn_addrinfo *nna, const char *host, bool fromevdns)
 {
     debug("%s result_index:%zu result_id:%d host:%s\n", __func__, result_index, (int)result_id, host);
+    if (result_index < 0) {
+        return;
+    }
     if (dns_prefetch_results[result_index].id == result_id &&
         dns_prefetch_results[result_index].allocated == true) {
         dns_prefetch_results[result_index].result = nna;
@@ -456,13 +466,13 @@ void dns_prefetch_store_result(network *n, size_t result_index, uint64_t result_
     if (fromevdns) {
         return;
     }
-    int minttl = minimum_ttl(nna);
+    time_t minttl = minimum_ttl(nna);
 
     if (minttl > 0) {
         // have a ttl obtained from DNS query, add to evdns cache
         evutil_addrinfo *addrinfo_copy = copy_evutil_addrinfo_from_nn_addrinfo(nna);
-        debug("%s adding (host:%s=>%s) to evdns cache with ttl:%d)\n",
-              __func__, host, make_ip_addr_list(nna), minttl);
+        debug("%s adding (host:%s=>%s) to evdns cache with ttl:%ld)\n",
+              __func__, host, make_ip_addr_list(nna), (long) minttl);
         newnode_evdns_cache_write(n, host, addrinfo_copy, minttl);
         evutil_freeaddrinfo(addrinfo_copy);
         return;
@@ -489,10 +499,10 @@ void dns_prefetch_store_result(network *n, size_t result_index, uint64_t result_
     }
 }
 
-int dns_prefetch_index(uint64_t key)
+size_t dns_prefetch_index(uint64_t key)
 {
     size_t index;
-    uint32_t id;
+    uint64_t id;
     if (key <= 0) {
         return -1;
     }
@@ -500,10 +510,10 @@ int dns_prefetch_index(uint64_t key)
     return index;
 }
 
-uint32_t dns_prefetch_id(uint64_t key)
+uint64_t dns_prefetch_id(uint64_t key)
 {
     size_t index;
-    uint32_t id;
+    uint64_t id;
     if (key <= 0) {
         return -1;
     }

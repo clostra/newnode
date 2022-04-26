@@ -106,7 +106,7 @@ function build_android {
                 bugsnag/bugsnag_unwind.c \
                 bugsnag/deps/bugsnag/report.c \
                 bugsnag/deps/bugsnag/serialize.c \
-                bugsnag/deps/deps/parson/parson.c; do
+                parson/parson.c; do
         $CC $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBUNWIND_CFLAGS $PARSON_CFLAGS -c $file
     done
     #$CC $CFLAGS -shared -Wl,--version-script=android_export_list -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND

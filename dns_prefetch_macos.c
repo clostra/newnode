@@ -1,7 +1,7 @@
 #include <dns_sd.h>
 #include <fcntl.h>
 #include <stdbool.h>
-#include "features.h"
+#include "nn_features.h"
 #include "log.h"
 #include "network.h"
 #include "dns_prefetch.h"
@@ -47,13 +47,13 @@ void dns_prefetch_callback(DNSServiceRef sdRef, DNSServiceFlags flags, uint32_t 
         }
     }
     result->lastresult = a;
-    if (o_debug) {
-        debug("%s addresses for %s are now:\n", __func__, result->host);
-        nn_addrinfo *nn;
-        for (nn = result->result; nn; nn=nn->ai_next) {
-            debug("    %s\n", sockaddr_str_addronly(nn->ai_addr));
-        }
-    }
+    // if (o_debug) {
+    //     debug("%s addresses for %s are now:\n", __func__, result->host);
+    //     nn_addrinfo *nn;
+    //     for (nn = result->result; nn; nn=nn->ai_next) {
+    //         debug("    %s\n", sockaddr_str_addronly(nn->ai_addr));
+    //     }
+    // }
     if ((flags & kDNSServiceFlagsMoreComing) == 0) {
         network *n = result->n;
         // no more DNS responses immediately queued, go ahead and update result
@@ -87,7 +87,7 @@ void platform_dns_event_cb(evutil_socket_t fd, short what, void *arg)
     }
 }
 
-void platform_dns_prefetch(network *n, int result_index, unsigned int result_id, const char *host)
+void platform_dns_prefetch(network *n, size_t result_index, uint64_t result_id, const char *host)
 {
     if (host == NULL || *host == '\0') {
         return;
@@ -101,8 +101,8 @@ void platform_dns_prefetch(network *n, int result_index, unsigned int result_id,
 
     // No matter which kinds of addresses we request,
     // DNSServiceGetAddrInfo won't return A records unless we have a
-    // routable IPv4 address, and and won't return AAAA records unless
-    // we have a routable IPv6 address.  This is great for initiating
+    // routable IPv4 address, and won't return AAAA records unless we
+    // have a routable IPv6 address.  This is great for initiating
     // connections from the local host, not so great if we pass these
     // addresses to a peer.
     DNSServiceErrorType error = DNSServiceGetAddrInfo(&(request->sd),               // DNSServiceRef
