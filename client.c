@@ -599,11 +599,9 @@ void peer_disconnect(peer_connection *pc)
     debug("disconnecting pc:%p\n", pc);
     if (pc->evcon) {
         evhttp_connection_free(pc->evcon);
-        pc->evcon = NULL;
     }
     if (pc->bev) {
         bufferevent_free(pc->bev);
-        pc->bev = NULL;
     }
     free(pc);
 }
@@ -2765,15 +2763,12 @@ void connect_cleanup(connect_req *c)
     }
     if (c->pending_bev) {
         bufferevent_free(c->pending_bev);
-        c->pending_bev = NULL;
     }
     if (c->intro_data) {
         evbuffer_free(c->intro_data);
-        c->intro_data = NULL;
     }
     if (c->pc) {
         peer_disconnect(c->pc);
-        c->pc = NULL;
     }
     free(c->authority);
     free(c->host);
