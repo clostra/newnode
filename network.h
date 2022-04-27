@@ -35,6 +35,12 @@ TS(network);
 #define memeq(a, b, len) (memcmp(a, b, len) == 0)
 #define memdup(m, len) memcpy(malloc(len), m, len)
 
+#define DEFINE_TRIVIAL_CLEANUP_FUNC(type, func) \
+    static inline void func##p(type *p) { if (*p) func(*p); }
+
+static inline void freep(void *pp) { free(*(void **)pp); }
+#define auto_free __attribute__((__cleanup__(freep)))
+
 #ifndef IN_LINKLOCALNETNUM
 #define IN_LINKLOCALNETNUM (u_int32_t)0xA9FE0000 /* 169.254.0.0 */
 #endif

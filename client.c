@@ -1103,11 +1103,10 @@ char* cache_name_from_uri(const char *uri)
         uint8_t uri_hash[crypto_generichash_BYTES];
         crypto_generichash(uri_hash, sizeof(uri_hash), (uint8_t*)uri, strlen(uri), NULL, 0);
         size_t b64_hash_len;
-        char *b64_hash = base64_urlsafe_encode(uri_hash, sizeof(uri_hash), &b64_hash_len);
+        auto_free char *b64_hash = base64_urlsafe_encode(uri_hash, sizeof(uri_hash), &b64_hash_len);
         assert(b64_hash_len < name_max);
         encoded_uri[name_max - b64_hash_len - 2] = '.';
         strcpy(&encoded_uri[name_max - b64_hash_len - 1], b64_hash);
-        free(b64_hash);
     }
     return encoded_uri;
 }
@@ -1274,10 +1273,9 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
 
             // submit a proxy-only request with If-None-Match: "base64(root_hash)" and let it cache
             size_t b64_hash_len;
-            char *b64_hash = base64_urlsafe_encode((uint8_t*)&p->root_hash, sizeof(p->root_hash), &b64_hash_len);
+            auto_free char *b64_hash = base64_urlsafe_encode((uint8_t*)&p->root_hash, sizeof(p->root_hash), &b64_hash_len);
             char etag[2048];
             snprintf(etag, sizeof(etag), "\"%s\"", b64_hash);
-            free(b64_hash);
             debug("d:%p submitting a cache request %s\n", d, etag);
             evhttp_add_header(&p->output_headers, "If-None-Match", etag);
 
@@ -1373,10 +1371,9 @@ bool verify_signature(const uint8_t *content_hash, const char *sign)
     }
 
     size_t out_len = 0;
-    uint8_t *raw_sig = base64_decode(sign, strlen(sign), &out_len);
+    auto_free uint8_t *raw_sig = base64_decode(sign, strlen(sign), &out_len);
     if (out_len != sizeof(content_sig)) {
         fprintf(stderr, "Incorrect length! %zu != %zu\n", out_len, sizeof(content_sig));
-        free(raw_sig);
         return false;
     }
 
@@ -1385,7 +1382,6 @@ bool verify_signature(const uint8_t *content_hash, const char *sign)
     content_sig *sig = (content_sig*)raw_sig;
     if (crypto_sign_verify_detached(sig->signature, (uint8_t*)sig->sign, sizeof(content_sig) - sizeof(sig->signature), pk)) {
         fprintf(stderr, "Incorrect signature!\n");
-        free(raw_sig);
         return false;
     }
 
@@ -1399,11 +1395,9 @@ bool verify_signature(const uint8_t *content_hash, const char *sign)
             fprintf(stderr, "%02X", sig->content_hash[i]);
         }
         fprintf(stderr, "\n");
-        free(raw_sig);
         return false;
     }
 
-    free(raw_sig);
     return true;
 }
 
@@ -1431,12 +1425,11 @@ void proxy_save_cache(proxy_request *p)
     fsync(headers_file);
     close(headers_file);
 
-    char *encoded_uri = cache_name_from_uri(p->uri);
+    auto_free char *encoded_uri = cache_name_from_uri(p->uri);
     char cache_path[PATH_MAX];
     char cache_headers_path[PATH_MAX];
     snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, encoded_uri);
     snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
-    free(encoded_uri);
     debug("p:%p (%.2fms) store cache:%s headers:%s\n", p, rdelta(p), cache_path, cache_headers_path);
 
     fsync(p->cache_file);
@@ -1510,18 +1503,16 @@ int peer_request_header_cb(evhttp_request *req, void *arg)
             return -1;
         }
         size_t out_len = 0;
-        uint8_t *hashes = base64_decode(xhashes, strlen(xhashes), &out_len);
+        auto_free uint8_t *hashes = base64_decode(xhashes, strlen(xhashes), &out_len);
 
         merkle_tree *m = alloc(merkle_tree);
         if (!merkle_tree_set_leaves(m, hashes, out_len)) {
             debug("merkle_tree_set_leaves failed: %zu\n", out_len);
             r->pc->peer->last_verified = 0;
             proxy_send_error(p, 502, "Bad Gateway Hashes");
-            free(hashes);
             merkle_tree_free(m);
             return -1;
         }
-        free(hashes);
         uint8_t root_hash[crypto_generichash_BYTES];
         merkle_tree_get_root(m, root_hash);
         if (!verify_signature(root_hash, msign)) {
@@ -1895,7 +1886,7 @@ void stats_queue_cb(network *n)
         e->failure_cb = NULL;
         TAILQ_REMOVE(&stats_queue, e, next);
         free(e);
-        https_request *req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
+        auto_free https_request *req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
         g_https_cb(url, ^(bool success, https_result *result) {
             // only free the url and callback if we're
             // done with them; else they get reused in the
@@ -1920,7 +1911,6 @@ void stats_queue_cb(network *n)
                 stats_queue_restart_timer(n, 0);
             }
         }, req);
-        free(req);
         stats_queue_running = false;
         return;
     }
@@ -3651,12 +3641,11 @@ static void http_request_cb(evhttp_request *req, void *arg)
     }
 
     const char *uri = evhttp_request_get_uri(req);
-    char *encoded_uri = cache_name_from_uri(uri);
+    auto_free char *encoded_uri = cache_name_from_uri(uri);
     char cache_path[PATH_MAX];
     char cache_headers_path[PATH_MAX];
     snprintf(cache_path, sizeof(cache_path), "%s%s", CACHE_PATH, encoded_uri);
     snprintf(cache_headers_path, sizeof(cache_headers_path), "%s.headers", cache_path);
-    free(encoded_uri);
     int cache_file = open(cache_path, O_RDONLY);
     int headers_file = open(cache_headers_path, O_RDONLY);
     debug("check hit:%d,%d cache:%s\n", cache_file != -1, headers_file != -1, cache_path);
@@ -3698,7 +3687,7 @@ static void http_request_cb(evhttp_request *req, void *arg)
         const char *msign = evhttp_find_header(temp->output_headers, "X-MSign");
         if (ifnonematch && msign) {
             size_t out_len = 0;
-            uint8_t *content_hash = base64_decode(ifnonematch, strlen(ifnonematch), &out_len);
+            auto_free uint8_t *content_hash = base64_decode(ifnonematch, strlen(ifnonematch), &out_len);
             if (out_len == crypto_generichash_BYTES &&
                 verify_signature(content_hash, msign)) {
                 temp->response_code = 304;
@@ -3707,7 +3696,6 @@ static void http_request_cb(evhttp_request *req, void *arg)
                 close(cache_file);
                 cache_file = -1;
             }
-            free(content_hash);
         }
 
         evbuffer *content = NULL;
@@ -4057,7 +4045,7 @@ void maybe_update_ipinfo(network *n)
 void query_ipinfo(network *n)
 {
 #define IPINFO_RESPONSE_SIZE 10240
-    https_request *request = https_request_alloc(IPINFO_RESPONSE_SIZE, HTTPS_DIRECT, 30);
+    auto_free https_request *request = https_request_alloc(IPINFO_RESPONSE_SIZE, HTTPS_DIRECT, 30);
     g_https_cb("https://ipinfo.io", ^(bool success, https_result *result) {
         debug("GET https://ipinfo.io request_id:%" PRId64 " success=%d, response_length=%zu, https_error=%d\n",
               result->request_id, success, result->response_length, result->https_error);
@@ -4127,7 +4115,6 @@ void query_ipinfo(network *n)
                   success, result->response_length, result->https_error);
         }
     }, request);
-    free(request);
 }
 
 void network_ifchange(network *n)
