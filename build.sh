@@ -56,7 +56,7 @@ if ! echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -f
     LIBBLOCKSRUNTIME=blocksruntime/native/libBlocksRuntime.a
 fi
 
-FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Wno-error=shadow -Wfatal-errors \
+FLAGS="-g -Werror -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-error=shadow -Wfatal-errors \
   -fPIC -fblocks -fdata-sections -ffunction-sections \
   -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
   -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE"
@@ -78,29 +78,28 @@ LM=
 echo -e "#include <math.h>\nint main() { log(2); }"|clang -x c - 2>/dev/null || LM="-lm"
 
 CDEPS="$PARSON_CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS"
-CLIBS="$LRT $LM $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME"
+CLIBS="$LRT $LM $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -lpthread"
 
 rm -f *.o || true
 clang $CFLAGS -c dht/dht.c -o dht_dht.o
 clang $CFLAGS -c parson/parson.c -o parson.o
-for file in backtrace.c client.c d2d.c injector.c dht.c bev_splice.c base64.c http.c log.c lsd.c icmp_handler.c hash_table.c \
+for file in backtrace.c d2d.c dht.c bev_splice.c base64.c http.c log.c lsd.c icmp_handler.c hash_table.c \
             merkle_tree.c network.c obfoo.c sha1.c stall_detector.c timer.c thread.c bufferevent_utp.c; do
     clang $CFLAGS $CDEPS -c $file
 done
 
-mv client.o client.o.tmp
-clang $CFLAGS -o injector *.o $CLIBS -lpthread
-mv injector.o injector.o.tmp
-mv client.o.tmp client.o
+clang $CFLAGS $CDEPS -o injector injector.c *.o $CLIBS
+
 clang $CFLAGS $CDEPS -c dns_prefetch.c
 case $(uname -s):$(uname -m) in
     Darwin:*) 
         clang $CFLAGS $CDEPS -c dns_prefetch_macos.c
-        clang -framework Foundation $CFLAGS $CDEPS -I. -o client client_main.c ios/HTTPSRequest.m *.o $CLIBS -lpthread
+        clang $CFLAGS $CDEPS -I. -c ios/HTTPSRequest.m
+        CLIBS="$CLIBS -framework Foundation"
         ;;
     *)
         clang $CFLAGS $CDEPS -c https_wget.c
-        clang $CFLAGS $CDEPS -c client_main.c
-        clang $CFLAGS -o client *.o $CLIBS -lpthread
         ;;
 esac
+clang $CFLAGS $CDEPS -c client.c
+clang $CFLAGS $CDEPS -o client client_main.c *.o $CLIBS

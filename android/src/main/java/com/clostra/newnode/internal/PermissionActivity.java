@@ -64,33 +64,42 @@ public class PermissionActivity extends Activity {
                 }
             }
         }
+
         if (permissionsToRequest.size() == 0) {
+            finish();
             return;
         }
-        if (locationDisclosure) {
-            DialogInterface.OnClickListener dialogClickListener = new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    switch (which){
-                    case DialogInterface.BUTTON_POSITIVE:
-                        ActivityCompat.requestPermissions(PermissionActivity.this,
-                            permissionsToRequest.toArray(new String[permissionsToRequest.size()]),
-                            PERMISSIONS_REQUEST_CODE);
-                        break;
-                    case DialogInterface.BUTTON_NEGATIVE:
-                        break;
-                    }
-                }
-            };
 
-            ApplicationInfo applicationInfo = getApplicationInfo();
-            int stringId = applicationInfo.labelRes;
-            String appName = stringId == 0 ? applicationInfo.nonLocalizedLabel.toString() : getString(stringId);
-
-            AlertDialog.Builder builder = new AlertDialog.Builder(new ContextThemeWrapper(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert));
-            builder.setMessage(appName + " finds and connects to nearby devices in the background using current location.")
-                .setPositiveButton(android.R.string.ok, dialogClickListener)
-                .setNegativeButton(android.R.string.cancel, dialogClickListener).show();
+        if (!locationDisclosure) {
+            ActivityCompat.requestPermissions(PermissionActivity.this,
+                permissionsToRequest.toArray(new String[permissionsToRequest.size()]),
+                PERMISSIONS_REQUEST_CODE);
+            return;
         }
+
+        DialogInterface.OnClickListener dialogClickListener = new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                switch (which){
+                case DialogInterface.BUTTON_POSITIVE:
+                    ActivityCompat.requestPermissions(PermissionActivity.this,
+                        permissionsToRequest.toArray(new String[permissionsToRequest.size()]),
+                        PERMISSIONS_REQUEST_CODE);
+                    break;
+                case DialogInterface.BUTTON_NEGATIVE:
+                    finish();
+                    break;
+                }
+            }
+        };
+
+        ApplicationInfo applicationInfo = getApplicationInfo();
+        int stringId = applicationInfo.labelRes;
+        String appName = stringId == 0 ? applicationInfo.nonLocalizedLabel.toString() : getString(stringId);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(new ContextThemeWrapper(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert));
+        builder.setMessage(appName + " finds and connects to nearby devices in the background using current location.")
+            .setPositiveButton(android.R.string.ok, dialogClickListener)
+            .setNegativeButton(android.R.string.cancel, dialogClickListener).show();
     }
 }
