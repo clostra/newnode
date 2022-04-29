@@ -1,9 +1,10 @@
 #ifndef __NETWORK_H__
 #define __NETWORK_H__
 
+#include <event2/buffer.h>
+#include <event2/dns.h>
 #include <event2/event.h>
 #include <event2/event_struct.h>
-#include <event2/dns.h>
 #include <event2/http.h>
 #include <event2/http_struct.h>
 #include <sodium.h>
@@ -113,6 +114,10 @@ TS(ip);
 TE(bufferevent_flush_mode);
 TE(bufferevent_filter_result);
 typedef in_port_t port_t;
+
+
+DEFINE_TRIVIAL_CLEANUP_FUNC(evbuffer*, evbuffer_free)
+#define evbuffer_auto_free __attribute__((__cleanup__(evbuffer_freep)))
 
 
 #include "timer.h"

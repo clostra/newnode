@@ -48,7 +48,7 @@ int obfoo_decrypt(obfoo *o, uint8_t *m, const uint8_t *c, size_t clen)
 
 void obfoo_write_intro(obfoo *o, evbuffer *out)
 {
-    evbuffer *buf = evbuffer_new();
+    evbuffer_auto_free evbuffer *buf = evbuffer_new();
     evbuffer_add(buf, o->pk, sizeof(o->pk));
     evbuffer_add(buf, o->tx_nonce, sizeof(o->tx_nonce));
     uint16_t pad_len = (uint16_t)randombytes_uniform(INTRO_PAD_MAX);
@@ -56,7 +56,6 @@ void obfoo_write_intro(obfoo *o, evbuffer *out)
     randombytes_buf(pad, sizeof(pad));
     evbuffer_add(buf, pad, sizeof(pad));
     evbuffer_add_buffer(out, buf);
-    evbuffer_free(buf);
 }
 
 obfoo* obfoo_new()
@@ -130,7 +129,7 @@ ssize_t obfoo_input_filter(obfoo *o, evbuffer *in, evbuffer *out, evbuffer *resp
 
             obfoo_write_intro(o, response);
         } else {
-            evbuffer *buf = evbuffer_new();
+            evbuffer_auto_free evbuffer *buf = evbuffer_new();
 
             uint8_t synchash[SYNC_HASH_LEN];
             crypto_generichash_update(&state, o->tx, sizeof(o->tx));
@@ -150,7 +149,6 @@ ssize_t obfoo_input_filter(obfoo *o, evbuffer *in, evbuffer *out, evbuffer *resp
             evbuffer_add(buf, r.buf, crypt_len);
 
             evbuffer_add_buffer(response, buf);
-            evbuffer_free(buf);
 
             // encrypt vc from the other side
             crypto_stream_chacha20_xor_ic(o->vc, o->vc, sizeof(o->vc), o->rx_nonce, 0, o->rx);

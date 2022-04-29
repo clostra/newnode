@@ -814,7 +814,7 @@ void proxy_peer_requests_cancel(proxy_request *p)
 
 bool write_header_to_file(int headers_file, int code, const char *code_line, evkeyvalq *input_headers)
 {
-    evbuffer *buf = evbuffer_new();
+    evbuffer_auto_free evbuffer *buf = evbuffer_new();
     evbuffer_add_printf(buf, "HTTP/1.1 %d %s\r\n", code, code_line);
     const char *headers[] = hashed_headers;
     for (int i = 0; i < (int)lenof(headers); i++) {
@@ -832,9 +832,7 @@ bool write_header_to_file(int headers_file, int code, const char *code_line, evk
         evbuffer_add_printf(buf, "%s: %s\r\n", key, value);
     }
     evbuffer_add_printf(buf, "\r\n");
-    bool success = evbuffer_write_to_file(buf, headers_file);
-    evbuffer_free(buf);
-    return success;
+    return evbuffer_write_to_file(buf, headers_file);
 }
 
 bool evcon_is_localhost(evhttp_connection *evcon)
@@ -1240,12 +1238,11 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
                 return false;
             }
             if (p->server_req) {
-                evbuffer *buf = evbuffer_new();
+                evbuffer_auto_free evbuffer *buf = evbuffer_new();
                 if (!evbuffer_add_file_segment(buf, seg, 0, length)) {
                     evbuffer_file_segment_free(seg);
                 }
                 evhttp_send_reply_chunk(p->server_req, buf);
-                evbuffer_free(buf);
             }
             p->byte_playhead += length;
         }
@@ -1667,12 +1664,11 @@ bool peer_request_process_chunks(peer_request *r, evhttp_request *req)
                 return false;
             }
             if (p->server_req) {
-                evbuffer *buf = evbuffer_new();
+                evbuffer_auto_free evbuffer *buf = evbuffer_new();
                 if (!evbuffer_add_file_segment(buf, seg, 0, length)) {
                     evbuffer_file_segment_free(seg);
                 }
                 evhttp_send_reply_chunk(p->server_req, buf);
-                evbuffer_free(buf);
             }
             p->byte_playhead += length;
         }
@@ -3626,12 +3622,11 @@ static void http_request_cb(evhttp_request *req, void *arg)
     if (req->type == EVHTTP_REQ_GET && !host &&
         evcon_is_localhost(req->evcon) && streq(evhttp_request_get_uri(req), "/proxy.pac")) {
         evhttp_add_header(req->output_headers, "Content-Type", "application/x-ns-proxy-autoconfig");
-        evbuffer *body = evbuffer_new();
+        evbuffer_auto_free evbuffer *body = evbuffer_new();
         evbuffer_add_printf(body, "function FindProxyForURL(url, host) {return \""
                             "PROXY 127.0.0.1:%d; SOCKS 127.0.0.1:%d; DIRECT"
                             "\";}", g_port, g_port);
         evhttp_send_reply(req, 200, "OK", body);
-        evbuffer_free(body);
         return;
     }
     if (req->type != EVHTTP_REQ_TRACE &&
@@ -3653,13 +3648,12 @@ static void http_request_cb(evhttp_request *req, void *arg)
     debug("check hit:%d,%d cache:%s\n", cache_file != -1, headers_file != -1, cache_path);
     if (!NO_CACHE && cache_file != -1 && headers_file != -1) {
         evhttp_request *temp = evhttp_request_new(NULL, NULL);
-        evbuffer *header_buf = evbuffer_new();
+        evbuffer_auto_free evbuffer *header_buf = evbuffer_new();
         ev_off_t length = lseek(headers_file, 0, SEEK_END);
         evbuffer_add_file(header_buf, headers_file, 0, length);
         evhttp_parse_firstline_(temp, header_buf);
         evhttp_parse_headers_(temp, header_buf);
         copy_response_headers(temp, req);
-        evbuffer_free(header_buf);
 
         length = lseek(cache_file, 0, SEEK_END);
 
@@ -3700,7 +3694,7 @@ static void http_request_cb(evhttp_request *req, void *arg)
             }
         }
 
-        evbuffer *content = NULL;
+        evbuffer_auto_free evbuffer *content = NULL;
         if (cache_file != -1) {
             content = evbuffer_new();
             evbuffer_add_file(content, cache_file, range_start, (range_end - range_start) + 1);
@@ -3713,9 +3707,6 @@ static void http_request_cb(evhttp_request *req, void *arg)
             temp->response_code, temp->response_code_line, range_start, range_end, (range_end - range_start) + 1);
         evhttp_send_reply(req, temp->response_code, temp->response_code_line, content);
         evhttp_request_free(temp);
-        if (content) {
-            evbuffer_free(content);
-        }
         return;
     }
     close(cache_file);
