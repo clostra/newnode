@@ -248,16 +248,15 @@ bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa
         return true;
     }
     if (network_process_udp_cb != NULL) {
-        return network_process_udp_cb(n, buf, len, sa, salen);
+        if (network_process_udp_cb(n, buf, len, sa, salen)) {
+            return true;
+        }
     }
     // dht last because dht_process_udp doesn't really tell us if it was a valid dht packet
     time_t tosleep;
     bool r = dht_process_udp(n->dht, buf, len, sa, salen, &tosleep);
     dht_schedule(n, tosleep);
-    if (r) {
-        return true;
-    }
-    return false;
+    return r;
 }
 
 void udp_read(evutil_socket_t fd, short events, void *arg)
