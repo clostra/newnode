@@ -152,17 +152,18 @@ bool sockaddr_is_localhost(const sockaddr *sa, socklen_t salen);
 int bufferevent_getpeername(const bufferevent *bev, sockaddr *address, socklen_t *address_len);
 bool bufferevent_is_localhost(const bufferevent *bev);
 
-ssize_t udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
-bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
-
 network* network_setup(char *address, port_t port);
 void network_async(network *n, timer_callback cb);
 int network_loop(network *n);
+
 void network_set_log_level(int level);
 void network_free(network *n);
-
+#define network_sendto(n, ...) udp_sendto(n->fd, ...)
 void network_recreate_sockets_cb(network *n) __attribute__((weak));
 bool network_process_udp_cb(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) __attribute__((weak));
 void network_ifchange(network *n) __attribute__((weak));
+
+ssize_t udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
+bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
 
 #endif // __NETWORK_H__
