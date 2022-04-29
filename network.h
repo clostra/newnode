@@ -163,5 +163,6 @@ void network_free(network *n);
 
 void network_recreate_sockets_cb(network *n) __attribute__((weak));
 bool network_process_udp_cb(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) __attribute__((weak));
+void network_ifchange(network *n) __attribute__((weak));
 
 #endif // __NETWORK_H__

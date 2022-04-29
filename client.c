@@ -4129,6 +4129,10 @@ void query_ipinfo(network *n)
 
 void network_ifchange(network *n)
 {
+    if (!g_app_name) {
+        // client not initialized;
+        return;
+    }
     g_ifchange_time = time(NULL);
     timer_cancel(g_ifchange_timer);
     g_ifchange_timer = timer_start(n, 5 * 1000, ^{ query_ipinfo(n); });
