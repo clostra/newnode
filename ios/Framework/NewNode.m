@@ -90,3 +90,5 @@ void ui_display_stats(const char *type, uint64_t direct, uint64_t peers)
                         userInfo:@{@"scope": @(type), @"direct_bytes": @(direct), @"peers_bytes": @(peers)}];
     }
 }
+
+bool network_process_udp_cb(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) { return false; }

@@ -15,6 +15,7 @@ int64_t do_https(network *, port_t port, const char *url, https_complete_callbac
 https_request *https_request_alloc(size_t bufsize, unsigned int flags, unsigned timeout);
 
 void ui_display_stats(const char *type, uint64_t direct, uint64_t peers) {}
+bool network_process_udp_cb(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) { return false; }
 
 int main(int argc, char *argv[])
 {

@@ -1977,7 +1977,9 @@ void stats_changed(network *n)
             return true;
         });
     }
-    ui_display_stats("process", g_all_direct, g_all_peer);
+    if (ui_display_stats != NULL) {
+        ui_display_stats("process", g_all_direct, g_all_peer);
+    }
     if (stats_report_timer) {
         return;
     }
@@ -4012,6 +4014,14 @@ port_t recreate_listener(network *n, port_t port)
     return g_port;
 }
 
+void network_recreate_sockets_cb(network *n)
+{
+    if (!recreate_listener(n, g_port)) {
+        // try again with 0 port
+        recreate_listener(n, g_port);
+    }
+}
+
 void maybe_update_ipinfo(network *n)
 {
     if (g_ip[0] == '\0' || g_country[0] == '\0' || g_asn == 0) {
@@ -4192,13 +4202,6 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         network_free(n);
         return NULL;
     }
-
-    network_set_recreate_sockets(n, ^{
-        if (!recreate_listener(n, g_port)) {
-            // try again with 0 port
-            recreate_listener(n, g_port);
-        }
-    });
 
     network_async(n, ^{
         load_peers(n);
