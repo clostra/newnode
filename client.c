@@ -183,6 +183,7 @@ typedef struct {
     uint64_t to_direct;
     uint64_t from_p2p;
     uint64_t to_p2p;
+    uint64_t last_reported;
 } byte_counts;
 
 hash_table *byte_count_per_authority;
@@ -190,7 +191,6 @@ timer *stats_report_timer;
 network *g_stats_n;
 evconnlistener *g_listener;
 uint64_t g_cid;
-bool g_stats_changed;
 uint64_t g_all_peer;
 uint64_t g_all_direct;
 
@@ -1796,146 +1796,7 @@ https_request *tryfirst_request_alloc(void)
     return result;
 }
 
-typedef struct stats_queue_entry {
-    char *url;
-    time_t notbefore;
-    void (^failure_cb)(void);
-    TAILQ_ENTRY(stats_queue_entry) next;
-} stats_queue_entry;
-
-timer *stats_queue_timer;
-bool stats_queue_running;
-TAILQ_HEAD(, stats_queue_entry) stats_queue;
-
-void stats_queue_cb(network *n);
-
-void stats_queue_restart_timer(network *n, uint64_t seconds)
-{
-    timer_cancel(stats_queue_timer);
-    stats_queue_timer = timer_start(n, seconds * 1000, ^{ stats_queue_cb(n); });
-}
-
-void stats_queue_restart_timer_notbefore(network *n, uint64_t notbefore)
-{
-    if (stats_queue_running || stats_queue_timer) {
-        return;
-    }
-    uint64_t seconds = 0;
-    time_t now = time(NULL);
-    if (notbefore - now > 0) {
-        seconds = notbefore - now;
-    }
-    stats_queue_restart_timer(n, seconds);
-}
-
-// like stats_queue_append, but doesn't malloc storage for url and failure_cb
-// (because they've already been malloc()ed or Block_copy()ed)
-void stats_queue_reappend(network *n, char *url, time_t notbefore, void (^failure_cb)(void))
-{
-    stats_queue_entry *e = alloc(stats_queue_entry);
-
-    debug("%s url:%s notbefore:%s", __func__, url, ctime(&notbefore));
-    e->url = url;
-    e->notbefore = notbefore;
-    e->failure_cb = failure_cb;
-    TAILQ_INSERT_TAIL(&stats_queue, e, next);
-    stats_queue_restart_timer_notbefore(n, notbefore);
-}
-
-void stats_queue_append(network *n, char *url, void (^failure_cb)(void))
-{
-    stats_queue_reappend(n, strdup(url), 0, failure_cb ? Block_copy(failure_cb) : failure_cb);
-}
-
-void stats_queue_cb(network *n)
-{
-    stats_queue_timer = NULL;
-
-    // if there is already a runner active, we leave the queue alone
-    if (stats_queue_running) {
-        return;
-    }
-
-    // ok, we're the runner
-    stats_queue_running = true;
-    if (TAILQ_EMPTY(&stats_queue)) {
-        // nothing left to do for now
-        debug("%s stats_queue is empty\n", __func__);
-        stats_queue_running = false;
-        return;
-    }
-
-    // find first ripe entry in the queue, process that, and return
-    time_t now = time(0);
-    stats_queue_entry *e;
-    TAILQ_FOREACH(e, &stats_queue, next) {
-        time_t notbefore = e->notbefore;
-        if (now < notbefore) {
-            continue;
-        }
-        debug("%s ripe queue entry url:%s notbefore:%s",
-              __func__, e->url, ctime(&(e->notbefore)));
-
-        char *url = e->url;
-        e->url = NULL;
-        __auto_type failure_cb = e->failure_cb;
-        e->failure_cb = NULL;
-        TAILQ_REMOVE(&stats_queue, e, next);
-        free(e);
-        auto_free https_request *req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
-        g_https_cb(url, ^(bool success, https_result *result) {
-            // only free the url and callback if we're
-            // done with them; else they get reused in the
-            // call to stats_queue_reappend() below
-            if (success) {
-                free(url);
-                Block_release(failure_cb);
-            } else if (!failure_cb) {
-                free(url);
-            } else {
-                failure_cb();
-                int delay = randombytes_uniform(60*60) + 10*60;
-                if (delay > 0) {
-                    stats_queue_reappend(n, url, now + delay, failure_cb);
-                } else {
-                    free(url);
-                    Block_release(failure_cb);
-                }
-            }
-            // kickstart the queue again
-            if (!stats_queue_timer) {
-                stats_queue_restart_timer(n, 0);
-            }
-        }, req);
-        stats_queue_running = false;
-        return;
-    }
-    // nothing ripe found in the queue, look for soonest
-    // then wake up when soonest entry is ripe
-    time_t soonest = 1;
-    TAILQ_FOREACH(e, &stats_queue, next) {
-        if (soonest == 1) {
-            soonest = e->notbefore;
-        } else if (e->notbefore < soonest) {
-            soonest = e->notbefore;
-        }
-    }
-    debug("%s no ripe queue entries found, soonest = %s",
-          __func__, ctime(&soonest));
-    if (soonest != 1) {
-        if (!stats_queue_timer) {
-            stats_queue_restart_timer(n, soonest - now);
-        }
-    }
-    stats_queue_running = false;
-}
-
-void stats_queue_init(network *n)
-{
-    TAILQ_INIT(&stats_queue);
-}
-
-void send_heartbeat(network *n)
+void heartbeat_send(network *n)
 {
     char url[2048];
     char asn[512] = "";
@@ -1956,12 +1817,112 @@ void send_heartbeat(network *n)
              g_app_id,
              g_cid,
              asn);
-    stats_queue_append(n, url, NULL);
+    auto_free https_request *req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
+    g_https_cb(url, ^(bool success, https_result *result) {}, req);
+}
+
+#define MIN_STATS_TIME_MS 7000
+
+void stats_report(network *n);
+
+void stats_set_timer(network *n, uint64_t ms)
+{
+    debug("%s\n", __func__);
+    if (stats_report_timer) {
+        return;
+    }
+    stats_report_timer = timer_start(n, ms, ^{
+        stats_report_timer = NULL;
+        stats_report(n);
+    });
+}
+
+void stats_report(network *n)
+{
+    debug("%s\n", __func__);
+    __block double next_time = -1;
+    hash_iter(byte_count_per_authority, ^bool (const char *authority, void *val) {
+        if (streq("stats.newnode.com", authority)) {
+            return true;
+        }
+
+        byte_counts *b = val;
+
+        if (!(b->from_browser || b->to_browser ||
+              b->from_peer || b->to_peer ||
+              b->from_direct || b->to_direct ||
+              b->from_p2p || b->to_p2p)) {
+            return true;
+        }
+
+        double next_ms = (us_clock() - b->last_reported) / 1000.0;
+        if (next_ms < MIN_STATS_TIME_MS) {
+            next_time = next_ms;
+            return true;
+        }
+        next_time = -1;
+
+        byte_counts byte_count = *b;
+        bzero(b, sizeof(*b));
+        b->last_reported = byte_count.last_reported;
+
+        __auto_type report = ^(const char *type, uint64_t count, byte_counts *b, void (^failure)(void)) {
+            if (!count) {
+                return;
+            }
+            char url[2048];
+            snprintf(url, sizeof(url), "https://stats.newnode.com/collect?v=1" \
+                     "&tid=UA-149896478-2&t=event&ec=byte_counts&ds=app&ni=1" \
+                     "&ea=%s" \
+                     "&el=%s" \
+                     "&ev=%"PRIu64"" \
+                     "&dh=%s" \
+                     "&an=%s" \
+                     "&aid=%s",
+                     type,
+                     authority,
+                     count,
+                     authority,
+                     g_app_name,
+                     g_app_id);
+            failure = Block_copy(failure);
+            auto_free https_request *req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
+            g_https_cb(url, ^(bool success, https_result *result) {
+                timer_cancel(stats_report_timer);
+                stats_report_timer = NULL;
+                if (!success) {
+                    if (failure) {
+                        failure();
+                        Block_release(failure);
+                    }
+                    stats_set_timer(n, MIN_STATS_TIME_MS + randombytes_uniform(3 * MIN_STATS_TIME_MS));
+                    return;
+                }
+                b->last_reported = us_clock();
+                stats_set_timer(n, 0);
+            }, req);
+        };
+        report("peer", byte_count.from_peer + byte_count.to_peer, b, ^{
+            b->from_peer += byte_count.from_peer;
+            b->to_peer += byte_count.to_peer;
+        });
+        report("direct", byte_count.from_direct + byte_count.to_direct, b, ^{
+            b->from_direct += byte_count.from_direct;
+            b->to_direct += byte_count.to_direct;
+        });
+        report("p2p", byte_count.from_p2p + byte_count.to_p2p, b, ^{
+            b->from_p2p += byte_count.from_p2p;
+            b->to_p2p += byte_count.to_p2p;
+        });
+        return false;
+    });
+    if (next_time != -1) {
+        stats_set_timer(n, (uint64_t)next_time);
+    }
 }
 
 void stats_changed(network *n)
 {
-    g_stats_changed = true;
     if (o_debug > 1) {
         hash_iter(byte_count_per_authority, ^bool (const char *authority, void *val) {
             byte_counts *b = val;
@@ -1976,65 +1937,7 @@ void stats_changed(network *n)
     if (ui_display_stats != NULL) {
         ui_display_stats("process", g_all_direct, g_all_peer);
     }
-    if (stats_report_timer) {
-        return;
-    }
-    debug("starting stats timer\n");
-    stats_report_timer = timer_start(n, 10000, ^{
-        debug("reporting stats\n");
-        stats_report_timer = NULL;
-        g_stats_changed = false;
-        hash_iter(byte_count_per_authority, ^bool (const char *authority, void *val) {
-            if (streq("stats.newnode.com", authority)) {
-                return true;
-            }
-            byte_counts *b = val;
-            if (!(b->from_browser || b->to_browser ||
-                  b->from_peer || b->to_peer ||
-                  b->from_direct || b->to_direct ||
-                  b->from_p2p || b->to_p2p)) {
-                return true;
-            }
-
-            byte_counts byte_count = *b;
-            bzero(b, sizeof(*b));
-
-            __auto_type report = ^(const char *type, uint64_t count, void (^failure)(void)) {
-                if (!count) {
-                    return;
-                }
-                char url[2048];
-                snprintf(url, sizeof(url), "https://stats.newnode.com/collect?v=1" \
-                         "&tid=UA-149896478-2&t=event&ec=byte_counts&ds=app&ni=1" \
-                         "&ea=%s" \
-                         "&el=%s" \
-                         "&ev=%"PRIu64"" \
-                         "&dh=%s" \
-                         "&an=%s" \
-                         "&aid=%s",
-                         type,
-                         authority,
-                         count,
-                         authority,
-                         g_app_name,
-                         g_app_id);
-                stats_queue_append(n, url, failure);
-            };
-            report("peer", byte_count.from_peer + byte_count.to_peer, ^{
-                b->from_peer += byte_count.from_peer;
-                b->to_peer += byte_count.to_peer;
-            });
-            report("direct", byte_count.from_direct + byte_count.to_direct, ^{
-                b->from_direct += byte_count.from_direct;
-                b->to_direct += byte_count.to_direct;
-            });
-            report("p2p", byte_count.from_p2p + byte_count.to_p2p, ^{
-                b->from_p2p += byte_count.from_p2p;
-                b->to_p2p += byte_count.to_p2p;
-            });
-            return true;
-        });
-    });
+    stats_set_timer(n, 7000 + randombytes_uniform(5000));
 }
 
 void byte_count_cb(evbuffer *buf, const evbuffer_cb_info *info, void *userdata)
@@ -3264,8 +3167,8 @@ void update_tryfirst_stats(network *n, tryfirst_stats *tfs, https_result *result
         fprintf(stderr, "last_blocked = %s", ctime(&tfs->last_blocked));
     }
     if (*g_country) {
-        char buf[1024];
-        snprintf(buf, sizeof(buf),
+        char url[2048];
+        snprintf(url, sizeof(url),
                  "https://stats.newnode.com/collect?v=1"
                  "&tid=UA-149896478-2"                      // our id
                  "&npa=1"                                   // disable ad personalization
@@ -3280,7 +3183,8 @@ void update_tryfirst_stats(network *n, tryfirst_stats *tfs, https_result *result
                  "&el=https_error"                          // event label
                  "&ev=%d",                                  // event value
                  origin_server, g_country, g_app_name, g_app_id, result->https_error);
-        stats_queue_append(n, buf, ^{}); 
+        auto_free https_request *req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
+        g_https_cb(url, ^(bool success, https_result *result) {}, req);
     }
 }
 
@@ -4021,10 +3925,10 @@ void maybe_update_ipinfo(network *n)
     if (g_ipinfo_timestamp <= g_ipinfo_logged_timestamp) {
         return;
     }
-    char urlbuf[1024];
+    char url[2048];
     // update server with a GET request
     // XXX maybe add timestamp of the ipinfo?
-    snprintf(urlbuf, sizeof(urlbuf),
+    snprintf(url, sizeof(url),
              "https://stats.newnode.com/collect?v=1" // version = 1
              "&tid=UA-149896478-2"                   // our id
              "&npa=1"                        // disable ad personalization
@@ -4040,7 +3944,8 @@ void maybe_update_ipinfo(network *n)
              "&el=ASN"                           // event label
              "&ev=%d",                           // event value (AS #)
              g_cid, g_country, g_app_name, g_app_id, g_asn);
-    stats_queue_append(n, urlbuf, NULL);
+    auto_free https_request *req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
+    g_https_cb(url, ^(bool success, https_result *result) {}, req);
 }
 
 void query_ipinfo(network *n)
@@ -4157,8 +4062,6 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         return n;
     }
 
-    stats_queue_init(n);
-
     port_pref = n->port;
     f = fopen("port.dat", "wb");
     if (f) {
@@ -4238,7 +4141,7 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         cb();
         timer_repeating(n, 25 * 60 * 1000, cb);
         // random intervals between 6-12 hours
-        timer_repeating(n, 1000 * (6 + randombytes_uniform(6)) * 60 * 60, ^{ send_heartbeat(n); });
+        timer_repeating(n, 1000 * (6 + randombytes_uniform(6)) * 60 * 60, ^{ heartbeat_send(n); });
         network_ifchange(n);
     });
 
