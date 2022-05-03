@@ -123,18 +123,19 @@ static void bufferevent_utp_error(bufferevent_utp *bev_utp, int error, int type)
 {
     bufferevent *bufev = &bev_utp->bev.bev;
 
-    if (!bufev->enabled) {
-        bev_utp->pending_error = error;
-        bev_utp->pending_error_type = type;
+    if (!(bufev->enabled & type)) {
+        if (!bev_utp->pending_error) {
+            bev_utp->pending_error = error;
+            bev_utp->pending_error_type = type;
+        }
         return;
     }
 
-    assert(bufev->enabled & type);
     int what = BEV_EVENT_ERROR;
-    if (bufev->enabled & EV_READ) {
+    if (type & EV_READ) {
         what |= BEV_EVENT_READING;
         bufferevent_disable(bufev, EV_READ);
-    } else if (bufev->enabled & EV_WRITE) {
+    } else if (type & EV_WRITE) {
         what |= BEV_EVENT_WRITING;
         bufferevent_disable(bufev, EV_WRITE);
     }
@@ -269,7 +270,6 @@ static void bufferevent_utp_close(bufferevent_utp *bev_utp)
     utp_close(bev_utp->utp);
     bev_utp->utp = NULL;
     bev_utp->utp_writable = false;
-    bufferevent_disable(bufev, EV_WRITE);
 }
 
 uint64 utp_on_error(utp_callback_arguments *a)
@@ -292,7 +292,7 @@ uint64 utp_on_error(utp_callback_arguments *a)
     }
 
     bufferevent_utp_close(bev_utp);
-    bufferevent_utp_error(bev_utp, error, bufev->enabled);
+    bufferevent_utp_error(bev_utp, error, EV_WRITE);
     return 0;
 }
 
@@ -482,7 +482,7 @@ static int be_utp_enable(bufferevent *bufev, short event)
         BEV_RESET_GENERIC_WRITE_TIMEOUT(bufev);
         bufferevent_utp_bevout_to_obout(bev_utp);
     }
-    if (event && bev_utp->pending_error) {
+    if (bev_utp->pending_error) {
         bufferevent_utp_error(bev_utp, bev_utp->pending_error, bev_utp->pending_error_type);
     }
     return 0;
