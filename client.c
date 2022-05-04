@@ -1258,13 +1258,7 @@ bool direct_request_process_chunks(direct_request *d, evhttp_request *req)
                 proxy_direct_requests_cancel(p);
             }
 
-            //join_url_swarm(p->n, uri);
-            evhttp_uri *evuri = evhttp_uri_parse_with_flags(req->uri, EVHTTP_URI_NONCONFORMANT);
-            const char *host = evhttp_uri_get_host(evuri);
-            if (host) {
-                join_url_swarm(p->n, host);
-            }
-            evhttp_uri_free(evuri);
+            join_url_swarm(p->n, p->authority);
 
             merkle_tree_get_root(p->m, p->root_hash);
 
@@ -1697,13 +1691,7 @@ bool peer_request_process_chunks(peer_request *r, evhttp_request *req)
                 peer_request_cancel(pr);
             }
 
-            //join_url_swarm(p->n, uri);
-            evhttp_uri *evuri = evhttp_uri_parse_with_flags(req->uri, EVHTTP_URI_NONCONFORMANT);
-            const char *host = evhttp_uri_get_host(evuri);
-            if (host) {
-                join_url_swarm(p->n, host);
-            }
-            evhttp_uri_free(evuri);
+            join_url_swarm(p->n, p->authority);
 
             // only cache if have_bitfield is all 1's. otherwise we need to track partials (or hashcheck on upload, which prevents sendfile)
             assert(p->merkle_tree_finished);
@@ -2989,6 +2977,7 @@ void connect_direct_completed(connect_req *c, bufferevent *bev)
     if (!c->tryfirst_request_id) {
         if (direct_likely_to_succeed(&(c->tryfirst_result))) {
             c->direct = NULL;
+            join_url_swarm(c->n, c->authority);
             connected(c, bev);
         } else {
             connect_direct_http_error(c, 523, "Origin Is Unreachable");
