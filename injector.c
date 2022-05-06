@@ -48,6 +48,10 @@ unsigned char sk[crypto_sign_SECRETKEYBYTES];
 #endif
 
 
+void network_recreate_sockets_cb(network *n) {}
+bool network_process_udp_cb(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) { return false; }
+void network_ifchange(network *n) {}
+
 void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
 {
     debug("dht_event_callback event:%d data_len:%zu ", event, data_len);
@@ -332,9 +336,8 @@ void connect_cleanup(connect_req *c, int err)
 
         crypto_generichash_state content_state;
         crypto_generichash_init(&content_state, NULL, 0, crypto_generichash_BYTES);
-        evbuffer *request_buf = build_request_buffer(c->server_req->response_code, c->server_req->output_headers);
+        evbuffer_auto_free evbuffer *request_buf = build_request_buffer(c->server_req->response_code, c->server_req->output_headers);
         evbuffer_hash_update(request_buf, &content_state);
-        evbuffer_free(request_buf);
 
         uint8_t content_hash[crypto_generichash_BYTES];
         crypto_generichash_final(&content_state, content_hash, sizeof(content_hash));
@@ -508,7 +511,7 @@ void http_request_cb(evhttp_request *req, void *arg)
         char *useragent = (char*)evhttp_find_header(req->input_headers, "User-Agent");
         debug("%s:%d %s %s %s\n", e_host, e_port, useragent, evhttp_method(req->type), evhttp_request_get_uri(req));
 
-        evbuffer *output = evbuffer_new();
+        evbuffer_auto_free evbuffer *output = evbuffer_new();
         evbuffer_add_printf(output, "TRACE %s HTTP/%d.%d\r\n", req->uri, req->major, req->minor);
         evkeyval *header;
         TAILQ_FOREACH(header, req->input_headers, next) {
@@ -550,7 +553,6 @@ void http_request_cb(evhttp_request *req, void *arg)
         free(b64_msign);
 
         evhttp_send_reply(req, 200, "OK", output);
-        evbuffer_free(output);
         return;
     }
 
@@ -675,5 +677,3 @@ static_assert(20 >= crypto_generichash_BYTES_MIN, "dht hash must fit in generich
 
     return network_loop(n);
 }
-
-void network_ifchange(network *n) {}

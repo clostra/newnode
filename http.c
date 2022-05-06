@@ -157,9 +157,8 @@ evbuffer* build_request_buffer(int response_code, evkeyvalq *hdrs)
 
 void merkle_tree_hash_request(merkle_tree *m, evhttp_request *req, evkeyvalq *hdrs)
 {
-    evbuffer *buf = build_request_buffer(req->response_code, hdrs);
+    evbuffer_auto_free evbuffer *buf = build_request_buffer(req->response_code, hdrs);
     merkle_tree_add_evbuffer(m, buf);
-    evbuffer_free(buf);
 }
 
 evhttp_connection *make_connection(network *n, const evhttp_uri *uri)

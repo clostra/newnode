@@ -1,9 +1,10 @@
 #ifndef __NETWORK_H__
 #define __NETWORK_H__
 
+#include <event2/buffer.h>
+#include <event2/dns.h>
 #include <event2/event.h>
 #include <event2/event_struct.h>
-#include <event2/dns.h>
 #include <event2/http.h>
 #include <event2/http_struct.h>
 #include <sodium.h>
@@ -115,10 +116,12 @@ TE(bufferevent_filter_result);
 typedef in_port_t port_t;
 
 
+DEFINE_TRIVIAL_CLEANUP_FUNC(evbuffer*, evbuffer_free)
+#define evbuffer_auto_free __attribute__((__cleanup__(evbuffer_freep)))
+
+
 #include "timer.h"
 
-
-typedef void (^recreate_sockets_callback)(void);
 
 struct network {
     event_base *evbase;
@@ -132,7 +135,6 @@ struct network {
     dht *dht;
     timer *dht_timer;
     evhttp *http;
-    recreate_sockets_callback recreate_sockets_cb;
 };
 
 uint64_t us_clock(void);
@@ -155,14 +157,18 @@ bool sockaddr_is_localhost(const sockaddr *sa, socklen_t salen);
 int bufferevent_getpeername(const bufferevent *bev, sockaddr *address, socklen_t *address_len);
 bool bufferevent_is_localhost(const bufferevent *bev);
 
-ssize_t udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
-bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
-
 network* network_setup(char *address, port_t port);
-void network_set_recreate_sockets(network *n, recreate_sockets_callback recreate_sockets_cb);
 void network_async(network *n, timer_callback cb);
 int network_loop(network *n);
+
 void network_set_log_level(int level);
 void network_free(network *n);
+#define network_sendto(n, ...) udp_sendto(n->fd, __VA_ARGS__)
+void network_recreate_sockets_cb(network *n) __attribute__((weak));
+bool network_process_udp_cb(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) __attribute__((weak));
+void network_ifchange(network *n) __attribute__((weak));
+
+ssize_t udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
+bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
 
 #endif // __NETWORK_H__
