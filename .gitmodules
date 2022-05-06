@@ -12,7 +12,7 @@
 	url = https://github.com/clostra/dht
 [submodule "libunwind-ndk"]
 	path = libunwind-ndk
-	url = https://github.com/ivanarh/libunwind-ndk.git
+	url = https://github.com/clostra/libunwind-ndk.git
 [submodule "bugsnag-cocoa"]
 	path = bugsnag-cocoa
 	url = https://github.com/clostra/bugsnag-cocoa
