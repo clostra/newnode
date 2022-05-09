@@ -345,11 +345,12 @@ void on_utp_connect(network *n, peer_connection *pc)
     }
 }
 
-void bev_event_cb(bufferevent *bufev, short events, void *arg)
+void utp_connect_event_cb(bufferevent *bufev, short events, void *arg)
 {
     peer_connection *pc = (peer_connection *)arg;
     assert(pc->bev == bufev);
-    debug("%s pc:%p peer:%p events:0x%x %s\n", __func__, pc, pc->peer, events, bev_events_to_str(events));
+    time_t delta = time(NULL) - pc->peer->last_connect_attempt;
+    debug("%s pc:%p peer:%p (%lds) events:0x%x %s\n", __func__, pc, pc->peer, delta, events, bev_events_to_str(events));
     if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR|BEV_EVENT_TIMEOUT)) {
         bufferevent_free(pc->bev);
         pc->bev = NULL;
@@ -393,7 +394,7 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
         return NULL;
     }
     bufferevent_utp_connect(pc->bev, (const sockaddr*)&p->addr, sockaddr_get_length((const sockaddr*)&p->addr));
-    bufferevent_setcb(pc->bev, NULL, NULL, bev_event_cb, pc);
+    bufferevent_setcb(pc->bev, NULL, NULL, utp_connect_event_cb, pc);
     bufferevent_enable(pc->bev, EV_READ);
     return pc;
 }
