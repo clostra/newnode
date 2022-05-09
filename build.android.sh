@@ -8,28 +8,25 @@ function build_android {
     HOST_TAG=$(echo "$HOST_OS-$HOST_ARCH" | tr '[:upper:]' '[:lower:]')
     TRIPLE=$NDK_TRIPLE
 
+    export TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/$HOST_TAG
+    export AR=$TOOLCHAIN/bin/llvm-ar
+    export AS=$TOOLCHAIN/bin/llvm-as
+    export CC=$TOOLCHAIN/bin/$NDK_CLANG_TRIPLE-clang
+    export CXX=$TOOLCHAIN/bin/$NDK_CLANG_TRIPLE-clang++
+    export LD=$TOOLCHAIN/bin/ld
+    export OBJDUMP=$TOOLCHAIN/bin/llvm-objdump
+    export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
+    export STRIP=$TOOLCHAIN/bin/llvm-strip
 
-    export ANDROID_NDK_HOME=$NDK
 
     PARSON_CFLAGS=-Iparson
 
     cd libsodium
-    test -f configure || ./autogen.sh
+    export ANDROID_NDK_HOME=$NDK
     test -f libsodium-android-$SODIUM_CPU_ARCH/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
     cd ..
     LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-android-$SODIUM_CPU_ARCH/include
     LIBSODIUM=libsodium/libsodium-android-$SODIUM_CPU_ARCH/lib/libsodium.a
-
-
-    export TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/$HOST_TAG
-    export AR=$TOOLCHAIN/bin/$NDK_TRIPLE-ar
-    export AS=$TOOLCHAIN/bin/$NDK_TRIPLE-as
-    export CC=$TOOLCHAIN/bin/$NDK_CLANG_TRIPLE-clang
-    export CXX=$TOOLCHAIN/bin/$NDK_CLANG_TRIPLE-clang++
-    export LD=$TOOLCHAIN/bin/$NDK_TRIPLE-ld
-    export OBJDUMP=$TOOLCHAIN/bin/$NDK_TRIPLE-objdump
-    export RANLIB=$TOOLCHAIN/bin/$NDK_TRIPLE-ranlib
-    export STRIP=$TOOLCHAIN/bin/$NDK_TRIPLE-strip
 
 
     cd libevent
@@ -119,7 +116,7 @@ function build_android {
     ls -ld $OUT/*
 }
 
-NDK_API=16
+NDK_API=19
 ARCH=arm
 ABI=armeabi-v7a
 CPU_ARCH=armv7-a

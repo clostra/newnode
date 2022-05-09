@@ -5,11 +5,9 @@
 #include "thread.h"
 #include "log.h"
 #include "g_https_cb.h"
-#include "https_wget.h"
 
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
-int64_t do_https(network *, port_t port, const char *url, https_complete_callback cb, https_request *request);
 #endif
 
 https_request *https_request_alloc(size_t bufsize, unsigned int flags, unsigned timeout);
@@ -46,12 +44,10 @@ int main(int argc, char *argv[])
 
     port_t port = atoi(port_s);
     g_tryfirst = atoi(tryfirst_s);
-    __block network *n = newnode_init("client", "com.newnode.client", &port, ^int64_t (const char *url, https_complete_callback cb, https_request *request) {
-        // can't reference 'n' here because 'n' is uninitialized when this block callback is declared
+    __block network *n = newnode_init("client", "com.newnode.client", &port, ^(const https_request *request, const char *url, https_complete_callback cb) {
         debug("https: %s\n", url);
         // note: do_https will call the completion callback if the request fails immediately
-        int64_t do_https(network *n, port_t port, const char *url, https_complete_callback cb, https_request *request);
-        return do_https(n, port, url, cb, request);
+        return do_https(n, request, url, cb);
     });
     if (!n) {
         return 1;

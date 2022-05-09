@@ -200,9 +200,9 @@ typedef struct {
     uint64_t blocked;                   // num likely blocked attempts
     uint64_t bytes_xferred;             // total bytes transferred in tryfirst
     uint64_t xfer_time_us;              // total time required to transfer
-    time_t last_attempt;                // time of last attempt
-    time_t last_success;                // time of last successful attempt
-    time_t last_blocked;                // time of last blocked attempt
+    uint64_t last_attempt;              // time of last attempt
+    uint64_t last_success;              // time of last successful attempt
+    uint64_t last_blocked;              // time of last blocked attempt
 } tryfirst_stats;
 
 hash_table *tryfirst_per_origin_server;
@@ -1763,24 +1763,23 @@ void peer_request_done_cb(evhttp_request *req, void *arg)
     peer_request_cleanup(r, __func__);
 }
 
-https_request *https_request_alloc(size_t bufsize, unsigned int flags, unsigned timeout)
+https_request https_request_alloc(size_t bufsize, unsigned int flags, unsigned timeout)
 {
-    https_request *result = alloc(https_request);
-
     if ((flags & HTTPS_METHOD_MASK) == 0) {
         flags |= HTTPS_METHOD_GET;
     }
-    result->bufsize = bufsize;
-    result->flags = flags;
-    result->timeout_sec = timeout;
-    return result;
+    https_request request = {
+        .bufsize = bufsize,
+        .flags = flags,
+        .timeout_sec = timeout
+    };
+    return request;
 }
 
-https_request *tryfirst_request_alloc(void)
+https_request tryfirst_request_alloc(void)
 {
-    https_request *result = https_request_alloc(0, HTTPS_TRYFIRST_FLAGS,
-                                                g_tryfirst_timeout);
-    result->bufsize = g_tryfirst_bufsize; // specify max result length without actually capturing result
+    https_request result = https_request_alloc(0, HTTPS_TRYFIRST_FLAGS, g_tryfirst_timeout);
+    result.bufsize = g_tryfirst_bufsize; // specify max result length without actually capturing result
     return result;
 }
 
@@ -1805,8 +1804,8 @@ void heartbeat_send(network *n)
              g_app_id,
              g_cid,
              asn);
-    auto_free https_request *req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
-    g_https_cb(url, ^(bool success, https_result *result) {}, req);
+    https_request req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
+    g_https_cb(&req, url, NULL);
 }
 
 #define MIN_STATS_TIME_MS 7000
@@ -1815,10 +1814,10 @@ void stats_report(network *n);
 
 void stats_set_timer(network *n, uint64_t ms)
 {
-    debug("%s\n", __func__);
     if (stats_report_timer) {
         return;
     }
+    debug("%s ms:%"PRIu64"\n", __func__, ms);
     stats_report_timer = timer_start(n, ms, ^{
         stats_report_timer = NULL;
         stats_report(n);
@@ -1854,7 +1853,7 @@ void stats_report(network *n)
         bzero(b, sizeof(*b));
         b->last_reported = byte_count.last_reported;
 
-        __auto_type report = ^(const char *type, uint64_t count, byte_counts *b, void (^failure)(void)) {
+        __auto_type report = ^(const char *type, uint64_t count, void (^failure)(void)) {
             if (!count) {
                 return;
             }
@@ -1874,8 +1873,8 @@ void stats_report(network *n)
                      g_app_name,
                      g_app_id);
             failure = Block_copy(failure);
-            auto_free https_request *req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
-            g_https_cb(url, ^(bool success, https_result *result) {
+            https_request req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
+            g_https_cb(&req, url, ^(bool success, const https_result *result) {
                 timer_cancel(stats_report_timer);
                 stats_report_timer = NULL;
                 if (!success) {
@@ -1888,17 +1887,17 @@ void stats_report(network *n)
                 }
                 b->last_reported = us_clock();
                 stats_set_timer(n, 0);
-            }, req);
+            });
         };
-        report("peer", byte_count.from_peer + byte_count.to_peer, b, ^{
+        report("peer", byte_count.from_peer + byte_count.to_peer, ^{
             b->from_peer += byte_count.from_peer;
             b->to_peer += byte_count.to_peer;
         });
-        report("direct", byte_count.from_direct + byte_count.to_direct, b, ^{
+        report("direct", byte_count.from_direct + byte_count.to_direct, ^{
             b->from_direct += byte_count.from_direct;
             b->to_direct += byte_count.to_direct;
         });
-        report("p2p", byte_count.from_p2p + byte_count.to_p2p, b, ^{
+        report("p2p", byte_count.from_p2p + byte_count.to_p2p, ^{
             b->from_p2p += byte_count.from_p2p;
             b->to_p2p += byte_count.to_p2p;
         });
@@ -2547,8 +2546,7 @@ typedef struct {
     char *host;                 // just hostname, no port #
     port_t port;
     char *tryfirst_url;         // URL to be used for "try first" test
-    https_request *tryfirst_request;
-    int64_t tryfirst_request_id;
+    https_request_token tryfirst_request;
     https_result tryfirst_result;
     int64_t dns_prefetch_key;
 } connect_req;
@@ -2556,11 +2554,8 @@ typedef struct {
 void connect_tryfirst_requests_cancel(connect_req *c)
 {
     debug("c:%p %s (%.2fms)\n", c, __func__, rdelta(c));
-    if (c->tryfirst_request_id) {
-        cancel_https_request(c->n, c->tryfirst_request_id);
-        // indicate that cancel has been issued and also avoid calling it twice
-        c->tryfirst_request_id = 0;
-        free(c->tryfirst_request);
+    if (c->tryfirst_request) {
+        cancel_https_request(c->n, c->tryfirst_request);
         c->tryfirst_request = NULL;
     }
 }
@@ -2583,9 +2578,9 @@ void socks_error(bufferevent *bev, uint8_t resp)
 
 bool connect_exhausted(connect_req *c)
 {
-    debug("c:%p %s (%.2fms) direct:%p proxy_req:%p on_connect:%p tryfirst_request_id:%" PRIu64 "\n",
-          c, __func__, rdelta(c), c->direct, c->proxy_req, c->r.on_connect, c->tryfirst_request_id);
-    if (c->tryfirst_request_id) {
+    debug("c:%p %s (%.2fms) direct:%p proxy_req:%p on_connect:%p tryfirst_request:%p\n",
+          c, __func__, rdelta(c), c->direct, c->proxy_req, c->r.on_connect, c->tryfirst_request);
+    if (c->tryfirst_request) {
         return false;
     }
     if (c->direct || c->proxy_req || c->r.on_connect) {
@@ -2632,7 +2627,7 @@ void connect_http_error(connect_req *c, int error, const char *reason)
 void connect_cleanup(connect_req *c)
 {
     debug("c:%p %s (%.2fms)\n", c, __func__, rdelta(c));
-    if (c->dont_free || !connect_exhausted(c) || c->tryfirst_request_id) {
+    if (c->dont_free || !connect_exhausted(c) || c->tryfirst_request) {
         return;
     }
     assert(!c->server_req);
@@ -2960,7 +2955,7 @@ void connect_error_cb(evhttp_request_error error, void *arg)
 // server is still (in most cases) 'success', as getting an authentic
 // error code to  the browser more quickly is better than doing it
 // more slowly.
-bool direct_likely_to_succeed(https_result *result)
+bool direct_likely_to_succeed(const https_result *result)
 {
     switch (result->https_error) {
     case HTTPS_NO_ERROR:
@@ -2974,18 +2969,18 @@ bool direct_likely_to_succeed(https_result *result)
 void connect_direct_completed(connect_req *c, bufferevent *bev)
 {
     c->direct_connect_responded = true;
-    if (!c->tryfirst_request_id) {
+    if (!c->tryfirst_request) {
         if (direct_likely_to_succeed(&(c->tryfirst_result))) {
             c->direct = NULL;
             join_url_swarm(c->n, c->authority);
             connected(c, bev);
-        } else {
-            connect_direct_http_error(c, 523, "Origin Is Unreachable");
+            return;
         }
-    } else {
-        debug("c:%p %s (%.2fms) %s tryfirst request still pending; not spliced yet\n",
-              c, __func__, rdelta(c), c->tryfirst_url);
+        connect_direct_http_error(c, 523, "Origin Is Unreachable");
+        return;
     }
+    debug("c:%p %s (%.2fms) %s tryfirst request still pending; not spliced yet\n",
+          c, __func__, rdelta(c), c->tryfirst_url);
 }
 
 void connect_event_cb(bufferevent *bev, short events, void *ctx)
@@ -3058,7 +3053,7 @@ void connect_peer(connect_req *c, bool injector_preference)
 
 // Return whether a request probably failed because of blocking.
 // Blocked requests are cached, other failures are not cached.
-bool likely_blocked(https_result *result)
+bool likely_blocked(const https_result *result)
 {
     switch (result->https_error) {
     // Note: a DNS error might or might not be indicative of
@@ -3118,30 +3113,30 @@ tryfirst_stats* get_tryfirst_stats(const char *host)
     });
 }
 
-void update_tryfirst_stats(network *n, tryfirst_stats *tfs, https_result *result, char *origin_server)
+void update_tryfirst_stats(network *n, tryfirst_stats *tfs, int flags, uint64_t req_time, const https_result *result, char *origin_server)
 {
     if (!tfs) {
         return;
     }
     tfs->attempts++;
-    tfs->last_attempt = result->req_time;
+    tfs->last_attempt = req_time;
     if (likely_blocked(result)) {
         tfs->blocked++;
-        tfs->last_blocked = result->req_time;
+        tfs->last_blocked = req_time;
     } else if (direct_likely_to_succeed(result)) {
         // "success" here means we managed to talk https to the origin
         // server and verify its certificate, NOT that we made a
         // transfer without errors.  For example, HTTP errors are
         // fine, as are "response too big" errors.
         tfs->successes++;
-        tfs->last_success = result->req_time;
-        if ((result->result_flags & (HTTPS_REQUEST_USE_HEAD|HTTPS_REQUEST_ONE_BYTE)) == 0) {
+        tfs->last_success = req_time;
+        if ((flags & (HTTPS_METHOD_HEAD|HTTPS_ONE_BYTE)) == 0) {
             // assume that HEAD responses aren't long enough to
             // measure transmission speed (so if all try first probes
             // use HEAD, maybe we shouldn't bother measuring speed at
             // all)
-            tfs->bytes_xferred += result->response_length;
-            tfs->xfer_time_us += result->xfer_time_us;
+            tfs->bytes_xferred += result->body_length;
+            tfs->xfer_time_us += us_clock() - req_time;
         }
     }
     if (o_debug > 0) {
@@ -3151,9 +3146,9 @@ void update_tryfirst_stats(network *n, tryfirst_stats *tfs, https_result *result
         fprintf(stderr, "blocked = %" PRIu64 "\n", tfs->blocked);
         fprintf(stderr, "bytes_xferred = %" PRIu64 "\n", tfs->bytes_xferred);
         fprintf(stderr, "xfer_time_us = %f s\n", tfs->xfer_time_us / 1000000.0);
-        fprintf(stderr, "last_attempt = %s", ctime(&tfs->last_attempt));
-        fprintf(stderr, "last_success = %s", ctime(&tfs->last_success));
-        fprintf(stderr, "last_blocked = %s", ctime(&tfs->last_blocked));
+        fprintf(stderr, "last_attempt = %.2fms", (us_clock() - tfs->last_attempt) / 1000.0);
+        fprintf(stderr, "last_success = %.2fms", (us_clock() - tfs->last_success) / 1000.0);
+        fprintf(stderr, "last_blocked = %.2fms", (us_clock() - tfs->last_blocked) / 1000.0);
     }
     if (*g_country) {
         char url[2048];
@@ -3172,8 +3167,8 @@ void update_tryfirst_stats(network *n, tryfirst_stats *tfs, https_result *result
                  "&el=https_error"                          // event label
                  "&ev=%d",                                  // event value
                  origin_server, g_country, g_app_name, g_app_id, result->https_error);
-        auto_free https_request *req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
-        g_https_cb(url, ^(bool success, https_result *result) {}, req);
+        https_request req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
+        g_https_cb(&req, url, NULL);
     }
 }
 
@@ -3191,8 +3186,6 @@ static bool is_ip_literal(const char *host)
 
 tryfirst_hint need_tryfirst(const char *host, tryfirst_stats *tfs)
 {
-    time_t now = time(NULL);
-
     // Don't do try first for IP literals because most
     // servers named by IP address won't have certificates anyway.
     // 
@@ -3201,23 +3194,24 @@ tryfirst_hint need_tryfirst(const char *host, tryfirst_stats *tfs)
     if (is_ip_literal(host)) {
         return TF_REACHABLE;
     }
-
     if (!tfs) {
         // never attempted, or no record
         return TF_CONNECT_B4_TRYFIRST;
-    } else if (tfs->last_attempt < now - TRYFIRST_CACHE_EXPIRY) {
+    }
+    if ((us_clock() - tfs->last_attempt / 1000000.0) > TRYFIRST_CACHE_EXPIRY) {
         // last attempt was too long ago
         return TF_CONNECT_B4_TRYFIRST;
-    } else if (tfs->last_attempt == tfs->last_success) {
+    }
+    if (tfs->last_attempt == tfs->last_success) {
         // last attempt was successful
         return TF_REACHABLE;
-    } else if (tfs->last_attempt == tfs->last_blocked) {
+    }
+    if (tfs->last_attempt == tfs->last_blocked) {
         // once a host is blocked, don't try again for 8 hours
         return TF_UNREACHABLE;
-    } else {
-        // last attempt wasn't blocked but wasn't successful - try again?
-        return TF_CONNECT_B4_TRYFIRST;
     }
+    // last attempt wasn't blocked but wasn't successful - try again?
+    return TF_CONNECT_B4_TRYFIRST;
 }
 
 // this can be used instead of bufferevent_socket_connect_hostname()
@@ -3302,14 +3296,14 @@ bool connect_direct_connect(connect_req *c)
     return true;
 }
 
-connect_req* connect_request(connect_req *c, const char *host, port_t port)
+void connect_request(connect_req *c, const char *host, port_t port)
 {
     network *n = c->n;
     c->start_time = us_clock();
 
     if (!host) {
         connect_direct_error(c, SOCKS5_REPLY_AFNOSUPPORT, 400, "Invalid Host");
-        return NULL;
+        return;
     }
 
     c->host = strdup(host);
@@ -3339,105 +3333,104 @@ connect_req* connect_request(connect_req *c, const char *host, port_t port)
 
     debug("c:%p %s (%.2fms) CONNECT %s:%u\n", c, __func__, rdelta(c), host, port);
 
+    c->dont_free = true;
+
     if (port == 443 || port == 80) {
         connect_peer(c, false);
     }
 
     if (NO_DIRECT) {
-        return c;
+        return;
     }
 
-    c->tryfirst_result.https_error = HTTPS_NO_ERROR;
-
-    if (port == 443 && g_tryfirst && !is_ip_literal(host)) {
-        tryfirst_stats *tfs = get_tryfirst_stats(host);
-        tryfirst_hint tfh = tfs ? need_tryfirst(host, tfs) : TF_REACHABLE;
-#if FEATURE_RANDOM_SKIP_TRYFIRST
-        // If we're acting as a peer, skip tryfirst 25% of the
-        // time. This is to keep from searching forever for a path
-        // that doesn't result in a certificate verify error, when
-        // the problem is that the origin server actually does
-        // have an invalid certificate or one that doesn't match
-        // the host name.
-        if (tfh == TF_CONNECT_B4_TRYFIRST && c->server_req && evcon_is_utp(c->server_req->evcon) && randombytes_uniform(100) < 25) {
-            debug("c:%p (%.2fms) host:%s randomly skipping try first\n", c, rdelta(c), host);
-            tfh = TF_REACHABLE;
-        }
-#endif
-        debug("c:%p %s (%.2fms) need_tryfirst(%s) => %s\n", c, __func__, rdelta(c), host, tryfirst_hint_names[tfh]);
-        switch (tfh) {
-        case TF_UNREACHABLE:
-            // couldn't reach directly on last (recent) attempt, don't bother retrying direct again
-            break;
-        case TF_REACHABLE:
-            // reachable on last attempt, skip try first
-            connect_direct_connect(c);
-            break;
-        case TF_CONNECT_B4_TRYFIRST:
-        default:
-            if (!connect_direct_connect(c)) {
-                break;
-            }
-            c->tryfirst_request = tryfirst_request_alloc();
-            c->tryfirst_request_id = g_https_cb(c->tryfirst_url, ^(bool success, https_result *result) {
-                debug("g_https_cb complete request_id:%" PRId64 " duration=%f s\n",
-                      result->request_id, result->xfer_time_us / 1000000.0);
-                if (success && result->xfer_time_us > 0) {
-                    debug("g_https_cb speed=%" PRIu64 " b/s\n",
-                          (result->response_length * 1000000) / result->xfer_time_us);
-                }
-                // save result (except response_body pointer) for possible later examination
-                c->tryfirst_result = *result;
-                c->tryfirst_result.response_body = NULL;
-                c->tryfirst_request_id = 0;
-                debug("g_https_cb complete request_id:%" PRId64 " duration=%f s\n", 
-                      result->request_id, result->xfer_time_us / 1000000.0);
-                if (success && result->xfer_time_us > 0) {
-                    debug("g_https_cb speed=%" PRIu64 " b/s\n",
-                          (result->response_length * 1000000) / result->xfer_time_us);
-                }
-                update_tryfirst_stats(n, tfs, result, c->host);
-
-                if (c->connected) {
-                    debug("c:%p %s (%.2fms) already connected via a peer\n", c, __func__, rdelta(c));
-                    return;
-                }
-                if (!direct_likely_to_succeed(result)) {
-                    debug("c:%p %s (%.2fms) %s direct connection is unlikely to succeed; cancelling\n",
-                          c, __func__, rdelta(c), c->tryfirst_url);
-                    connect_direct_cancel(c);
-                    return;
-                }
-                debug("c:%p %s (%.2fms) %s direct connection appears likely to succeed\n",
-                      c, __func__, rdelta(c), c->tryfirst_url);
-                if (c->direct && c->direct_connect_responded) {
-                    // splice the two ends (browser and direct) together
-                    //
-                    // XXX There's something of a timing hazard here.  If the
-                    //     try first attempt takes too long to complete, the origin
-                    //     server may give up on the connection.   Keeping 
-                    //     g_tryfirst_timeout short might be sufficient but only
-                    //     if the implementation of g_https_cb() enforces the timeout.
-                    debug("c:%p (%.2fms) %s received SYN-ACK from %s, then try first ok; splicing...\n",
-                          c, rdelta(c), c->tryfirst_url, c->host);
-                    bufferevent *direct = c->direct;
-                    c->direct = NULL;
-                    connected(c, direct);
-                } else {
-                    debug("c:%p (%.2fms) %s try first ok; SYN-ACK not yet received from %s; not spliced yet\n",
-                          c, rdelta(c), c->tryfirst_url, c->host);
-                }
-            },
-            c->tryfirst_request);
-            debug("%s:%d g_https_cb(%s) => request_id:%" PRId64 "\n",
-                  __func__, __LINE__, c->tryfirst_url, c->tryfirst_request_id);
-            break;
-        }
-    } else {
+    if (port != 443 || !g_tryfirst || is_ip_literal(host)) {
         connect_direct_connect(c);
+        return;
     }
 
-    return c;
+    tryfirst_stats *tfs = get_tryfirst_stats(host);
+    tryfirst_hint tfh = tfs ? need_tryfirst(host, tfs) : TF_REACHABLE;
+#if FEATURE_RANDOM_SKIP_TRYFIRST
+    // If we're acting as a peer, skip tryfirst 25% of the
+    // time. This is to keep from searching forever for a path
+    // that doesn't result in a certificate verify error, when
+    // the problem is that the origin server actually does
+    // have an invalid certificate or one that doesn't match
+    // the host name.
+    if (tfh == TF_CONNECT_B4_TRYFIRST && c->server_req && evcon_is_utp(c->server_req->evcon) && randombytes_uniform(100) < 25) {
+        debug("c:%p (%.2fms) host:%s randomly skipping try first\n", c, rdelta(c), host);
+        tfh = TF_REACHABLE;
+    }
+#endif
+    debug("c:%p %s (%.2fms) need_tryfirst(%s) => %s\n", c, __func__, rdelta(c), host, tryfirst_hint_names[tfh]);
+    switch (tfh) {
+    case TF_UNREACHABLE:
+        // couldn't reach directly on last (recent) attempt, don't bother retrying direct again
+        break;
+    case TF_REACHABLE:
+        // reachable on last attempt, skip try first
+        connect_direct_connect(c);
+        break;
+    case TF_CONNECT_B4_TRYFIRST:
+    default:
+        if (!connect_direct_connect(c)) {
+            break;
+        }
+        https_request req = tryfirst_request_alloc();
+        uint64_t req_time = us_clock();
+        c->tryfirst_request = g_https_cb(&req, c->tryfirst_url, ^(bool success, const https_result *result) {
+            uint64_t xfer_time_us = us_clock() - req_time;
+            debug("g_https_cb complete request:%p duration:%f s\n",
+                  c->tryfirst_request, xfer_time_us / 1000000.0);
+            if (success) {
+                debug("g_https_cb speed:%" PRIu64 " b/s\n",
+                      (result->body_length * 1000000) / xfer_time_us);
+            }
+            // save result (except response_body pointer) for possible later examination
+            c->tryfirst_result = *result;
+            c->tryfirst_request = NULL;
+
+            update_tryfirst_stats(n, tfs, req.flags, req_time, result, c->host);
+
+            if (c->connected) {
+                debug("c:%p %s (%.2fms) already connected via a peer\n", c, __func__, rdelta(c));
+                return;
+            }
+            if (!direct_likely_to_succeed(result)) {
+                debug("c:%p %s (%.2fms) %s direct connection is unlikely to succeed; cancelling\n",
+                      c, __func__, rdelta(c), c->tryfirst_url);
+                connect_direct_cancel(c);
+                return;
+            }
+            debug("c:%p %s (%.2fms) %s direct connection appears likely to succeed\n",
+                  c, __func__, rdelta(c), c->tryfirst_url);
+            if (!c->direct || !c->direct_connect_responded) {
+                debug("c:%p (%.2fms) %s try first ok; SYN-ACK not yet received from %s; not spliced yet\n",
+                      c, rdelta(c), c->tryfirst_url, c->host);
+                return;
+            }
+            // splice the two ends (browser and direct) together
+            //
+            // XXX There's something of a timing hazard here.  If the
+            //     try first attempt takes too long to complete, the origin
+            //     server may give up on the connection.   Keeping 
+            //     g_tryfirst_timeout short might be sufficient but only
+            //     if the implementation of g_https_cb() enforces the timeout.
+            debug("c:%p (%.2fms) %s received SYN-ACK from %s, then try first ok; splicing...\n",
+                  c, rdelta(c), c->tryfirst_url, c->host);
+            bufferevent *direct = c->direct;
+            c->direct = NULL;
+            connected(c, direct);
+        });
+        debug("%s:%d g_https_cb(%s) => request:%p\n",
+              __func__, __LINE__, c->tryfirst_url, c->tryfirst_request);
+        break;
+    }
+
+    c->dont_free = false;
+
+    // may need to be cleaned up already
+    connect_cleanup(c);
 }
 
 void http_connect_request(network *n, evhttp_request *req)
@@ -3448,7 +3441,7 @@ void http_connect_request(network *n, evhttp_request *req)
 
     char buf[2048];
     snprintf(buf, sizeof(buf), "https://%s", evhttp_request_get_uri(req));
-    evhttp_uri *uri = evhttp_uri_parse(buf);
+    evhttp_uri_auto_free evhttp_uri *uri = evhttp_uri_parse(buf);
     const char *host = evhttp_uri_get_host(uri);
     int port = evhttp_uri_get_port(uri);
 
@@ -3459,8 +3452,6 @@ void http_connect_request(network *n, evhttp_request *req)
     evhttp_connection_set_closecb(c->server_req->evcon, connect_evcon_close_cb, c);
 
     connect_request(c, host, port);
-
-    evhttp_uri_free(uri);
 }
 
 int evhttp_parse_firstline_(evhttp_request *, evbuffer*);
@@ -3683,12 +3674,12 @@ void socks_event_cb(bufferevent *bev, short events, void *ctx)
     bufferevent_free(bev);
 }
 
-connect_req* connect_socks_request(network *n, bufferevent *bev, const char *host, port_t port)
+void connect_socks_request(network *n, bufferevent *bev, const char *host, port_t port)
 {
     connect_req *c = alloc(connect_req);
     c->n = n;
     c->server_bev = bev;
-    return connect_request(c, host, port);
+    connect_request(c, host, port);
 }
 
 void socks_read_req_cb(bufferevent *bev, void *ctx);
@@ -3933,83 +3924,75 @@ void maybe_update_ipinfo(network *n)
              "&el=ASN"                           // event label
              "&ev=%d",                           // event value (AS #)
              g_cid, g_country, g_app_name, g_app_id, g_asn);
-    auto_free https_request *req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
-    g_https_cb(url, ^(bool success, https_result *result) {}, req);
+    https_request req = https_request_alloc(0, HTTPS_STATS_FLAGS, 15);
+    g_https_cb(&req, url, NULL);
 }
 
 void query_ipinfo(network *n)
 {
 #define IPINFO_RESPONSE_SIZE 10240
-    auto_free https_request *request = https_request_alloc(IPINFO_RESPONSE_SIZE, HTTPS_DIRECT, 30);
-    g_https_cb("https://ipinfo.io", ^(bool success, https_result *result) {
-        debug("GET https://ipinfo.io request_id:%" PRId64 " success=%d, response_length=%zu, https_error=%d\n",
-              result->request_id, success, result->response_length, result->https_error);
-        if (success) {
-            debug("g_https_cb duration=%f s\n", result->xfer_time_us / 1000000.0);
-        }
-        if (success && result->xfer_time_us > 0) {
-            debug("g_https_cb speed=%" PRIu64 " b/s\n",
-                  (result->response_length * 1000000) / result->xfer_time_us);
-        }
+    https_request req = https_request_alloc(IPINFO_RESPONSE_SIZE, HTTPS_GEOIP_FLAGS, 30);
+    uint64_t req_time = us_clock();
+    g_https_cb(&req, "https://ipinfo.io", ^(bool success, const https_result *result) {
+        uint64_t xfer_time_us = us_clock() - req_time;
+        debug("GET https://ipinfo.io success:%d, response_length:%zu, https_error:%d duration:%f s\n",
+              success, result->body_length, result->https_error, xfer_time_us / 1000000.0);
         if (success &&
-            (result->result_flags & HTTPS_RESULT_TRUNCATED) == 0 &&
-            (result->response_length > 0) &&
-            (result->response_length < IPINFO_RESPONSE_SIZE)) {
+            (result->flags & HTTPS_RESULT_TRUNCATED) == 0 &&
+            (result->body_length > 0) &&
+            (result->body_length <= IPINFO_RESPONSE_SIZE)) {
             // make a copy of response body so we can safely
             // append a 0 byte (because the response_body is
             // allocated by the caller and might not be longer
             // than needed)
-            //
-            // ignore response_body if it is too long - don't
-            // allocate arbitrary amounts on stack even
-            // temporarily
-            char response_body_copy[result->response_length + 1];
-            memcpy(response_body_copy, result->response_body, result->response_length);
-            response_body_copy[result->response_length] = '\0';
+            auto_free char *response_body_copy = calloc(1, result->body_length + 1);
+            memcpy(response_body_copy, result->body, result->body_length);
 
+            // XXX: TODO: json_auto_free
             JSON_Value *v = json_parse_string(response_body_copy);
-            if (json_value_get_type(v) == JSONObject) {
-                const char *ip, *country, *org;
-                int asn = -1;
-                JSON_Object *jo = json_value_get_object(v);
-                time_t t = time(NULL);
+            if (json_value_get_type(v) != JSONObject) {
+                json_value_free(v);
+                return;
+            }
 
-                ip = json_string(json_object_get_value(jo, "ip"));
-                country = json_string(json_object_get_value(jo, "country"));
-                org = json_string(json_object_get_value(jo, "org"));
-                if (org != NULL) {
-                    // try to parse AS number embedded in org
-                    if (strlen(org) > 3 && org[0] == 'A' && org[1] == 'S' && isdigit(org[2])) {
-                        asn = atoi(org + 2);
-                    }
-                }
-                debug("IP=%s CC=%s ASN=%d time=%s", ip, country, asn, ctime(&t));
+            JSON_Object *jo = json_value_get_object(v);
+            time_t t = time(NULL);
 
-                // now write the result to stats server if they've changed
-                if (ip && ip[0] && country && country[0] && asn > 0 &&
-                    (strcmp (ip, g_ip) != 0 || strcmp(country, g_country) != 0 || asn != g_asn)) {
-                    // save new values iff they fit (don't truncate them)
-                    if (strlen(ip) < sizeof(g_ip)) {
-                        strcpy(g_ip, ip);
-                    } else {
-                        *g_ip = '\0';
-                    }
-                    if (strlen(country) < sizeof(g_country)) {
-                        strcpy(g_country, country);
-                    } else {
-                        *g_country = '\0';
-                    }
-                    g_asn = asn;
-                    g_ipinfo_timestamp = result->req_time;
-                    maybe_update_ipinfo(n);
+            const char *ip = json_string(json_object_get_value(jo, "ip"));
+            const char *country = json_string(json_object_get_value(jo, "country"));
+            const char *org = json_string(json_object_get_value(jo, "org"));
+            int asn = -1;
+            if (org != NULL) {
+                // try to parse AS number embedded in org
+                if (strlen(org) > 3 && org[0] == 'A' && org[1] == 'S' && isdigit(org[2])) {
+                    asn = atoi(org + 2);
                 }
             }
-            json_value_free(v);
+            debug("IP:%s CC:%s ASN:%d time:%s", ip, country, asn, ctime(&t));
+
+            // now write the result to stats server if they've changed
+            if (ip && ip[0] && country && country[0] && asn > 0 &&
+                (strcmp (ip, g_ip) != 0 || strcmp(country, g_country) != 0 || asn != g_asn)) {
+                // save new values iff they fit (don't truncate them)
+                if (strlen(ip) < sizeof(g_ip)) {
+                    strcpy(g_ip, ip);
+                } else {
+                    *g_ip = '\0';
+                }
+                if (strlen(country) < sizeof(g_country)) {
+                    strcpy(g_country, country);
+                } else {
+                    *g_country = '\0';
+                }
+                g_asn = asn;
+                g_ipinfo_timestamp = req_time;
+                maybe_update_ipinfo(n);
+            }
         } else {
-            debug("https://ipinfo.io => success=%d response_length=%zu https_error=%d\n",
-                  success, result->response_length, result->https_error);
+            debug("https://ipinfo.io => success:%d response_length:%zu https_error:%d\n",
+                  success, result->body_length, result->https_error);
         }
-    }, request);
+    });
 }
 
 void network_ifchange(network *n)
