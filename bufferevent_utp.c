@@ -140,12 +140,12 @@ static void bufferevent_utp_event(bufferevent *bufev, short what, int error)
 static void bufferevent_utp_bevout_to_obout(bufferevent_utp *bev_utp)
 {
     bufferevent_private *bufev_p = &bev_utp->bev;
-    bufferevent *bufev = &bufev_p->bev;
 
     if (bufev_p->write_suspended) {
         return;
     }
 
+    bufferevent *bufev = &bufev_p->bev;
     assert(bufev->enabled & EV_WRITE);
 
     ssize_t res = -1;
@@ -183,7 +183,6 @@ static void bufferevent_utp_obout_to_utp(bufferevent_utp *bev_utp)
     if (!bev_utp->utp_writable) {
         return;
     }
-    bufferevent_private *bufev_p = &bev_utp->bev;
     bufferevent *bufev = &bev_utp->bev.bev;
     evbuffer_unfreeze(bev_utp->obfoo_output, 1);
     ssize_t len = evbuffer_get_length(bev_utp->obfoo_output);
@@ -263,8 +262,7 @@ uint64 utp_on_error(utp_callback_arguments *a)
         return 0;
     }
 
-    bufferevent_private *bufev_p = &bev_utp->bev;
-    bufferevent *bufev = &bufev_p->bev;
+    bufferevent *bufev = &bev_utp->bev.bev;
 
     int error;
     switch (a->error_code) {
@@ -282,8 +280,7 @@ uint64 utp_on_error(utp_callback_arguments *a)
 
 static void bufferevent_utp_obin_to_bevin(bufferevent_utp *bev_utp)
 {
-    bufferevent_private *bufev_p = &bev_utp->bev;
-    bufferevent *bufev = &bufev_p->bev;
+    bufferevent *bufev = &bev_utp->bev.bev;
 
     assert(bufev->enabled & EV_READ);
 
@@ -300,6 +297,7 @@ static void bufferevent_utp_obin_to_bevin(bufferevent_utp *bev_utp)
         return;
     }
 
+    bufferevent_private *bufev_p = &bev_utp->bev;
     bufferevent_decrement_read_buckets_(bufev_p, fres);
 
     if (s < OF_STATE_DISCARD && bev_utp->obfoo->state >= OF_STATE_DISCARD) {
@@ -317,8 +315,7 @@ static void bufferevent_utp_obin_to_bevin(bufferevent_utp *bev_utp)
 uint64 utp_on_read(utp_callback_arguments *a)
 {
     bufferevent_utp *bev_utp = utp_get_userdata(a->socket);
-    bufferevent_private *bufev_p = &bev_utp->bev;
-    bufferevent *bufev = &bufev_p->bev;
+    bufferevent *bufev = &bev_utp->bev.bev;
 
     BEV_RESET_GENERIC_READ_TIMEOUT(bufev);
 
@@ -365,7 +362,6 @@ static void obfoo_output_cb(evbuffer *buf, const evbuffer_cb_info *cbinfo, void 
 int bufferevent_utp_connect(bufferevent *bev, const sockaddr *sa, int socklen)
 {
     bufferevent_utp *bev_utp = bufferevent_utp_upcast(bev);
-    bufferevent_private *bufev_p = &bev_utp->bev;
 
     int result = -1;
     bool ownutp = false;
@@ -393,6 +389,7 @@ int bufferevent_utp_connect(bufferevent *bev, const sockaddr *sa, int socklen)
     if (!be_utp_enable(bev, EV_WRITE)) {
         bev_utp->obfoo->incoming = false;
         obfoo_write_intro(bev_utp->obfoo, bev_utp->obfoo_output);
+        bufferevent_private *bufev_p = &bev_utp->bev;
         bufev_p->connecting = 1;
         result = 0;
     }
@@ -407,10 +404,9 @@ bufferevent* bufferevent_utp_new(event_base *base, utp_context *utp_ctx, utp_soc
         return NULL;
     }
 
-    bufferevent_private *bev_p = &bev_utp->bev;
-
     bev_utp->utp_ctx = utp_ctx;
 
+    bufferevent_private *bev_p = &bev_utp->bev;
     if (bufferevent_init_common_(bev_p, base, &bufferevent_ops_utp, options) < 0) {
         mm_free(bev_utp);
         return NULL;
@@ -452,7 +448,6 @@ utp_socket* bufferevent_get_utp(const bufferevent *bev)
 static int be_utp_enable(bufferevent *bufev, short event)
 {
     bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
-    bufferevent_private *bufev_p = &bev_utp->bev;
 
     if (event & EV_READ) {
         BEV_RESET_GENERIC_READ_TIMEOUT(bufev);
@@ -462,6 +457,7 @@ static int be_utp_enable(bufferevent *bufev, short event)
         BEV_RESET_GENERIC_WRITE_TIMEOUT(bufev);
         bufferevent_utp_bevout_to_obout(bev_utp);
     }
+    bufferevent_private *bufev_p = &bev_utp->bev;
     if (bufev_p->eventcb_pending) {
         EVUTIL_SET_SOCKET_ERROR(bufev_p->errno_pending);
         if (bufev_p->eventcb_pending & BEV_EVENT_READING) {
@@ -477,11 +473,11 @@ static int be_utp_enable(bufferevent *bufev, short event)
 
 static int be_utp_disable(bufferevent *bufev, short event)
 {
-    bufferevent_private *bufev_p = BEV_UPCAST(bufev);
     if (event & EV_READ) {
         BEV_DEL_GENERIC_READ_TIMEOUT(bufev);
     }
     /* Don't actually disable the write if we are trying to connect. */
+    bufferevent_private *bufev_p = BEV_UPCAST(bufev);
     if ((event & EV_WRITE) && !bufev_p->connecting) {
         BEV_DEL_GENERIC_WRITE_TIMEOUT(bufev);
     }
