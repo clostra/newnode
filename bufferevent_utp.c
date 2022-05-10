@@ -118,9 +118,7 @@ ssize_t evbuffer_utp_write(evbuffer *buffer, utp_socket *utp)
 
 static void bufferevent_utp_event(bufferevent *bufev, short what, int error)
 {
-    short ev_what = 0;
-    ev_what |= what & BEV_EVENT_READING ? EV_READ : 0;
-    ev_what |= what & BEV_EVENT_WRITING ? EV_WRITE : 0;
+    short ev_what = (what & BEV_EVENT_READING ? EV_READ : 0) | (what & BEV_EVENT_WRITING ? EV_WRITE : 0);
     if (bufev->enabled & ev_what) {
         EVUTIL_SET_SOCKET_ERROR(error);
         if (ev_what & EV_READ) {
@@ -458,7 +456,8 @@ static int be_utp_enable(bufferevent *bufev, short event)
         bufferevent_utp_bevout_to_obout(bev_utp);
     }
     bufferevent_private *bufev_p = &bev_utp->bev;
-    if (bufev_p->eventcb_pending) {
+    short bev_what = (event & EV_READ ? BEV_EVENT_READING : 0) | (event & EV_WRITE ? BEV_EVENT_WRITING : 0);
+    if (bufev_p->eventcb_pending & bev_what) {
         EVUTIL_SET_SOCKET_ERROR(bufev_p->errno_pending);
         if (bufev_p->eventcb_pending & BEV_EVENT_READING) {
             bufferevent_disable(bufev, EV_READ);
