@@ -158,7 +158,7 @@ static void bufferevent_utp_bevout_to_obout(bufferevent_utp *bev_utp)
         evbuffer_freeze(bufev->output, 1);
 
         if (res == -1) {
-            bufferevent_utp_event(bufev_p, BEV_EVENT_ERROR | BEV_EVENT_WRITING, ENOBUFS);
+            bufferevent_utp_event(bufev, BEV_EVENT_ERROR | BEV_EVENT_WRITING, ENOBUFS);
             return;
         }
 
