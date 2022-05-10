@@ -46,10 +46,7 @@ typedef struct {
     evbuffer *obfoo_input;
     evbuffer *obfoo_output;
     evutil_socket_t fake_fd;
-    int pending_error;
-    int pending_error_type;
     bool utp_writable:1;
-    bool pending_eof:1;
 } bufferevent_utp;
 
 static int be_utp_enable(bufferevent *, short);
@@ -119,36 +116,31 @@ ssize_t evbuffer_utp_write(evbuffer *buffer, utp_socket *utp)
     return r;
 }
 
-static void bufferevent_utp_error(bufferevent_utp *bev_utp, int error, int type)
+static void bufferevent_utp_event(bufferevent *bufev, short what, int error)
 {
-    bufferevent *bufev = &bev_utp->bev.bev;
-
-    if (!(bufev->enabled & type)) {
-        if (!bev_utp->pending_error) {
-            bev_utp->pending_error = error;
-            bev_utp->pending_error_type = type;
+    short ev_what = 0;
+    ev_what |= what & BEV_EVENT_READING ? EV_READ : 0;
+    ev_what |= what & BEV_EVENT_WRITING ? EV_WRITE : 0;
+    if (bufev->enabled & ev_what) {
+        EVUTIL_SET_SOCKET_ERROR(error);
+        if (ev_what & EV_READ) {
+            bufferevent_disable(bufev, EV_READ);
         }
+        if (ev_what & EV_WRITE) {
+            bufferevent_disable(bufev, EV_WRITE);
+        }
+        bufferevent_run_eventcb_(bufev, what, 0);
         return;
     }
-
-    int what = BEV_EVENT_ERROR;
-    if (type & EV_READ) {
-        what |= BEV_EVENT_READING;
-        bufferevent_disable(bufev, EV_READ);
-    } else if (type & EV_WRITE) {
-        what |= BEV_EVENT_WRITING;
-        bufferevent_disable(bufev, EV_WRITE);
-    }
-    EVUTIL_SET_SOCKET_ERROR(error);
-    bufferevent_run_eventcb_(bufev, what, 0);
+    bufferevent_private *bufev_p = BEV_UPCAST(bufev);
+    bufev_p->eventcb_pending |= what;
+    bufev_p->errno_pending = error;
 }
 
 static void bufferevent_utp_bevout_to_obout(bufferevent_utp *bev_utp)
 {
-    bufferevent *bufev = &bev_utp->bev.bev;
-    bufferevent_private *bufev_p = BEV_UPCAST(bufev);
-
-    ev_ssize_t atmost = bufferevent_get_write_max_(bufev_p);
+    bufferevent_private *bufev_p = &bev_utp->bev;
+    bufferevent *bufev = &bufev_p->bev;
 
     if (bufev_p->write_suspended) {
         return;
@@ -158,6 +150,7 @@ static void bufferevent_utp_bevout_to_obout(bufferevent_utp *bev_utp)
 
     ssize_t res = -1;
     if (evbuffer_get_length(bufev->output)) {
+        ev_ssize_t atmost = bufferevent_get_write_max_(bufev_p);
 
         evbuffer_unfreeze(bufev->output, 1);
         // XXX: observe "atmost" to support rate-limiting
@@ -165,7 +158,7 @@ static void bufferevent_utp_bevout_to_obout(bufferevent_utp *bev_utp)
         evbuffer_freeze(bufev->output, 1);
 
         if (res == -1) {
-            bufferevent_utp_error(bev_utp, ENOBUFS, EV_WRITE);
+            bufferevent_utp_event(bufev_p, BEV_EVENT_ERROR | BEV_EVENT_WRITING, ENOBUFS);
             return;
         }
 
@@ -190,6 +183,8 @@ static void bufferevent_utp_obout_to_utp(bufferevent_utp *bev_utp)
     if (!bev_utp->utp_writable) {
         return;
     }
+    bufferevent_private *bufev_p = &bev_utp->bev;
+    bufferevent *bufev = &bev_utp->bev.bev;
     evbuffer_unfreeze(bev_utp->obfoo_output, 1);
     ssize_t len = evbuffer_get_length(bev_utp->obfoo_output);
     ssize_t fres = evbuffer_utp_write(bev_utp->obfoo_output, bev_utp->utp);
@@ -198,7 +193,7 @@ static void bufferevent_utp_obout_to_utp(bufferevent_utp *bev_utp)
         bev_utp->utp_writable = false;
     }
     if (fres == -1) {
-        bufferevent_utp_error(bev_utp, EINVAL, EV_WRITE);
+        bufferevent_utp_event(bufev, BEV_EVENT_ERROR | BEV_EVENT_WRITING, EINVAL);
     }
 }
 
@@ -213,17 +208,6 @@ const char* utp_state(int state)
     case -1: assert(false);
     }
     return "unknown";
-}
-
-static void bufferevent_utp_eof(bufferevent_utp *bev_utp)
-{
-    bufferevent *bufev = &bev_utp->bev.bev;
-    if (!(bufev->enabled & EV_READ)) {
-        bev_utp->pending_eof = true;
-        return;
-    }
-    bufferevent_disable(bufev, EV_READ);
-    bufferevent_run_eventcb_(bufev, BEV_EVENT_READING | BEV_EVENT_EOF, 0);
 }
 
 uint64 utp_on_state_change(utp_callback_arguments *a)
@@ -252,7 +236,7 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
         bufferevent_utp_obout_to_utp(bev_utp);
         break;
     case UTP_STATE_EOF:
-        bufferevent_utp_eof(bev_utp);
+        bufferevent_utp_event(bufev, BEV_EVENT_EOF | BEV_EVENT_READING, 0);
         break;
     case UTP_STATE_DESTROYING:
         bev_utp->utp = NULL;
@@ -265,7 +249,6 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
 
 static void bufferevent_utp_close(bufferevent_utp *bev_utp)
 {
-    bufferevent *bufev = &bev_utp->bev.bev;
     utp_set_userdata(bev_utp->utp, NULL);
     utp_close(bev_utp->utp);
     bev_utp->utp = NULL;
@@ -274,13 +257,14 @@ static void bufferevent_utp_close(bufferevent_utp *bev_utp)
 
 uint64 utp_on_error(utp_callback_arguments *a)
 {
-    bufferevent *bufev = (bufferevent*)utp_get_userdata(a->socket);
+    bufferevent_utp *bev_utp = utp_get_userdata(a->socket);
 
-    if (!bufev) {
+    if (!bev_utp) {
         return 0;
     }
 
-    bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
+    bufferevent_private *bufev_p = &bev_utp->bev;
+    bufferevent *bufev = &bufev_p->bev;
 
     int error;
     switch (a->error_code) {
@@ -292,14 +276,14 @@ uint64 utp_on_error(utp_callback_arguments *a)
     }
 
     bufferevent_utp_close(bev_utp);
-    bufferevent_utp_error(bev_utp, error, EV_WRITE);
+    bufferevent_utp_event(bufev, BEV_EVENT_ERROR | BEV_EVENT_WRITING, error);
     return 0;
 }
 
 static void bufferevent_utp_obin_to_bevin(bufferevent_utp *bev_utp)
 {
-    bufferevent *bufev = &bev_utp->bev.bev;
-    bufferevent_private *bufev_p = BEV_UPCAST(bufev);
+    bufferevent_private *bufev_p = &bev_utp->bev;
+    bufferevent *bufev = &bufev_p->bev;
 
     assert(bufev->enabled & EV_READ);
 
@@ -312,7 +296,7 @@ static void bufferevent_utp_obin_to_bevin(bufferevent_utp *bev_utp)
     evbuffer_freeze(bufev->input, 0);
 
     if (fres < 0) {
-        bufferevent_utp_error(bev_utp, ENOBUFS, EV_READ);
+        bufferevent_utp_event(bufev, BEV_EVENT_ERROR | BEV_EVENT_READING, ENOBUFS);
         return;
     }
 
@@ -332,8 +316,9 @@ static void bufferevent_utp_obin_to_bevin(bufferevent_utp *bev_utp)
 
 uint64 utp_on_read(utp_callback_arguments *a)
 {
-    bufferevent *bufev = (bufferevent*)utp_get_userdata(a->socket);
-    bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
+    bufferevent_utp *bev_utp = utp_get_userdata(a->socket);
+    bufferevent_private *bufev_p = &bev_utp->bev;
+    bufferevent *bufev = &bufev_p->bev;
 
     BEV_RESET_GENERIC_READ_TIMEOUT(bufev);
 
@@ -342,7 +327,7 @@ uint64 utp_on_read(utp_callback_arguments *a)
     evbuffer_freeze(bev_utp->obfoo_input, 0);
 
     if (res == -1) {
-        bufferevent_utp_error(bev_utp, ENOBUFS, EV_READ);
+        bufferevent_utp_event(bufev, BEV_EVENT_ERROR | BEV_EVENT_READING, ENOBUFS);
         return 0;
     }
 
@@ -355,9 +340,9 @@ uint64 utp_on_read(utp_callback_arguments *a)
 
 static void bufferevent_utp_bevout_cb(evbuffer *buf, const evbuffer_cb_info *cbinfo, void *arg)
 {
-    bufferevent *bufev = arg;
-    bufferevent_private *bufev_p = BEV_UPCAST(bufev);
-    bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
+    bufferevent_utp *bev_utp = arg;
+    bufferevent_private *bufev_p = &bev_utp->bev;
+    bufferevent *bufev = &bev_utp->bev.bev;
 
     if (cbinfo->n_added &&
         (bufev->enabled & EV_WRITE) &&
@@ -371,8 +356,7 @@ static void bufferevent_utp_bevout_cb(evbuffer *buf, const evbuffer_cb_info *cbi
 
 static void obfoo_output_cb(evbuffer *buf, const evbuffer_cb_info *cbinfo, void *arg)
 {
-    bufferevent *bufev = arg;
-    bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
+    bufferevent_utp *bev_utp = arg;
     if (cbinfo->n_added) {
         bufferevent_utp_obout_to_utp(bev_utp);
     }
@@ -381,7 +365,7 @@ static void obfoo_output_cb(evbuffer *buf, const evbuffer_cb_info *cbinfo, void 
 int bufferevent_utp_connect(bufferevent *bev, const sockaddr *sa, int socklen)
 {
     bufferevent_utp *bev_utp = bufferevent_utp_upcast(bev);
-    bufferevent_private *bufev_p = BEV_UPCAST(bev);
+    bufferevent_private *bufev_p = &bev_utp->bev;
 
     int result = -1;
     bool ownutp = false;
@@ -432,27 +416,26 @@ bufferevent* bufferevent_utp_new(event_base *base, utp_context *utp_ctx, utp_soc
         return NULL;
     }
 
-    bufferevent *bufev = &bev_p->bev;
-
     bev_utp->fake_fd = EVUTIL_INVALID_SOCKET;
 
     bev_utp->obfoo = obfoo_new();
     bev_utp->obfoo_input = evbuffer_new();
     bev_utp->obfoo_output = evbuffer_new();
     bev_utp->obfoo->incoming = true;
-    evbuffer_add_cb(bev_utp->obfoo_output, obfoo_output_cb, bufev);
+    evbuffer_add_cb(bev_utp->obfoo_output, obfoo_output_cb, bev_utp);
 
     evbuffer_freeze(bev_utp->obfoo_input, 0);
     evbuffer_freeze(bev_utp->obfoo_output, 1);
 
     if (utp) {
-        utp_set_userdata(utp, bufev);
+        utp_set_userdata(utp, bev_utp);
         bev_utp->utp = utp;
     }
 
+    bufferevent *bufev = &bev_p->bev;
     bufferevent_init_generic_timeout_cbs_(bufev);
 
-    evbuffer_add_cb(bufev->output, bufferevent_utp_bevout_cb, bufev);
+    evbuffer_add_cb(bufev->output, bufferevent_utp_bevout_cb, bev_utp);
 
     evbuffer_freeze(bufev->input, 0);
     evbuffer_freeze(bufev->output, 1);
@@ -463,27 +446,31 @@ bufferevent* bufferevent_utp_new(event_base *base, utp_context *utp_ctx, utp_soc
 utp_socket* bufferevent_get_utp(const bufferevent *bev)
 {
     bufferevent_utp *bev_utp = bufferevent_utp_upcast(bev);
-    bufferevent_private *bufev_p = BEV_UPCAST(bev);
     return bev_utp->utp;
 }
 
 static int be_utp_enable(bufferevent *bufev, short event)
 {
     bufferevent_utp *bev_utp = bufferevent_utp_upcast(bufev);
+    bufferevent_private *bufev_p = &bev_utp->bev;
 
     if (event & EV_READ) {
         BEV_RESET_GENERIC_READ_TIMEOUT(bufev);
         bufferevent_utp_obin_to_bevin(bev_utp);
-        if (bev_utp->pending_eof) {
-            bufferevent_utp_eof(bev_utp);
-        }
     }
     if (event & EV_WRITE) {
         BEV_RESET_GENERIC_WRITE_TIMEOUT(bufev);
         bufferevent_utp_bevout_to_obout(bev_utp);
     }
-    if (bev_utp->pending_error) {
-        bufferevent_utp_error(bev_utp, bev_utp->pending_error, bev_utp->pending_error_type);
+    if (bufev_p->eventcb_pending) {
+        EVUTIL_SET_SOCKET_ERROR(bufev_p->errno_pending);
+        if (bufev_p->eventcb_pending & BEV_EVENT_READING) {
+            bufferevent_disable(bufev, EV_READ);
+        }
+        if (bufev_p->eventcb_pending & BEV_EVENT_WRITING) {
+            bufferevent_disable(bufev, EV_WRITE);
+        }
+        bufferevent_run_eventcb_(bufev, bufev_p->eventcb_pending, BEV_OPT_DEFER_CALLBACKS);
     }
     return 0;
 }
