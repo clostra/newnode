@@ -3147,9 +3147,9 @@ void update_tryfirst_stats(network *n, tryfirst_stats *tfs, int flags, uint64_t 
         fprintf(stderr, "blocked = %" PRIu64 "\n", tfs->blocked);
         fprintf(stderr, "bytes_xferred = %" PRIu64 "\n", tfs->bytes_xferred);
         fprintf(stderr, "xfer_time_us = %f s\n", tfs->xfer_time_us / 1000000.0);
-        fprintf(stderr, "last_attempt = %.2fms", (us_clock() - tfs->last_attempt) / 1000.0);
-        fprintf(stderr, "last_success = %.2fms", (us_clock() - tfs->last_success) / 1000.0);
-        fprintf(stderr, "last_blocked = %.2fms", (us_clock() - tfs->last_blocked) / 1000.0);
+        fprintf(stderr, "last_attempt = %.2fms\n", (us_clock() - tfs->last_attempt) / 1000.0);
+        fprintf(stderr, "last_success = %.2fms\n", (us_clock() - tfs->last_success) / 1000.0);
+        fprintf(stderr, "last_blocked = %.2fms\n", (us_clock() - tfs->last_blocked) / 1000.0);
     }
     if (*g_country) {
         char url[2048];

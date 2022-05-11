@@ -10,6 +10,9 @@ PARSON_CFLAGS="-Iparson"
 
 cd libevent
 if [ ! -d native ]; then
+    if [ ! -f configure ]; then
+        ./autogen.sh
+    fi
     ./configure --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --prefix=$(pwd)/native
     make clean
     make -j`nproc`
