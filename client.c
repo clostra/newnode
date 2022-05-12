@@ -4004,7 +4004,10 @@ void network_ifchange(network *n)
     }
     g_ifchange_time = time(NULL);
     timer_cancel(g_ifchange_timer);
-    g_ifchange_timer = timer_start(n, 5 * 1000, ^{ query_ipinfo(n); });
+    g_ifchange_timer = timer_start(n, 5 * 1000, ^{
+        g_ifchange_timer = NULL;
+        query_ipinfo(n);
+    });
 }
 
 network* client_init(const char *app_name, const char *app_id, port_t *port, https_callback https_cb)
