@@ -127,7 +127,12 @@ public class Bluetooth {
     }
 
     void bluetoothOn() {
-        if (!bluetoothAdapter().isEnabled()) {
+        try {
+            if (!bluetoothAdapter().isEnabled()) {
+                return;
+            }
+        } catch (SecurityException e) {
+            Log.e(TAG, "bluetoothOn", e);
             return;
         }
         startServer();
