@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <assert.h>
 #include <string.h>
@@ -24,6 +25,7 @@
 #include "timer.h"
 #include "network.h"
 #include "constants.h"
+#include "hash_table.h"
 #include "bev_splice.h"
 #include "merkle_tree.h"
 #include "stall_detector.h"
@@ -124,27 +126,25 @@ void request_done_cb(evhttp_request *req, void *arg)
         content_sig sig;
         content_sign(&sig, root_hash);
         size_t out_len;
-        char *b64_msign = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
+        auto_free char *b64_msign = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
         debug("returning X-MSign for %s %s\n", uri, b64_msign);
 
         evhttp_add_header(p->server_req->output_headers, "X-MSign", b64_msign);
-        free(b64_msign);
 
         char *hashrequest = (char*)evhttp_find_header(p->server_req->input_headers, "X-HashRequest");
-        char *b64_hashes = NULL;
+        auto_free char *b64_hashes = NULL;
         if (hashrequest) {
             static_assert(sizeof(node) == member_sizeof(node, hash), "node hash packing");
             size_t node_len = p->m->leaves_num * member_sizeof(node, hash);
             b64_hashes = base64_urlsafe_encode((uint8_t*)p->m->nodes, node_len, &out_len);
             evhttp_add_header(p->server_req->output_headers, "X-Hashes", b64_hashes);
-            free(b64_hashes);
         }
 
         bool matches = false;
         char *ifnonematch = (char*)evhttp_find_header(p->server_req->input_headers, "If-None-Match");
         if (ifnonematch) {
             size_t root_etag_len;
-            char *root_etag = base64_urlsafe_encode((uint8_t*)&root_hash, sizeof(root_hash), &root_etag_len);
+            auto_free char *root_etag = base64_urlsafe_encode((uint8_t*)&root_hash, sizeof(root_hash), &root_etag_len);
             size_t if_len = strlen(ifnonematch);
             if (if_len > 0) {
                 if (ifnonematch[if_len - 1] == '"') {
@@ -156,7 +156,6 @@ void request_done_cb(evhttp_request *req, void *arg)
             if (!matches) {
                 debug("If-None-Match: %s != %s\n", ifnonematch, root_etag);
             }
-            free(root_etag);
         }
         if (matches) {
             evhttp_send_reply(p->server_req, 304, "Not Modified", NULL);
@@ -344,11 +343,10 @@ void connect_cleanup(connect_req *c, int err)
         content_sig sig;
         content_sign(&sig, content_hash);
         size_t out_len;
-        char *b64_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
+        auto_free char *b64_sig = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
         debug("c:%p (%.2fms) returning sig for %s %d %s %s\n", c, cdelta(c), evhttp_request_get_uri(c->server_req), code, reason, b64_sig);
 
         overwrite_header(c->server_req, "X-MSign", b64_sig);
-        free(b64_sig);
 
         evhttp_send_reply(c->server_req, code, reason, NULL);
     }
@@ -435,32 +433,136 @@ bool valid_server_address(const char *host)
     return true;
 }
 
+
+
+typedef struct {
+    uint64_t from_peer_http;
+    uint64_t to_peer_http;
+
+    uint64_t from_peer_https;
+    uint64_t to_peer_https;
+
+    uint64_t from_peer_trace;
+    uint64_t to_peer_trace;
+
+    uint64_t from_server_http;
+    uint64_t to_server_http;
+
+    uint64_t from_server_https;
+    uint64_t to_server_https;
+} byte_counts;
+
+uint64_t last_stats;
+
+hash_table *byte_count_per_authority;
+
+void stats_changed()
+{
+    if (us_clock() - last_stats < 10000 * 1000) {
+        return;
+    }
+
+    __block byte_counts total = {};
+
+    hash_iter(byte_count_per_authority, ^bool (const char *authority, void *val) {
+        byte_counts *b = val;
+        debug("host_stats %s %"PRIu64"\n", authority,
+              b->from_peer_http + b->to_peer_http +
+              b->from_peer_https + b->to_peer_https +
+              b->from_peer_trace + b->to_peer_trace +
+              b->from_server_http + b->to_server_http +
+              b->from_server_https + b->to_server_https);
+
+#define sum(c) total.c += b->c;
+        sum(from_peer_http);
+        sum(to_peer_http);
+
+        sum(from_peer_https);
+        sum(to_peer_https);
+
+        sum(from_peer_trace);
+        sum(to_peer_trace);
+
+        sum(from_server_http);
+        sum(to_server_http);
+
+        sum(from_server_https);
+        sum(to_server_https);
+#undef sum
+        return true;
+    });
+
+    fprintf(stderr, "total_stats ");
+#define print(c) fprintf(stderr, "" #c ":%"PRIu64" ", total.c)
+    print(from_peer_http);
+    print(to_peer_http);
+
+    print(from_peer_https);
+    print(to_peer_https);
+
+    print(from_peer_trace);
+    print(to_peer_trace);
+
+    print(from_server_http);
+    print(to_server_http);
+
+    print(from_server_https);
+    print(to_server_https);
+#undef print
+    fprintf(stderr, "\n");
+
+    last_stats = us_clock();
+}
+
+void byte_count_cb(evbuffer *buf, const evbuffer_cb_info *info, void *userdata)
+{
+    uint64_t *counter = (uint64_t*)userdata;
+    //debug("%s counter:%p bytes:%zu\n", __func__, counter, info->n_deleted);
+    if (info->n_deleted) {
+        *counter += info->n_deleted;
+        stats_changed();
+    }
+}
+
+byte_counts* byte_count_for_authority(const char *authority)
+{
+    if (!byte_count_per_authority) {
+        byte_count_per_authority = hash_table_create();
+    }
+    return hash_get_or_insert(byte_count_per_authority, authority, ^{
+        return alloc(byte_counts);
+    });
+}
+
 void connect_request(network *n, evhttp_request *req)
 {
     char buf[2048];
     snprintf(buf, sizeof(buf), "https://%s", evhttp_request_get_uri(req));
-    evhttp_uri *uri = evhttp_uri_parse(buf);
+    evhttp_uri_auto_free evhttp_uri *uri = evhttp_uri_parse(buf);
     if (!uri) {
         evhttp_send_error(req, 400, "Invalid Authority");
         return;
     }
     const char *host = evhttp_uri_get_host(uri);
     if (!host) {
-        evhttp_uri_free(uri);
         evhttp_send_error(req, 400, "Invalid Host");
         return;
     }
+
+    byte_counts *b = byte_count_for_authority(host);
+    bufferevent *bev = evhttp_connection_get_bufferevent(req->evcon);
+    evbuffer_add_cb(bufferevent_get_input(bev), byte_count_cb, &b->from_peer_https);
+    evbuffer_add_cb(bufferevent_get_output(bev), byte_count_cb, &b->to_peer_https);
+
     int port = evhttp_uri_get_port(uri);
     if (port == -1) {
         port = 443;
     } else if (port != 443) {
-        evhttp_uri_free(uri);
         evhttp_send_error(req, 403, "Port is not 443");
         return;
     }
 
     if (!valid_server_address(host)) {
-        evhttp_uri_free(uri);
         evhttp_send_error(req, 523, "Origin Is Unreachable");
         return;
     }
@@ -485,12 +587,15 @@ void connect_request(network *n, evhttp_request *req)
         debug("failed to set TCP_FASTOPEN_CONNECT %d %s\n", errno, strerror(errno));
     }
 #endif
+
+    evbuffer_add_cb(bufferevent_get_input(c->direct), byte_count_cb, &b->from_server_https);
+    evbuffer_add_cb(bufferevent_get_output(c->direct), byte_count_cb, &b->to_server_https);
+
     bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
     const timeval conn_tv = { 45, 0 };
     bufferevent_set_timeouts(c->direct, &conn_tv, &conn_tv);
     bufferevent_enable(c->direct, EV_READ);
     bufferevent_socket_connect_hostname(c->direct, n->evdns, AF_INET, host, port);
-    evhttp_uri_free(uri);
 }
 
 void http_request_cb(evhttp_request *req, void *arg)
@@ -510,6 +615,11 @@ void http_request_cb(evhttp_request *req, void *arg)
     if (req->type == EVHTTP_REQ_TRACE) {
         char *useragent = (char*)evhttp_find_header(req->input_headers, "User-Agent");
         debug("%s:%d %s %s %s\n", e_host, e_port, useragent, evhttp_method(req->type), evhttp_request_get_uri(req));
+
+        byte_counts *b = byte_count_for_authority(useragent && strstr(useragent, "Android") ? "TRACE Android" : "TRACE iOS");
+        bufferevent *bev = evhttp_connection_get_bufferevent(req->evcon);
+        evbuffer_add_cb(bufferevent_get_input(bev), byte_count_cb, &b->from_peer_trace);
+        evbuffer_add_cb(bufferevent_get_output(bev), byte_count_cb, &b->to_peer_trace);
 
         evbuffer_auto_free evbuffer *output = evbuffer_new();
         evbuffer_add_printf(output, "TRACE %s HTTP/%d.%d\r\n", req->uri, req->major, req->minor);
@@ -541,16 +651,14 @@ void http_request_cb(evhttp_request *req, void *arg)
         size_t out_len;
         static_assert(sizeof(node) == member_sizeof(node, hash), "node hash packing");
         size_t node_len = m->leaves_num * member_sizeof(node, hash);
-        char *b64_hashes = base64_urlsafe_encode((uint8_t*)m->nodes, node_len, &out_len);
+        auto_free char *b64_hashes = base64_urlsafe_encode((uint8_t*)m->nodes, node_len, &out_len);
         evhttp_add_header(req->output_headers, "X-Hashes", b64_hashes);
-        free(b64_hashes);
 
         merkle_tree_free(m);
 
-        char *b64_msign = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
+        auto_free char *b64_msign = base64_urlsafe_encode((uint8_t*)&sig, sizeof(sig), &out_len);
         debug("returning X-MSign for TRACE %s %s\n", req->uri, b64_msign);
         evhttp_add_header(req->output_headers, "X-MSign", b64_msign);
-        free(b64_msign);
 
         evhttp_send_reply(req, 200, "OK", output);
         return;
@@ -564,11 +672,22 @@ void http_request_cb(evhttp_request *req, void *arg)
         return;
     }
 
+    byte_counts *b = byte_count_for_authority(host);
+    bufferevent *bev = evhttp_connection_get_bufferevent(req->evcon);
+    evbuffer_add_cb(bufferevent_get_input(bev), byte_count_cb, &b->from_peer_http);
+    evbuffer_add_cb(bufferevent_get_output(bev), byte_count_cb, &b->to_peer_http);
+
     // TODO: could look up uri in a table of {uri => headers}
     evhttp_connection *evcon = make_connection(n, uri);
     if (!evcon) {
         evhttp_send_error(req, 503, "Service Unavailable");
         return;
+    }
+
+    {
+        bufferevent *bev = evhttp_connection_get_bufferevent(evcon);
+        evbuffer_add_cb(bufferevent_get_input(bev), byte_count_cb, &b->from_server_http);
+        evbuffer_add_cb(bufferevent_get_output(bev), byte_count_cb, &b->to_server_http);
     }
 
     submit_request(n, req, evcon, uri);

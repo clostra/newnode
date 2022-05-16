@@ -26,110 +26,6 @@ static jobject bugsnagClient;
 static jobject newNode;
 static network *g_n;
 
-// keep an array of requests that are associated with small integers
-// so that we can maintain per-download state separately from NN state
-// while allowing NN to cancel requests.
-
-#define NLINK 100
-
-static struct link {
-    jlong request_id;                // structure is unused if request_id == 0
-    volatile bool cancelled;    // nonzero if cancelled by NewNode
-    https_request request;
-    https_complete_callback completion_cb;
-    https_result result;
-} links[NLINK];
-
-static jlong request_serial = 1; // request_ids are always > 0
-
-static int alloc_link(https_request *hr)
-{
-    for (int i = 0; i < NLINK; ++i) {
-        if (links[i].request_id == 0) {
-            links[i].request_id = (request_serial++ * NLINK) + i;
-            links[i].cancelled = false;
-            if (hr) {
-                links[i].request = *hr;
-            } else {
-                // implement defaults if request==NULL
-                // (bufsize=0, flags=0, timeout_sec=7)
-                memset(&(links[i].request), 0, sizeof(https_request));
-                links[i].request.timeout_sec = 7;
-            }
-            links[i].completion_cb = NULL;
-            memset(&(links[i].result), 0, sizeof(https_result));
-            if (hr) {
-                if ((hr->flags & HTTPS_METHOD_MASK) == HTTPS_METHOD_HEAD) {
-                    links[i].result.result_flags |= HTTPS_REQUEST_USE_HEAD;
-                }
-                if (hr->flags & HTTPS_ONE_BYTE) {
-                    links[i].result.result_flags |= HTTPS_REQUEST_ONE_BYTE;
-                }
-            }
-            links[i].result.request_id = links[i].request_id;
-            return i;
-        }
-    }
-    return -1;
-}
-
-// NOTE: this should always be called from the libevent thread
-// otherwise, alloc_link() might be called concurrently with free_link
-
-static void free_link(jlong request_id)
-{
-    if (request_id <= 0) {
-        return;
-    }
-    int i = request_id % NLINK;
-    if (links[i].request_id == request_id) {
-        if (links[i].result.response_body != NULL) {
-            free(links[i].result.response_body);
-            links[i].result.response_body = NULL;
-        }
-        links[i].request_id = 0;
-        links[i].cancelled = false;
-        memset(&(links[i].request), 0, sizeof(https_request));
-        links[i].completion_cb = NULL;
-        memset(&(links[i].result), 0, sizeof(https_result));
-        return;
-    }
-    // debug("XXX %s links[%d].request_id %" PRId64 " != request_id %" PRId64 "\n",
-    //       __func__, i, links[i].request_id, request_id);
-}
-
-// find the link with the specified request_id
-// return the index of the link in the links array
-
-static int find_link(jlong request_id)
-{
-    if (request_id <= 0) {
-        return -1;
-    }
-    int i = request_id % NLINK;
-    if (links[i].request_id == request_id) {
-        return i;
-    }
-    // debug("XXX %s request_id %" PRId64 " not found at index %d\n", __func__, request_id, i);
-    return -1;
-}
-
-// this function exists to allow NewNode to cancel an https request
-// that is in progress
-//
-// XXX for now all this does is set a cancelled flag; it doesn't
-//     actually try to stop the thread handling the request
-
-void cancel_https_request(network *n, int64_t request_id)
-{
-    debug("%s (request_id:%" PRId64 ")\n", __func__, request_id);
-    int link_index = find_link((jlong) request_id);
-    if (link_index < 0) {
-        debug("%s could not find link %" PRId64 "\n", __func__, request_id);
-        return;
-    }
-    links[link_index].cancelled = true;
-}
 
 void* stdio_thread(void *useradata)
 {
@@ -201,18 +97,6 @@ enum notify_type {
     BREADCRUMB = 8,
     META = 9
 };
-
-JNIEXPORT jint Java_com_clostra_newnode_internal_NewNode_isCancelled(JNIEnv *env, jobject thiz, jlong request_id)
-{
-    jint result;
-    int link_index = find_link(request_id);
-    if (link_index < 0) {
-        return 1;
-    }
-    result = links[link_index].cancelled;
-    // debug("isCancelled(request_id:%ld) => %d\n", request_id, result);
-    return result;
-}
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_updateBugsnagDetails(JNIEnv* env, jobject thiz, int notifyType)
 {
@@ -371,81 +255,50 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetc
     (*env)->ReleaseStringUTFChars(env, host, hoststr);
 }
 
-// callback() passes lots of scalar result parameters from Java code
-// that then get copied into an https_result structure (if the
-// request wasn't cancelled), because it seemed easier than either
-// having the Java code return a class instance, or having the Java
-// code manipulate a C data structure on the C heap.
-
-
-// XXX are all of these arguments still needed?
-//     NO, but wait until later to rearrange them
-//     needed: request_id, response_body, response_length, https_error, http_status_code, result_flags
-
-JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_callback(JNIEnv* env, jobject thiz, jlong callblock, jlong response_length, jint https_error, jint http_status_code, jint result_flags, jlong request_id, jbyteArray response_body)
+void cancel_https_request(network *n, https_request_token token)
 {
-    extern char *https_strerror();
-    https_result dummy_res;
-    dummy_res.https_error = https_error;
-   
-    debug("g_https_cb callback response_length:%ld https_error:%d(%s) http_status_code:%d result_flags:0x%x request_id:%lld\n", 
-          (long) response_length, https_error, https_strerror(&dummy_res),
-          http_status_code, result_flags, (long long) request_id);
-
-    int link_index = find_link(request_id);
-    if (link_index < 0) {
-        return;
-    }
-
-    if (links[link_index].cancelled) {
-        // if cancelled, free any data that is internal to this module,
-        // and don't call the completion callback
-        network_async(g_n, ^{
-            free_link(request_id);
-            debug("%s request_id:%lld was cancelled\n", __func__, (long long) request_id);
-        });
-        return;
-    }
-
-    // fill in the result fields in Java's thread,
-    // (especially so we can copy out the response_body array contents safely)
-    https_request *req = &(links[link_index].request);
-    https_result *res =  &(links[link_index].result);
-    // copy min(req->bufsize, response_length) bytes from result into res->buf
-    jsize array_length = (*env)->GetArrayLength(env, response_body);
-    if (response_length > 0 && http_status_code == 200) {
-        long minimum = array_length;
-        if (response_length < minimum) {
-            minimum = response_length;
+    debug("%s request:%p)\n", __func__, token);
+    JNIEnv *env = get_env();
+    jvm_frame(env, ^{
+        jobject https_request = (*env)->NewLocalRef(env, token);
+        if (!https_request) {
+            return;
         }
-        if ((long)(req->bufsize) < minimum) {
-            minimum = req->bufsize;
-        }
-        res->response_body = malloc(minimum);
-        (*env)->GetByteArrayRegion(env, response_body, 0, minimum, (jbyte *) res->response_body);
-        // debug("response_body=%.*s\n", response_length > 80 ? 80 : (int) response_length, req->buf);
-        res->response_length = response_length;
+        jclass cNewNode = (*env)->GetObjectClass(env, newNode);
+        CATCH(return);
+        CALL_VOID(cNewNode, newNode, cancelHttp, Lcom/newnode/internal/NewNode/CallblockThread;, https_request);
+        CATCH(assert(false));
+    });
+}
+
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_httpCallback(JNIEnv* env, jobject thiz, jlong callblock, jint https_error, jint http_status_code, jint flags, jbyteArray body)
+{
+    extern char *https_strerror(https_result *result);
+
+    https_result result = {
+        .flags = flags,
+        .https_error = https_error,
+        .http_status = http_status_code,
+        .body_length = (*env)->GetArrayLength(env, body)
+    };
+
+    debug("g_https_cb callback length:%zu https_error:%d(%s) http_status_code:%d flags:0x%x\n", 
+          result.body_length, https_error, https_strerror(&result),
+          http_status_code, flags);
+
+    if (result.body_length > 0 && http_status_code == 200) {
+        result.body = malloc(result.body_length);
+        (*env)->GetByteArrayRegion(env, body, 0, result.body_length, (jbyte*)result.body);
     }
-    res->result_flags = result_flags;
-    res->xfer_time_us = us_clock() - res->xfer_start_time_us;
-    res->https_error = https_error;
-    res->http_status = http_status_code;
 
     https_complete_callback cb = (https_complete_callback)callblock;
-    if (links[link_index].cancelled == 0) {
-        network_async(g_n, ^{
-            if (links[link_index].request_id == request_id && links[link_index].cancelled == 0) {
-                cb(http_status_code == 200, res);
-                Block_release(cb);
-                free_link(request_id);
-            }
-        });
-    } else {
+    network_async(g_n, ^{
+        if (cb) {
+            cb(http_status_code == 200, &result);
+        }
+        free(result.body);
         Block_release(cb);
-        network_async(g_n, ^{
-            free_link(request_id);
-        });
-    }
+    });
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNIEnv* env, jobject thiz, jobject newNodeObj)
@@ -464,129 +317,74 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
     // XXX: TODO: use real app name
     const char *app_name = app_id;
     port_t newnode_port = 0;
-    g_n = newnode_init(app_name, app_id, &newnode_port, ^int64_t (const char* url, https_complete_callback cb, https_request *request) {
+    g_n = newnode_init(app_name, app_id, &newnode_port, ^(const https_request *request, const char* url, https_complete_callback cb) {
         network *n = g_n;
-        int link_index = alloc_link(request);
-        if (link_index < 0) {
-            network_async(n, ^{
-                https_result fake_result = {.https_error = HTTPS_RESOURCE_EXHAUSTED};
-                cb(false, &fake_result);
-            });
-            return 0;
-        }
-        jlong request_id = links[link_index].request_id;
-        https_result *result = &(links[link_index].result);
-        timespec now;
-        jbyteArray request_body;
-        jobjectArray request_header_names = 0;
-        jobjectArray request_header_values = 0;
-
-        // TODO: use us_clock()
-        clock_gettime(CLOCK_REALTIME, &now);
-        result->req_time = now.tv_sec;
-        debug("g_https_cb(%s) request_id:%lld link_index:%d\n", url, (long long)request_id, link_index);
-        result->xfer_start_time_us = us_clock();
+        debug("g_https_cb(%s)\n", url);
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshadow"
         JNIEnv *env = get_env();
 #pragma clang diagnostic pop
-        if (request->request_body && request->request_body_size > 0) {
-            request_body = (*env)->NewByteArray(env, request->request_body_size);
-            (*env)->SetByteArrayRegion(env, request_body, 0, request->request_body_size, (signed char *) request->request_body);
-        }
-        else {
-            request_body = (*env)->NewByteArray(env, 0);
-        }
-        if (request->request_headers) {
-            int nheaders;
-            for (nheaders = 0; request->request_headers[nheaders]; ++nheaders);
-            if (request->request_body_content_type) {
-                ++nheaders;
+        __block jobject https_request = NULL;
+        jvm_frame(env, ^{
+            jbyteArray request_body = (*env)->NewByteArray(env, request->body_size);
+            if (request->body && request->body_size > 0) {
+                (*env)->SetByteArrayRegion(env, request_body, 0, request->body_size, (const jbyte *)request->body);
             }
-            request_header_names = (*env)->NewObjectArray(env, nheaders, (*env)->FindClass(env, "java/lang/String"), 0);
-            request_header_values = (*env)->NewObjectArray(env, nheaders, (*env)->FindClass(env, "java/lang/String"), 0);
-            for (int i = 0; request->request_headers[i]; ++i) {
-                char *colon = strchr(request->request_headers[i], ':');
-                if (colon) {
-                    char *name = strndup(request->request_headers[i], colon - request->request_headers[i]);
+            jobjectArray request_header_names = NULL;
+            jobjectArray request_header_values = NULL;
+            if (request->headers) {
+                int nheaders;
+                for (nheaders = 0; request->headers[nheaders]; ++nheaders);
+                if (request->body_content_type) {
+                    ++nheaders;
+                }
+                request_header_names = (*env)->NewObjectArray(env, nheaders, (*env)->FindClass(env, "java/lang/String"), 0);
+                request_header_values = (*env)->NewObjectArray(env, nheaders, (*env)->FindClass(env, "java/lang/String"), 0);
+                for (int i = 0; request->headers[i]; ++i) {
+                    char *colon = strchr(request->headers[i], ':');
+                    if (!colon) {
+                        continue;
+                    }
+                    auto_free char *name = strndup(request->headers[i], colon - request->headers[i]);
                     char *value = colon + 1;
                     // debug("%s setting header[%d] %s=%s\n", __func__, i, name, value);
-                    (*env)->SetObjectArrayElement(env, request_header_names, i, (jstring) (*env)->NewStringUTF(env, name));
-                    (*env)->SetObjectArrayElement(env, request_header_values, i, (jstring) (*env)->NewStringUTF(env, value));
-                    free(name);
+                    (*env)->SetObjectArrayElement(env, request_header_names, i, JSTR(name));
+                    (*env)->SetObjectArrayElement(env, request_header_values, i, JSTR(value));
                 }
+                if (request->body_content_type) {
+                    (*env)->SetObjectArrayElement(env, request_header_names, nheaders - 1, JSTR("Content-Type"));
+                    (*env)->SetObjectArrayElement(env, request_header_values, nheaders - 1, JSTR(request->body_content_type));
+                }
+            } else {
+                request_header_names = (*env)->NewObjectArray(env, 0, (*env)->FindClass(env, "java/lang/String"), 0);
+                request_header_values = (*env)->NewObjectArray(env, 0, (*env)->FindClass(env, "java/lang/String"), 0);
             }
-            if (request->request_body_content_type) {
-                (*env)->SetObjectArrayElement(env, request_header_names, nheaders - 1, JSTR("Content-Type"));
-                (*env)->SetObjectArrayElement(env, request_header_values, nheaders - 1, (jstring) (*env)->NewStringUTF(env, request->request_body_content_type));
-            }
-        }
-        else {
-            request_header_names = (*env)->NewObjectArray(env, 0, (*env)->FindClass(env, "java/lang/String"), 0);
-            request_header_values = (*env)->NewObjectArray(env, 0, (*env)->FindClass(env, "java/lang/String"), 0);
-        }
-        jvm_frame(env, ^{
-            if (!newNode) {
-                network_async(n, ^{
-                    if (links[link_index].request_id == request_id) {
-                        result->https_error = HTTPS_SYSCALL_ERROR;
-                        cb(false, result);
-                        free_link(request_id);
-                    }
-                });
-                return;
-            }
-            jclass cNewNode = (*env)->GetObjectClass(env, newNode);
-            CATCH(
-                  network_async(n, ^{
-                      if (links[link_index].request_id == request_id) {
-                          result->https_error = HTTPS_SYSCALL_ERROR;
-                          cb(false, result);
-                          free_link(request_id);
-                      }
-                  });
-                return;
-            );
-            https_complete_callback cbc = Block_copy(cb);
- 
-            // debug("(jni call) http(url:%s, cbc:%p, flags:0x%08x, timeout:%d, bufsize:%lu, request_id:%d)\n",
-            //       url, cbc, request->flags, request->timeout_sec, (unsigned long) request->bufsize, request_id);
+
+            // debug("(jni call) http(url:%s, cbc:%p, flags:0x%08x, timeout:%d, bufsize:%lu)\n",
+            //       url, cbc, request->flags, request->timeout_sec, (unsigned long) request->bufsize);
             // debug("           flags=%s\n", expand_flags(request->flags));
-            CALL_VOID(cNewNode, newNode, 
-                      http,                     // shorthand form of method name
-                      Ljava/lang/String;JIIIJI[Ljava/lang/String;[Ljava/lang/String;[B, // parameter types:
-                                                // (1) String url (Ljava/lang/String;)
-                                                // (2) long cbc (J)
-                                                // (3) int request_flags (I)
-                                                // (4) int timeout_msec (I)
-                                                // (5) int bufsize (I)
-                                                // (6) long request_id (J)
-                                                // (7) int newnode_port (I)
-                                                // (8) String request_header_names[] (passed as Object array)
-                                                // (9) String request_header_values[] (passed as Object array)
-                                                // (10) byte request_body[]
-                      JSTR(url),                // url (encoded as Java String)
-                      (jlong)cbc,               // callback pointer (encoded as long)
-                      (jint)(request->flags),   // request flags
-                      (jint)(request->timeout_sec * 1000), // timeout_msec
-                      (jint)(request->bufsize), // bufsize
-                      (jlong) request_id,       // request_id
-                      (jint) newnode_get_port(n),
-                      request_header_names,
-                      request_header_values,
-                      request_body);
-            CATCH(
-                  network_async(n, ^{
-                      if (links[link_index].request_id == request_id) {
-                          result->https_error = HTTPS_SYSCALL_ERROR;
-                          cb(false, result);
-                          free_link(request_id);
-                          Block_release(cbc);
-                      }
-                  });
-            );
+
+            jclass cNewNode = (*env)->GetObjectClass(env, newNode);
+            CATCH(return);
+            // javap -s -classpath ./build/intermediates/javac/debug/classes com.clostra.newnode.internal.NewNode
+            jmethodID mHttp = (*env)->GetMethodID(env, cNewNode, "http", "(Ljava/lang/String;JIIII[Ljava/lang/String;[Ljava/lang/String;[B)Lcom/clostra/newnode/internal/NewNode$CallblockThread;");
+            if (mHttp) {
+                https_complete_callback cbc = Block_copy(cb);
+                jobject t = (*env)->CallObjectMethod(env, newNode, mHttp,
+                    JSTR(url),
+                    (jlong)cbc,               // callblock pointer (encoded as long)
+                    (jint)request->flags,
+                    (jint)(request->timeout_sec * 1000), // timeout_msec
+                    (jint)request->bufsize, // bufsize
+                    (jint)newnode_get_port(n),
+                    request_header_names,
+                    request_header_values,
+                    request_body);
+                CATCH(assert(false));
+                https_request = (*env)->NewWeakGlobalRef(env, t);
+            }
         });
-        return links[link_index].request_id;
+        return (https_request_token)https_request;
     });
 }
 
@@ -760,6 +558,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(
 
 ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6)
 {
+    return -1;
     JNIEnv *env = get_env();
     push_frame();
     ssize_t r = ^ssize_t() {
@@ -807,48 +606,6 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setLogLevel(JNI
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeRun(JNIEnv* env, jobject thiz)
 {
     newnode_run(g_n);
-}
-
-
-// XXX: compat. can be removed when we have a NewNode.aar loader here in JNI
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_updateBugsnagDetails(JNIEnv* env, jobject thiz, int notifyType)
-{
-    Java_com_clostra_newnode_internal_NewNode_updateBugsnagDetails(env, thiz, notifyType);
-}
-
-// XXX: compat
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_useEphemeralPort(JNIEnv* env, jobject thiz)
-{
-}
-
-// XXX: compat
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
-{
-    Java_com_clostra_newnode_internal_NewNode_setCacheDir(env, thiz, cacheDir);
-}
-
-// XXX: compat
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_registerProxy(JNIEnv* env, jobject thiz)
-{
-    Java_com_clostra_newnode_internal_NewNode_registerProxy(env, thiz);
-}
-
-// XXX: compat
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_unregisterProxy(JNIEnv* env, jobject thiz)
-{
-    Java_com_clostra_newnode_internal_NewNode_unregisterProxy(env, thiz);
-}
-
-// XXX: compat
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
-{
-    Java_com_clostra_newnode_internal_NewNode_setLogLevel(env, thiz, level);
-}
-
-// XXX: compat
-JNIEXPORT void JNICALL Java_com_clostra_dcdn_Dcdn_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
-{
-    Java_com_clostra_newnode_internal_NewNode_setCacheDir(env, thiz, cacheDir);
 }
 
 jint JNI_OnLoad(JavaVM *vm, void *reserved)

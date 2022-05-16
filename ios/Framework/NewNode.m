@@ -37,9 +37,9 @@ network *g_n;
     NSString *appId = NSBundle.mainBundle.infoDictionary[@"CFBundleIdentifier"];
 
     port_t port = 0;
-    g_n = newnode_init(appName.UTF8String, appId.UTF8String, &port, ^(const char *url, https_complete_callback cb, https_request *request) {
+    g_n = newnode_init(appName.UTF8String, appId.UTF8String, &port, ^(const https_request *request, const char *url, const https_complete_callback cb) {
         network *n = g_n;
-        return do_https(n, port, url, cb, request);
+        return do_https(n, request, url, cb);
     });
     if (!g_n) {
         NSLog(@"Error: NewNode could not be initialized");

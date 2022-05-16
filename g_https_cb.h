@@ -46,10 +46,10 @@ typedef enum {
 } https_error;
 
 typedef struct https_request {
-    char *request_body;
-    unsigned request_body_size;
-    char *request_body_content_type;
-    char **request_headers;
+    char *body;
+    unsigned body_size;
+    char *body_content_type;
+    char **headers;
     unsigned bufsize;
     int flags;
 #define HTTPS_METHOD_MASK 07
@@ -70,26 +70,25 @@ typedef struct https_request {
 #define HTTPS_TRYFIRST_FLAGS (HTTPS_DIRECT|HTTPS_ONE_BYTE|HTTPS_NO_REDIRECT|HTTPS_NO_RETRIES)
 #define HTTPS_STATS_FLAGS (0)
 #define HTTPS_GEOIP_FLAGS (HTTPS_DIRECT)
-    int timeout_sec;                    // 0 = arbitrarily long, though maybe not forever
+    // 0 = arbitrarily long, though maybe not forever
+    int timeout_sec;
 } https_request;
 
+typedef void* https_request_token;
+
 typedef struct https_result {
-    char *response_body;                // may be heap or stack allocated, valid only for
-                                        // duration of completion callback, MUST NOT be freed
-                                        // by completion callback
-    size_t response_length;
-    int result_flags;
+    // valid only for duration of completion callback, MUST NOT be freed by completion callback
+    char *body;
+    size_t body_length;
+    int flags;
 #define HTTPS_RESULT_TRUNCATED 01
-#define HTTPS_REQUEST_USE_HEAD 02        // set if HTTPS_METHOD_HEAD used
-#define HTTPS_REQUEST_ONE_BYTE 04        // set if HTTPS_ONE_BYTE is used
-    time_t req_time;
-    uint64_t xfer_start_time_us;
-    uint64_t xfer_time_us;
     https_error https_error;
-    int http_status;                    // 3-digit http status code (0 if unknown)
-    int64_t request_id;
+    // 3-digit http status code (0 if unknown)
+    int http_status;
 } https_result;
 
-void cancel_https_request(network *n, int64_t request_id);
+typedef void (^https_complete_callback)(bool success, const https_result *result);
+https_request_token do_https(network *n, const https_request *request, const char *url, https_complete_callback cb);
+void cancel_https_request(network *n, https_request_token token);
 
 #endif // __G_HTTPS_CB__

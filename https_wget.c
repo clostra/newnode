@@ -120,7 +120,7 @@ static char *flags(int f)
     return buf;
 }
 
-static subproc *alloc_subproc(https_request *req)
+static subproc *alloc_subproc(const https_request *req)
 {
     int i;
     // allocate first unused subprocess
@@ -137,13 +137,6 @@ static subproc *alloc_subproc(https_request *req)
             subprocs[i].request.timeout_sec = 7;
         }
         memset(&(subprocs[i].result), 0, sizeof(https_result));
-        if (req && ((req->flags & HTTPS_METHOD_MASK) == HTTPS_METHOD_HEAD)) {
-            subprocs[i].result.result_flags |= HTTPS_REQUEST_USE_HEAD;
-        }
-        if (req && req->flags & HTTPS_ONE_BYTE) {
-            subprocs[i].result.result_flags |= HTTPS_REQUEST_ONE_BYTE;
-        }
-        subprocs[i].result.request_id = subprocs[i].request_id;
         if (i > max_subproc) {
             max_subproc = i;
             // debug("max_subproc is now %d\n", i);
@@ -172,7 +165,7 @@ static void free_subproc(subproc *sp)
         Block_release(sp->cb);
         free(sp->name);
         free(sp->outputfilename);
-        free(sp->result.response_body);
+        free(sp->result.body);
         memset(sp, 0, sizeof(*sp));
         return;
     }
@@ -249,6 +242,11 @@ static pid_t spawn(subproc *sp, char *program, char **child_argv, int child_stdo
             newrlim.rlim_cur = MIN((rlim_t) maxfsize, oldrlim.rlim_max);
             newrlim.rlim_max = MIN((rlim_t) maxfsize, oldrlim.rlim_max);
             setrlimit(RLIMIT_FSIZE, &newrlim);
+            // also limit core dump size to 0 so that wget won't core
+            // dump due to (intentional) signal SIGXFSZ
+            newrlim.rlim_cur = 0;
+            newrlim.rlim_max = 0;
+            setrlimit(RLIMIT_CORE, &newrlim);
         }
         execv(program, child_argv);
         debug("spawn: pid %d: cannot exec %s: %s\n", getpid(), program, strerror(errno));
@@ -371,29 +369,28 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
                       likely_blocked(result) ? "likely blocked" : "not blocked");
                 if (sp->cb) {
                     uint64_t now = us_clock();
-                    result->xfer_time_us = now - result->xfer_start_time_us;
                     // if there's an output file and room in the buffer, read
                     // the contents of the output file into the buffer
                     if ((sp->flags & HASOUTPUTFILE) && sp->outputfilename && request->bufsize > 0) {
                         int fd = open(sp->outputfilename, O_RDONLY);
                         if (fd >= 0) {
                             off_t filesize = fdsize(fd);
-                            off_t response_length = MIN(filesize, (off_t) request->bufsize);
-                            result->response_body = response_length > 0 ? malloc(response_length) : NULL;
+                            off_t body_length = MIN(filesize, (off_t) request->bufsize);
+                            result->body = body_length > 0 ? malloc(body_length) : NULL;
 
-                            result->response_length = 0;
-                            if (result->response_body) {
-                                while (result->response_length < request->bufsize) {
+                            result->body_length = 0;
+                            if (result->body) {
+                                while (result->body_length < request->bufsize) {
                                     ssize_t nread = read(fd, 
-                                                         result->response_body + result->response_length,
-                                                         request->bufsize - result->response_length);
+                                                         result->body + result->body_length,
+                                                         request->bufsize - result->body_length);
                                     if (nread <= 0) {
                                         break;
                                     }
-                                    result->response_length += nread;
+                                    result->body_length += nread;
                                 }
                                 if (filesize > (off_t) request->bufsize) {
-                                    result->result_flags |= HTTPS_RESULT_TRUNCATED;
+                                    result->flags |= HTTPS_RESULT_TRUNCATED;
                                 }
                             }
                             close(fd);
@@ -417,6 +414,9 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
                             free_subproc(sp);
                         }
                     });
+                } else {
+                    debug("sp:%p no callback for %s - freeing subproc\n", sp, sp->name);
+                    free_subproc(sp);
                 }
             }
         } else if (WIFSIGNALED(sp->exit_status)) {
@@ -430,7 +430,7 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
                       strsignal(WTERMSIG(sp->exit_status)));
                 debug("%s sp->flags:(%s)\n", __func__, flags(sp->flags));
                 if (WTERMSIG(sp->exit_status) == SIGXFSZ) {
-                    result->result_flags |= HTTPS_RESULT_TRUNCATED;
+                    result->flags |= HTTPS_RESULT_TRUNCATED;
                 } else if (result->https_error == HTTPS_NO_ERROR) {
                     result->https_error = HTTPS_GENERIC_ERROR;
                 }
@@ -447,22 +447,22 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
                         int fd = open(sp->outputfilename, O_RDONLY);
                         if (fd >= 0) {
                             off_t filesize = fdsize(fd);
-                            off_t response_length = MIN(filesize, (off_t) request->bufsize);
-                            result->response_body = response_length > 0 ? malloc(response_length) : NULL;
+                            off_t body_length = MIN(filesize, (off_t) request->bufsize);
+                            result->body = body_length > 0 ? malloc(body_length) : NULL;
 
-                            result->response_length = 0;
-                            if (result->response_body) {
-                                while (result->response_length < request->bufsize) {
+                            result->body_length = 0;
+                            if (result->body) {
+                                while (result->body_length < request->bufsize) {
                                     ssize_t nread = read(fd, 
-                                                         result->response_body + result->response_length,
-                                                         request->bufsize - result->response_length);
+                                                         result->body + result->body_length,
+                                                         request->bufsize - result->body_length);
                                     if (nread <= 0) {
                                         break;
                                     }
-                                    result->response_length += nread;
+                                    result->body_length += nread;
                                 }
                                 if (filesize > (off_t) request->bufsize) {
-                                    result->result_flags |= HTTPS_RESULT_TRUNCATED;
+                                    result->flags |= HTTPS_RESULT_TRUNCATED;
                                 }
                             }
                             close(fd);
@@ -501,13 +501,16 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
                             free_subproc(sp);
                         }
                     });
+                } else {
+                    debug("sp:%p no callback for %s - freeing subproc\n", sp, sp->name);
+                    free_subproc(sp);
                 }
             }
         } else {
             // got a SIGCHLD for this process but its exit status shows neither
             // that it exited nor died of a signal.   maybe this never happens?
-            debug("not sure what happened to pid %d with exit status 0x%x\n",
-                  sp->pid, sp->exit_status);
+            debug("sp:%p not sure what happened to pid %d with exit status 0x%x\n",
+                  sp, sp->pid, sp->exit_status);
             free_subproc(sp);
         }
     }
@@ -517,15 +520,42 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
 //
 // A cancelled request doesn't ever call its completion callback.
 
-void cancel_https_request(network *n, int64_t request_id)
+void cancel_https_request(network *n, https_request_token token)
 {
-    debug("%s (%" PRId64 ")\n", __func__, request_id);
-    if (request_id <= 0) {
+    debug("%s (%p)\n", __func__, token);
+    int64_t request_id = (int64_t) token;
+    if (request_id == 0) {
         return;
     }
+#if 1
     //
-    // XXX instead of iterating through loop calculate i from request_id
+    // instead of iterating through loop calculate i from request_id
     //
+    int i = request_id % NSUBPROC;
+    if (subprocs[i].request_id == request_id) {
+        if (subprocs[i].flags & INUSE) {
+            // debug("XXX request_id:%" PRId64 " request_id%%NSUBPROC=%" PRId64 " i=%d\n", request_id,
+            //       request_id % NSUBPROC, i);
+            // debug("XXX %s: found subproc[%d] with request_id:%" PRId64 "\n", __func__, i, request_id);
+            subprocs[i].flags |= CANCELLED;             // inhibit completion callback
+            // do the kill() in a timer callback so that the resulting SIGCHLD
+            // doesn't trigger an immediate event and prevent connect_cleanup()
+            // from completing.  (wait 100ms - just a guess)
+            int pid = subprocs[i].pid;
+            if (pid) {
+                timer_start(n, 100, ^{
+                        kill(pid, SIGINT);
+                        debug("%s: process %d killed\n", __func__, pid);
+                    });
+            }
+            // don't call free_subproc here, wait until the SIGCHLD handler is called
+            return;
+        } else {
+            // subproc no longer in use
+            return;
+        }
+    }
+#else
     for (int i = 0; i < NSUBPROC; ++i) {            // XXX change < NSUBPROC to <= max_subproc
         if (subprocs[i].request_id == request_id) {
             if (subprocs[i].flags & INUSE) {
@@ -551,6 +581,7 @@ void cancel_https_request(network *n, int64_t request_id)
             }
         }
     }
+#endif
     debug("%s request_id:%" PRId64 " not found in subproc list\n", __func__, request_id);
 }
 
@@ -574,7 +605,7 @@ static char *writeinputfile(network *n, https_request *request, https_complete_c
     char *filename = make_temp_filename(".in");
     FILE *fp;
 
-    debug("%s: request->request_body_size=%d\n", __func__, request->request_body_size);
+    debug("%s: request->body_size=%d\n", __func__, request->body_size);
     if ((fp = fopen(filename, "w")) == NULL) {
         debug("%s unable to create temp input file %s: %s\n", __func__, filename, strerror(errno));
         free(filename);
@@ -582,14 +613,14 @@ static char *writeinputfile(network *n, https_request *request, https_complete_c
         return NULL;
     }
     chmod(filename, 0600);
-    if (request->request_body == NULL) {
+    if (request->body == NULL) {
         fwrite("", 1, 0, fp);
     }
     else {
         unsigned nwritten = 0;
-        while (nwritten < request->request_body_size) {
-            size_t nw = fwrite(request->request_body + nwritten, sizeof(char),
-                               request->request_body_size - nwritten, fp);
+        while (nwritten < request->body_size) {
+            size_t nw = fwrite(request->body + nwritten, sizeof(char),
+                               request->body_size - nwritten, fp);
             if (nw == 0) {
                 // write error
                 debug("%s error writing to temp input file %s: %s\n", __func__, filename, strerror(errno));
@@ -609,8 +640,9 @@ static char *writeinputfile(network *n, https_request *request, https_complete_c
 
 static int count_strings(char **strings)
 {
-    if (!strings)
+    if (!strings) {
         return 0;
+    }
     int i;
     for (i = 0; strings[i]; ++i);
     return i;
@@ -618,7 +650,7 @@ static int count_strings(char **strings)
 
 static https_request default_request = { 0 };
 
-int64_t do_https(network *n, int http_port, const char *url, https_complete_callback cb, https_request *request)
+https_request_token do_https(network *n, const https_request *request, const char *url, https_complete_callback cb)
 {
     static int inited = 0;
     char buf[128];
@@ -635,9 +667,6 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
     bool range_one_byte = false;
     bool follow_redirects = true;
     bool no_retries = false;
-    // make sure there's enough room for all of the --header arguments needed
-    char *child_argv[20 + count_strings(request->request_headers)];
-    memset(child_argv, 0, sizeof(child_argv));
 
     if (!inited) {
         // libevent has the built-in ability to treat signals as
@@ -647,28 +676,22 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
         event_add(child_exit_event, NULL);
         inited = 1;
     }
-    if (request->bufsize > MAX_BUFSIZE) {
-        // don't signal an error, just revise request
-        request->bufsize = MAX_BUFSIZE;
-    }
     sp = alloc_subproc(request);
-    if (sp == NULL && cb) {
-        // call the completion handler with an error, so we always report errors consistently
-        timer_start(n, 100, ^{
-            https_result result = {.https_error = HTTPS_RESOURCE_EXHAUSTED};
-            cb(false, &result);
-        });
+    if (sp == NULL) {
+        if (cb) {
+            // call the completion handler with an error, so we always report errors consistently
+            timer_start(n, 100, ^{
+                    https_result result = {.https_error = HTTPS_RESOURCE_EXHAUSTED};
+                    cb(false, &result);
+                });
+        }
         // 0 is not a valid request_id and will be ignored in cancel requests
         debug("%s (%s:%d) could not allocate subprocess\n", __func__, __FILE__, __LINE__);
-        return 0;
+        return (https_request_token) 0;
     }
-    if (request) {
-        memcpy(&(sp->request), request, sizeof(https_request));
-    } else {
-        // default if request == NULL: bufsize=0, HTTPS_DIRECT=0, default timeout
-        memcpy(&(sp->request), &default_request, sizeof(https_request));
-        sp->request.timeout_sec = 7;
-    }
+    // make sure there's enough room for all of the --header arguments needed + NULL at the end
+    char *child_argv[sp ? (20 + count_strings(sp->request.headers)) : 1];
+    memset(child_argv, 0, sizeof(child_argv));
 
     switch (sp->request.flags & HTTPS_METHOD_MASK) {
     case HTTPS_METHOD_PUT:
@@ -676,7 +699,7 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
         sp->inputfilename = writeinputfile(n, &(sp->request), cb);
         if (!(sp->inputfilename)) {
             free_subproc(sp);
-            return 0;
+            return (https_request_token) 0;
         }
     case HTTPS_METHOD_GET:
     case HTTPS_METHOD_HEAD:
@@ -685,7 +708,7 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
         debug("%s unknown https request method o%03o\n", __func__, sp->request.flags & HTTPS_METHOD_MASK);
         free_subproc(sp);
         schedule_cb(n, cb, HTTPS_PARAMETER_ERROR);
-        return 0;
+        return (https_request_token) 0;
     }
 
     if (sp->request.flags & HTTPS_ONE_BYTE) {
@@ -701,10 +724,6 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
     // alloc_subproc initialized result fields to zeros
     // get start times
     timespec now;
-    clock_gettime(CLOCK_REALTIME, &now);
-    sp->result.req_time = now.tv_sec;
-    sp->result.xfer_start_time_us = us_clock();
-
     int argc = 0;
 
     child_argv[argc++] = strdup("wget");
@@ -712,8 +731,8 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
     child_argv[argc++] = strdup("-o");         // get rid of wget-log* files
     child_argv[argc++] = strdup("/dev/null");
     child_argv[argc++] = strdup("-O");
-    if (request->bufsize > 0) {
-        maxoutputfilesize = request->bufsize;
+    if (sp->request.bufsize > 0) {
+        maxoutputfilesize = sp->request.bufsize;
         sp->outputfilename = make_temp_filename(".out");
         child_argv[argc++] = strdup(sp->outputfilename);
         sp->flags |= HASOUTPUTFILE;
@@ -734,10 +753,10 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
             snprintf(bodyfile, sizeof(bodyfile), "--body-file=%s", sp->inputfilename);
             child_argv[argc++] = strdup(bodyfile);
         }
-        if (request->request_body_content_type) {
+        if (sp->request.body_content_type) {
             char content_type[1024];
             snprintf(content_type, sizeof(content_type), "--header=Content-type: %s", 
-                     request->request_body_content_type);
+                     sp->request.body_content_type);
             child_argv[argc++] = strdup(content_type);
         }
         else {
@@ -752,10 +771,10 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
             snprintf(bodyfile, sizeof(bodyfile), "--body-file=%s", sp->inputfilename);
             child_argv[argc++] = strdup(bodyfile);
         }
-        if (request->request_body_content_type) {
+        if (sp->request.body_content_type) {
             char content_type[1024];
             snprintf(content_type, sizeof(content_type), "--header=Content-type: %s", 
-                     request->request_body_content_type);
+                     sp->request.body_content_type);
             child_argv[argc++] = strdup(content_type);
         }
         else {
@@ -774,25 +793,25 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
         // alas, wget doesn't seem to honor this request
         child_argv[argc++] = strdup("--max-redirect=0");
     }
-    if (request->timeout_sec != 0) {
-        snprintf(timeout_str, sizeof(timeout_str), "%d", request->timeout_sec);
+    if (sp->request.timeout_sec != 0) {
+        snprintf(timeout_str, sizeof(timeout_str), "%d", sp->request.timeout_sec);
         child_argv[argc++] = strdup("-T");
         child_argv[argc++] = strdup(timeout_str);
     }
     if (o_debug == 0) {
         child_argv[argc++] = strdup("-q");
     }
-    if (request->request_headers) {
-        for (int rh = 0; request->request_headers[rh]; ++rh) {
-            if (range_one_byte && strncasecmp(request->request_headers[rh], "range:", 6) == 0) {
+    if (sp->request.headers) {
+        for (int rh = 0; sp->request.headers[rh]; ++rh) {
+            if (range_one_byte && strncasecmp(sp->request.headers[rh], "range:", 6) == 0) {
                 continue;
             }
-            if (strncasecmp(request->request_headers[rh], "content-type:", 13) == 0 ||
-                strncasecmp(request->request_headers[rh], "content-length:", 15) == 0) {
+            if (strncasecmp(sp->request.headers[rh], "content-type:", 13) == 0 ||
+                strncasecmp(sp->request.headers[rh], "content-length:", 15) == 0) {
                 continue;
             }
             char tempbuf[1024];
-            snprintf(tempbuf, sizeof(tempbuf), "--header=%s", request->request_headers[rh]);
+            snprintf(tempbuf, sizeof(tempbuf), "--header=%s", sp->request.headers[rh]);
             child_argv[argc++] = strdup(tempbuf);
         }
     }
@@ -808,7 +827,7 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
         envp_mods[0] = NULL;
         envp_mods[1] = NULL;
     } else {
-        snprintf(buf, sizeof(buf), "https_proxy=http://127.0.0.1:%d", http_port);
+        snprintf(buf, sizeof(buf), "https_proxy=http://127.0.0.1:%d", newnode_get_port(n));
         envp_mods[0] = buf;
         envp_mods[1] = NULL;
     }
@@ -821,8 +840,8 @@ int64_t do_https(network *n, int http_port, const char *url, https_complete_call
         free(child_argv[i]);
     }
     debug("started wget on pid:%d sp:%p\n", pid, sp);
-    debug("%s (%s) returning %" PRId64 "\n", __func__, url, sp->request_id);
-    return sp->request_id;
+    debug("%s (%s) returning %p\n", __func__, url, (https_request_token) sp->request_id);
+    return (https_request_token)(sp->request_id);
 }
 
 #include "dns_prefetch.h"
