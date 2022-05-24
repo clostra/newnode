@@ -43,12 +43,10 @@ bool choose_addr(evutil_addrinfo *g, choose_addr_cb cb)
     return false;
 }
 
-void newnode_evdns_cache_write(network *n, const char *nodename, evutil_addrinfo *res, int ttl)
+void newnode_evdns_cache_write(network *n, const char *nodename, evutil_addrinfo *res, uint32_t ttl)
 {
     // max DNS TTL per RFC 2181 = 2^31 - 1
-    if (ttl > 2147483647) {
-        ttl = 2147483647;
-    }
+    ttl = MIN(ttl, 2147483647);
     evdns_cache_write(n->evdns, (char *)nodename, res, ttl);
 }
 
@@ -116,7 +114,7 @@ char* make_ip_addr_list(evutil_addrinfo *p)
     return result;
 }
 
-void dns_prefetch_store_result(network *n, evutil_addrinfo *ai, const char *host, int ttl)
+void dns_prefetch_store_result(network *n, evutil_addrinfo *ai, const char *host, uint32_t ttl)
 {
     debug("%s host:%s\n", __func__, host);
 
