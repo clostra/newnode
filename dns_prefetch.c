@@ -18,17 +18,6 @@
 #include "log.h"
 
 
-static evutil_addrinfo* nth_addr(evutil_addrinfo *p, int n)
-{
-    if (n == 0) {
-        return p;
-    }
-    if (!p->ai_next) {
-        return NULL;
-    }
-    return nth_addr(p->ai_next, n - 1);
-}
-
 // choose address - random selection for now
 bool choose_addr(evutil_addrinfo *g, choose_addr_cb cb)
 {
@@ -42,7 +31,10 @@ bool choose_addr(evutil_addrinfo *g, choose_addr_cb cb)
     int n = randombytes_uniform(count);
     for (int i = 0; i < count; i++) {
         int try = (n + (i * (count + 1))) % count;
-        evutil_addrinfo *result = nth_addr(g, try);
+        evutil_addrinfo *result = g;
+        for (; try && result->ai_next; try--) {
+            result = result->ai_next;
+        }
         if (cb(result)) {
             return true;
         }
