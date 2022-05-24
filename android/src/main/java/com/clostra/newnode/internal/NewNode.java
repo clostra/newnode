@@ -293,22 +293,19 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
         locationBroadcastManager.sendBroadcast(intent);
     }
 
-    void dnsPrefetch(final String hostname, final int result_index, final long result_id) {
+    void dnsPrefetch(final String hostname) {
         try {
             new Thread() { public void run() {
                 try {
-                    Log.i(TAG, String.format("dnsPrefetch(hostname:%s, result_index:%d, result_id:%d)",
-                                                   hostname, result_index, result_id));
+                    Log.i(TAG, String.format("dnsPrefetch(%s)", hostname));
                     InetAddress[] addrs = InetAddress.getAllByName(hostname);
-                    String[] addresses = new String[addrs.length];
-                    for (int i = 0; i < addrs.length; ++i) {
-                        addresses[i] = addrs[i].getHostAddress();
+                    byte[][] addresses = new byte[addrs.length][];
+                    for (int i = 0; i < addrs.length; i++) {
+                        addresses[i] = addrs[i].getAddress();
                     }
-                    storeDnsPrefetchResult(result_index, result_id, hostname, addresses);
-                } catch (java.net.UnknownHostException e) {
-                    Log.i (TAG, String.format("dnsPrefetch: unknown host %s", hostname), e);
+                    storeDnsPrefetchResult(hostname, addresses);
                 } catch (Exception e) {
-                    Log.i (TAG, "dnsPrefetch inner thread", e);
+                    Log.i (TAG, "dnsPrefetch thread", e);
                 }
             }}.start();
         } catch (Exception e) {
@@ -647,7 +644,7 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
     static native void unregisterProxy();
     static native void updateBugsnagDetails(int notifyType);
     static native void httpCallback(long callblock, int https_error, int http_status_code, int result_flags, byte response_body[]);
-    static native void storeDnsPrefetchResult(int result_index, long result_id, String host, String[] addresses);
+    static native void storeDnsPrefetchResult(String host, byte[][] addresses);
 
     public native void setLogLevel(int level);
 }

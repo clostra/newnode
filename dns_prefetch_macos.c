@@ -1,6 +1,9 @@
 #include <dns_sd.h>
 #include <fcntl.h>
 #include <stdbool.h>
+
+#include "libevent/util-internal.h"
+
 #include "nn_features.h"
 #include "log.h"
 #include "network.h"
@@ -10,11 +13,9 @@
 typedef struct {
     DNSServiceRef sd;
     char *host;
-    nn_addrinfo *result;
-    nn_addrinfo *lastresult;
+    evutil_addrinfo *ai;
+    uint32_t min_ttl;
     event *event;
-    uint64_t result_id;
-    size_t result_index;
     network *n;
 } dns_prefetch_request;
 
@@ -22,72 +23,56 @@ void dns_prefetch_callback(DNSServiceRef sdRef, DNSServiceFlags flags, uint32_t 
                            DNSServiceErrorType errorCode, const char *fullname,
                            const sockaddr *address, uint32_t ttl, void *context)
 {
-    dns_prefetch_request *result = (dns_prefetch_request*)context;
-    socklen_t sockaddrsize = sockaddr_get_length(address);
+    dns_prefetch_request *reqeust = (dns_prefetch_request*)context;
 
     if (errorCode != 0) {
-        debug("%s host:%s errorCode:%d\n", __func__, result->host, errorCode);
+        debug("%s host:%s errorCode:%d\n", __func__, reqeust->host, errorCode);
         return;
     }
 
-    nn_addrinfo *a = alloc(nn_addrinfo);
-    time_t now = time(0);
-    a->ai_addr = memdup(address, sockaddrsize);
-    a->ai_addrlen = sockaddrsize;
-    a->ai_expiry = now + ttl;
-    debug("%s host:%s address:%s ttl:%d expiry:%s", __func__, result->host, sockaddr_str_addronly(a->ai_addr), ttl, ctime(&a->ai_expiry));
-    // this callback will often get called more than once per
-    // query.  in each case we append the new address to the
-    // result list, and store the head of that list in result->result.
-    if (result->result == 0) {
-        result->result = a;
-    } else {
-        if (result->lastresult) {
-            result->lastresult->ai_next = a;
-        }
-    }
-    result->lastresult = a;
-    // if (o_debug) {
-    //     debug("%s addresses for %s are now:\n", __func__, result->host);
-    //     nn_addrinfo *nn;
-    //     for (nn = result->result; nn; nn=nn->ai_next) {
-    //         debug("    %s\n", sockaddr_str_addronly(nn->ai_addr));
-    //     }
-    // }
-    if ((flags & kDNSServiceFlagsMoreComing) == 0) {
-        network *n = result->n;
+    socklen_t addrlen = sockaddr_get_length(address);
+    evutil_addrinfo nullhints = {
+        .ai_family = PF_UNSPEC,
+        .ai_socktype = SOCK_STREAM,
+        .ai_protocol = IPPROTO_TCP
+    };
+    evutil_addrinfo *a = evutil_new_addrinfo_((sockaddr*)address, addrlen, &nullhints);
+    debug("%s host:%s address:%s ttl:%d\n", __func__, reqeust->host, sockaddr_str_addronly(a->ai_addr), ttl);
+    reqeust->min_ttl = !reqeust->min_ttl ? ttl : MIN(reqeust->min_ttl, ttl);
+    evutil_addrinfo_append_(reqeust->ai, a);
+    if (!(flags & kDNSServiceFlagsMoreComing)) {
+        network *n = reqeust->n;
         // no more DNS responses immediately queued, go ahead and update result
         network_async(n, ^{
-            dns_prefetch_store_result(n, result->result_index, result->result_id, result->result, result->host, false);
+            dns_prefetch_store_result(n, reqeust->ai, reqeust->host, reqeust->min_ttl);
         });
     }
 }
 
 void platform_dns_event_cb(evutil_socket_t fd, short what, void *arg)
 {
-    dns_prefetch_request *request = (dns_prefetch_request *) arg;
+    dns_prefetch_request *request = (dns_prefetch_request*)arg;
 
     if (what & EV_READ) {
-        // debug("%s EV_READ\n", __func__);
-        if (request && request->sd) {
-            // this arranges to call dns_prefetch_callback() above 
-            // (the Apple DNS library lets you use your own event handler)
-            int err = DNSServiceProcessResult(request->sd);
-            if (err != kDNSServiceErr_NoError) {
-                debug("%s: host:%s error %d\n", __func__, request->host, err);
-            }
+        // this arranges to call dns_prefetch_callback() above
+        // (the Apple DNS library lets you use your own event handler)
+        DNSServiceErrorType error = DNSServiceProcessResult(request->sd);
+        if (error != kDNSServiceErr_NoError) {
+            debug("%s: host:%s error:%d\n", __func__, request->host, error);
         }
+        return;
     }
+
     if (what & EV_TIMEOUT) {
-        // debug("%s EV_TIMEOUT\n", __func__);
         event_free(request->event);
         DNSServiceRefDeallocate(request->sd);
+        evutil_freeaddrinfo(request->ai);
         free(request->host);
         free(request);
     }
 }
 
-void platform_dns_prefetch(network *n, size_t result_index, uint64_t result_id, const char *host)
+void platform_dns_prefetch(network *n, const char *host)
 {
     if (host == NULL || *host == '\0') {
         return;
@@ -95,23 +80,21 @@ void platform_dns_prefetch(network *n, size_t result_index, uint64_t result_id, 
 
     dns_prefetch_request *request = alloc(dns_prefetch_request);
     request->host = strdup(host);
-    request->result_index = result_index;
-    request->result_id = result_id;
     request->n = n;
 
-    // No matter which kinds of addresses we request,
+    // No matter which kinds of addresses we reaquest,
     // DNSServiceGetAddrInfo won't return A records unless we have a
     // routable IPv4 address, and won't return AAAA records unless we
     // have a routable IPv6 address.  This is great for initiating
     // connections from the local host, not so great if we pass these
     // addresses to a peer.
-    DNSServiceErrorType error = DNSServiceGetAddrInfo(&(request->sd),               // DNSServiceRef
-                                    kDNSServiceFlagsTimeout,      // flags
-                                    0,                            // interfaceIndex (0 = all)
-                                    kDNSServiceProtocol_IPv4|kDNSServiceProtocol_IPv6, // protocol
-                                    host,                         // hostname
+    DNSServiceErrorType error = DNSServiceGetAddrInfo(&request->sd,
+                                    kDNSServiceFlagsTimeout,
+                                    0,
+                                    kDNSServiceProtocol_IPv4|kDNSServiceProtocol_IPv6,
+                                    host,
                                     dns_prefetch_callback,
-                                    (void *) request);             // context
+                                    (void*)request);
     if (error != kDNSServiceErr_NoError) {
         debug("%s error:%d\n", __func__, error);
         return;
@@ -122,7 +105,7 @@ void platform_dns_prefetch(network *n, size_t result_index, uint64_t result_id, 
     evutil_make_socket_nonblocking(fd);
 
     // arrange for query results to be processed
-    request->event = event_new(n->evbase, fd, EV_READ|EV_TIMEOUT, platform_dns_event_cb, (void *) request);
+    request->event = event_new(n->evbase, fd, EV_READ|EV_TIMEOUT, platform_dns_event_cb, (void*)request);
     timeval timeout = { 10, 0 }; // ten seconds
     event_add(request->event, &timeout);
 

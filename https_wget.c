@@ -53,6 +53,7 @@
 #include "network.h"
 #include "newnode.h"
 #include "g_https_cb.h"
+#include "dns_prefetch.h"
 
 #ifndef PATH_WGET
 #define PATH_WGET "/usr/bin/wget"
@@ -847,8 +848,6 @@ https_request_token do_https(network *n, const https_request *request, const cha
 #include "dns_prefetch.h"
 
 typedef struct {
-    int index;
-    uint64_t id;
     char *host;
     network *n;
 } userdata;
@@ -862,19 +861,13 @@ void evdns_callback(int errcode, evutil_addrinfo *addr, void *ptr)
         return;
     }
 
-    extern char *make_ip_addr_list(struct nn_addrinfo *r);
-
-    nn_addrinfo *result = copy_nn_addrinfo_from_evutil_addrinfo(addr);
-    // no need for timer_start() here, as this always runs in libevent thread
-    dns_prefetch_store_result(data->n, data->index, data->id, result, data->host, true);
-    debug("%s: host:%s addrs:%s\n", __func__, data->host, make_ip_addr_list(result));
-    if (data) {
-        free(data->host);
-        free(data);
-    }
+    dns_prefetch_store_result(data->n, addr, data->host, 0);
+    debug("%s: host:%s addrs:%s\n", __func__, data->host, make_ip_addr_list(addr));
+    free(data->host);
+    free(data);
 }
 
-void platform_dns_prefetch(network *n, size_t result_index, uint64_t result_id, const char *host)
+void platform_dns_prefetch(network *n, const char *host)
 {
     evutil_addrinfo hints = {
         .ai_family = AF_UNSPEC,
@@ -883,8 +876,6 @@ void platform_dns_prefetch(network *n, size_t result_index, uint64_t result_id, 
     };
     userdata *ud = alloc(userdata);
     ud->host = strdup(host);
-    ud->id = result_id;
-    ud->index = result_index;
     ud->n = n;
     evdns_getaddrinfo_request *req = evdns_getaddrinfo(n->evdns, host, NULL, &hints, evdns_callback, ud);
     if (!req) {
