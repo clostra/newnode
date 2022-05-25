@@ -23,10 +23,10 @@ void dns_prefetch_callback(DNSServiceRef sdRef, DNSServiceFlags flags, uint32_t 
                            DNSServiceErrorType errorCode, const char *fullname,
                            const sockaddr *address, uint32_t ttl, void *context)
 {
-    dns_prefetch_request *reqeust = (dns_prefetch_request*)context;
+    dns_prefetch_request *request = (dns_prefetch_request*)context;
 
     if (errorCode != 0) {
-        debug("%s host:%s errorCode:%d\n", __func__, reqeust->host, errorCode);
+        debug("%s host:%s errorCode:%d\n", __func__, request->host, errorCode);
         return;
     }
 
@@ -37,14 +37,14 @@ void dns_prefetch_callback(DNSServiceRef sdRef, DNSServiceFlags flags, uint32_t 
         .ai_protocol = IPPROTO_TCP
     };
     evutil_addrinfo *a = evutil_new_addrinfo_((sockaddr*)address, addrlen, &nullhints);
-    debug("%s host:%s address:%s ttl:%d\n", __func__, reqeust->host, sockaddr_str_addronly(a->ai_addr), ttl);
-    reqeust->min_ttl = !reqeust->min_ttl ? ttl : MIN(reqeust->min_ttl, ttl);
-    request->ai = evutil_addrinfo_append_(reqeust->ai, a);
+    debug("%s host:%s address:%s ttl:%d\n", __func__, request->host, sockaddr_str_addronly(a->ai_addr), ttl);
+    request->min_ttl = !request->min_ttl ? ttl : MIN(request->min_ttl, ttl);
+    request->ai = evutil_addrinfo_append_(request->ai, a);
     if (!(flags & kDNSServiceFlagsMoreComing)) {
-        network *n = reqeust->n;
+        network *n = request->n;
         // no more DNS responses immediately queued, go ahead and update result
         network_async(n, ^{
-            dns_prefetch_store_result(n, reqeust->ai, reqeust->host, reqeust->min_ttl);
+            dns_prefetch_store_result(n, request->ai, request->host, request->min_ttl);
         });
     }
 }
