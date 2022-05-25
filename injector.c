@@ -292,8 +292,8 @@ void submit_request(network *n, evhttp_request *server_req, evhttp_connection *e
     char request_uri[2048];
     const char *q = evhttp_uri_get_query(uri);
     snprintf(request_uri, sizeof(request_uri), "%s%s%s", evhttp_uri_get_path(uri), q?"?":"", q?q:"");
-    evhttp_make_request(evcon, p->req, p->server_req->type, request_uri);
     debug("p:%p con:%p request submitted: %s\n", p, p->req->evcon, evhttp_request_get_uri(p->req));
+    evhttp_make_request(evcon, p->req, p->server_req->type, request_uri);
 }
 
 typedef struct {
