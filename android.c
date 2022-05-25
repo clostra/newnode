@@ -188,7 +188,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetc
             .ai_protocol = IPPROTO_TCP
         };
         evutil_addrinfo *ai = evutil_new_addrinfo_((sockaddr*)addr, addrlen, &nullhints);
-        evutil_addrinfo_append_(rai, ai);
+        rai = evutil_addrinfo_append_(rai, ai);
         (*env)->ReleaseByteArrayElements(env, jaddr, addr, JNI_ABORT);
     } 
 

@@ -39,7 +39,7 @@ void dns_prefetch_callback(DNSServiceRef sdRef, DNSServiceFlags flags, uint32_t 
     evutil_addrinfo *a = evutil_new_addrinfo_((sockaddr*)address, addrlen, &nullhints);
     debug("%s host:%s address:%s ttl:%d\n", __func__, reqeust->host, sockaddr_str_addronly(a->ai_addr), ttl);
     reqeust->min_ttl = !reqeust->min_ttl ? ttl : MIN(reqeust->min_ttl, ttl);
-    evutil_addrinfo_append_(reqeust->ai, a);
+    request->ai = evutil_addrinfo_append_(reqeust->ai, a);
     if (!(flags & kDNSServiceFlagsMoreComing)) {
         network *n = reqeust->n;
         // no more DNS responses immediately queued, go ahead and update result
