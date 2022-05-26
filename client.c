@@ -734,6 +734,9 @@ void peer_request_cleanup(peer_request *r, const char *reason)
 
 void peer_reuse(network *n, peer_connection *pc)
 {
+    if (pc->bev) {
+        bufferevent_disable(pc->bev, EV_READ|EV_WRITE);
+    }
     // handle waiting requests first
     pending_request *r;
     TAILQ_FOREACH(r, &pending_requests, next) {
