@@ -225,9 +225,9 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
         bufferevent_run_eventcb_(bufev, BEV_EVENT_CONNECTED, 0);
         if (!(bufev->enabled & EV_WRITE) || bufev_p->write_suspended) {
             BEV_DEL_GENERIC_WRITE_TIMEOUT(bufev);
-            break;
+        } else {
+            BEV_RESET_GENERIC_WRITE_TIMEOUT(bufev);
         }
-        BEV_RESET_GENERIC_WRITE_TIMEOUT(bufev);
     case UTP_STATE_WRITABLE:
         bev_utp->utp_writable = true;
         bufferevent_utp_obout_to_utp(bev_utp);
