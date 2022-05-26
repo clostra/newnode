@@ -8,6 +8,7 @@
 #include <jni.h>
 #include <android/log.h>
 
+#include "libevent/util-internal.h"
 #include "bugsnag/bugsnag_ndk.h"
 
 #include "network.h"
@@ -137,28 +138,20 @@ JNIEnv* get_env()
 
 // Request that the platform's DNS asychronously library query IPv4
 // and IPv6 addresses (as appropriate) for 'host'.  The results are
-// stored in dns_prefetch_cache_entries[cache_index] (so that NN can
-// connect directly to an address) and hopefully also in the
-// platform's DNS cache so that any "try first" attempts will be
-// faster.
+// stored in evdns cache so that NN can connect directly to an address
+// and hopefully also in the platform's DNS cache so that any "try first"
+// attempts will be faster.
 //
 // This routine doesn't return a result.  NN will use the result of
-// the query if it arrives in time, otherwise NN will use evdns
-// (sigh).
+// the query if it arrives in time, or fallback to evdns.
 
-void platform_dns_prefetch(network *n, size_t result_index, uint64_t result_id, const char *host)
+void platform_dns_prefetch(network *n, const char *host)
 {
-    debug("%s result_index:%zu result_id:%" PRIu64 " host:%s\n", __func__, result_index, result_id, host);
+    debug("%s host:%s\n", __func__, host);
     if (!newNode) {
         return;
     }
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wshadow"
     JNIEnv *env = get_env();
-#pragma clang diagnostic pop
-    if (env == NULL) {
-        return;
-    }
     jvm_frame(env, ^() {
         jclass cNewNode = (*env)->GetObjectClass(env, newNode);
         CATCH(
@@ -166,14 +159,9 @@ void platform_dns_prefetch(network *n, size_t result_index, uint64_t result_id, 
             return;
         );
         CALL_VOID(cNewNode, newNode,
-                  dnsPrefetch,      // shorthand form of method name
-                  Ljava/lang/String;IJ,  // parameter types:
-                                         // (1) String hostname (Ljava/lang/String;)
-                                         // (2) int result_index (I)
-                                         // (3) long result_id (J)
-                  JSTR(host),       // url (encoded as Java String)
-                  (jint) result_index,
-                  (jlong) result_id);
+                  dnsPrefetch,
+                  Ljava/lang/String;,
+                  JSTR(host));
         CATCH(
             debug("%s exception line %d\n", __func__, __LINE__);
             return;
@@ -181,78 +169,35 @@ void platform_dns_prefetch(network *n, size_t result_index, uint64_t result_id, 
     });
 }
 
-// updates global array dns_prefetch_results[result_index].result with the results of DNS lookup of 'host'.
-
-JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetchResult(JNIEnv *env, jobject thiz, jint result_index, jlong result_id, jstring host, jobjectArray addresses)
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetchResult(JNIEnv *env, jobject thiz, jstring host, jobjectArray addresses)
 {
-    nn_addrinfo *result = NULL;
-    nn_addrinfo *lastitem = NULL;
-
-    if (result_id < 0 || result_index < 0) {
-        return;
-    }
-
-    if (dns_prefetch_results[result_index].id != (unsigned int)result_id ||
-        dns_prefetch_results[result_index].allocated != true) {
-        return;
-    }
 
     const char *hoststr = (*env)->GetStringUTFChars(env, host, NULL);
     int n_addresses = (*env)->GetArrayLength(env, addresses);
 
-    debug("storeDnsPrefetchResult result_index:%d result_id:%lld host:%s n_addresses:%d\n",
-          result_index, (long long) result_id, hoststr, n_addresses);
+    debug("%s host:%s n_addresses:%d\n", __func__, hoststr, n_addresses);
 
-    // convert each text address to binary form using getaddrinfo()
-    // then add the result of that conversion to the end of the linked list
+    evutil_addrinfo *rai = NULL;
     for (int i = 0; i < n_addresses; ++i) {
-        jstring string = (jstring) ((*env)->GetObjectArrayElement(env, addresses, i));
-        const char *utf8string = (*env)->GetStringUTFChars(env, string, 0);
-
-        debug("storeDnsPrefetchResult host:%s address[%d] = %s\n", hoststr, i, utf8string);
-        addrinfo hints = {
-            .ai_family = AF_UNSPEC,
-            .ai_flags = AI_NUMERICHOST
+        jbyteArray jaddr = (jbyteArray)(*env)->GetObjectArrayElement(env, addresses, i);
+        jbyte* addr = (*env)->GetByteArrayElements(env, jaddr, NULL); 
+        socklen_t addrlen = (*env)->GetArrayLength(env, jaddr);
+        evutil_addrinfo nullhints = {
+            .ai_family = PF_UNSPEC,
+            .ai_socktype = SOCK_STREAM,
+            .ai_protocol = IPPROTO_TCP
         };
-        addrinfo *temp = NULL;
-        int err = getaddrinfo(utf8string, NULL, &hints, &temp);
-        if (err == 0) {
-            nn_addrinfo *n = alloc(nn_addrinfo);
-            debug("storeDnsPrefetchResult i:%d result:%p lastitem:%p n:%p\n", i, result, lastitem, n);
-            if (n && temp && temp->ai_addr) {
-                n->ai_addrlen = temp->ai_addrlen;
-                n->ai_addr = memdup(temp->ai_addr, temp->ai_addrlen);
-                n->ai_next = NULL;
-                // append to linked list
-                if (!result) {
-                    result = n;
-                } else {
-                    lastitem->ai_next = n;
-                }
-                lastitem = n;
-            }
-            if (temp) {
-                freeaddrinfo(temp);
-            }
-        } else {
-            debug("storeDnsPrefetchResult gai_strerror(%s) => %s\n", utf8string, gai_strerror(err));
-        }
-        (*env)->ReleaseStringUTFChars(env, string, utf8string);
-    }
-    // nn_addrinfo *p;
-    // debug("storeDnsPrefetchResult:\n");
-    // for (p = result; p; p = p->ai_next) {
-    //     debug("    %s\n", sockaddr_str(p->ai_addr));
-    // }
+        evutil_addrinfo *ai = evutil_new_addrinfo_((sockaddr*)addr, addrlen, &nullhints);
+        rai = evutil_addrinfo_append_(rai, ai);
+        (*env)->ReleaseByteArrayElements(env, jaddr, addr, JNI_ABORT);
+    } 
 
-    // copy hoststr for use by callback
-    // (the blocks callback may happen after ReleaseStringUTFChars is called)
     char *temp_hoststr = strdup(hoststr);
     network_async(g_n, ^{
-        dns_prefetch_store_result(g_n, result_index, result_id, result, temp_hoststr, false);
+        dns_prefetch_store_result(g_n, rai, host, 0);
+        evutil_freeaddrinfo(rai);
         free(temp_hoststr);
     });
-    (*env)->ReleaseStringUTFChars(env, host, hoststr);
 }
 
 void cancel_https_request(network *n, https_request_token token)

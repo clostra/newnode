@@ -2549,7 +2549,6 @@ typedef struct {
     char *tryfirst_url;         // URL to be used for "try first" test
     https_request_token tryfirst_request;
     https_result tryfirst_result;
-    int64_t dns_prefetch_key;
 } connect_req;
 
 void connect_tryfirst_requests_cancel(connect_req *c)
@@ -2633,9 +2632,6 @@ void connect_cleanup(connect_req *c)
     }
     assert(!c->server_req);
     assert(!c->server_bev);
-    if (c->dns_prefetch_key > 0) {
-        dns_prefetch_free(c->dns_prefetch_key);
-    }
     if (c->pending_bev) {
         bufferevent_free(c->pending_bev);
     }
@@ -3216,23 +3212,23 @@ tryfirst_hint need_tryfirst(const char *host, tryfirst_stats *tfs)
 }
 
 // this can be used instead of bufferevent_socket_connect_hostname()
-// it will use a prefetched DNS lookup if one is available
-int bufferevent_socket_connect_prefetched_address(bufferevent *bev, evdns_base *dns_base, int64_t dns_prefetch_key, const char *host, port_t port)
+// it uses random address selection
+int bufferevent_socket_connect_prefetched_address(bufferevent *bev, evdns_base *dns_base, const char *host, port_t port)
 {
     debug("bev:%p %s host:%s\n", bev, __func__, host);
     // trust addresses that we've prefetched ourselves (when
     // available) over addresses sent to us via CONNECT request
 
     __block int err = 0;
-    choose_addr_cb try_connect = ^bool (nn_addrinfo *nn) {
+    choose_addr_cb try_connect = ^bool (evutil_addrinfo *ai) {
         sockaddr_storage ss = {};
         sockaddr *s = (sockaddr*)&ss;
-        memcpy(s, nn->ai_addr, nn->ai_addrlen);
+        memcpy(s, ai->ai_addr, ai->ai_addrlen);
         sockaddr_set_port(s, port);
 
         //debug("bev:%p %s trying to connect to %s\n", bev, __func__, sockaddr_str_addronly(nn->ai_addr));
         // TODO: if the request is from a peer, use LEDBAT: setsocketopt(sock, SOL_SOCKET, O_TRAFFIC_CLASS, SO_TC_BK, sizeof(int))
-        if (bufferevent_socket_connect(bev, s, nn->ai_addrlen) == 0) {
+        if (bufferevent_socket_connect(bev, s, ai->ai_addrlen) == 0) {
             debug("bev:%p %s connecting to %s\n", bev, __func__, sockaddr_str_addronly(s));
             return true;
         }
@@ -3241,35 +3237,18 @@ int bufferevent_socket_connect_prefetched_address(bufferevent *bev, evdns_base *
         return false;
     };
 
-    nn_addrinfo *nna = dns_prefetch_addrinfo(dns_prefetch_key);
-    if (nna) {
-        nn_addrinfo *g = choose_addr(nna, try_connect);
-        if (!g) {
-            debug("bev:%p %s host:%s unable to connect to any of: %s (%s)\n",
-                  bev, __func__, host, make_ip_addr_list(nna), strerror(err));
-            errno = err;
-            return -1;
-        }
-        return 0;
-    }
-
     evutil_addrinfo *res;
     if (newnode_evdns_cache_lookup(dns_base, host, NULL, port, &res) == 0 && res) {
         debug("bev:%p %s host:%s found in evdns cache\n", bev, __func__, host);
-        nn_addrinfo *result = copy_nn_addrinfo_from_evutil_addrinfo(res);
-        evutil_freeaddrinfo(res);
-        if (result) {
-            nn_addrinfo *g = choose_addr(result, try_connect);
-            if (!g) {
-                debug("bev:%p %s host:%s unable to connect to any of: %s (%s)\n",
-                      bev, __func__, host, make_ip_addr_list(result), strerror(err));
-                dns_prefetch_freeaddrinfo(result);
-                errno = err;
-                return -1;
-            }
-            dns_prefetch_freeaddrinfo(result);
-            return 0;
+        if (!choose_addr(res, try_connect)) {
+            debug("bev:%p %s host:%s unable to connect to any of: %s (%s)\n",
+                  bev, __func__, host, make_ip_addr_list(res), strerror(err));
+            evutil_freeaddrinfo(res);
+            errno = err;
+            return -1;
         }
+        evutil_freeaddrinfo(res);
+        return 0;
     }
 
     // if we don't have any IP addresses for the origin server yet,
@@ -3288,7 +3267,7 @@ bool connect_direct_connect(connect_req *c)
     c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
     bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
     bufferevent_enable(c->direct, EV_READ);
-    if (bufferevent_socket_connect_prefetched_address(c->direct, n->evdns, c->dns_prefetch_key, c->host, c->port) < 0) {
+    if (bufferevent_socket_connect_prefetched_address(c->direct, n->evdns, c->host, c->port) < 0) {
         debug("c:%p %s (%.2fms) bufferevent_socket_connect_prefetched_address failed: %s\n",
               c, __func__, rdelta(c), strerror(errno));
         connect_direct_error(c, SOCKS5_REPLY_NETUNREACH, 502, "Bad Gateway (unreachable)");
@@ -3320,16 +3299,6 @@ void connect_request(connect_req *c, const char *host, port_t port)
 
     if (strcasecmp(c->host, "stats.newnode.com") == 0) {
         c->dont_count_bytes = true;
-    }
-
-    int64_t dns_prefetch_key = dns_prefetch_alloc();
-    if (dns_prefetch_key >= 0) {
-        dns_prefetch(n, dns_prefetch_key, host, n->evdns);
-        c->dns_prefetch_key = dns_prefetch_key;
-        debug("dns_prefetch_key = %lld index:%zu id:%" PRIu64 "\n",
-              (long long)dns_prefetch_key,
-              dns_prefetch_index(dns_prefetch_key),
-              dns_prefetch_id(dns_prefetch_key));
     }
 
     debug("c:%p %s (%.2fms) CONNECT %s:%u\n", c, __func__, rdelta(c), host, port);
@@ -3496,14 +3465,16 @@ static void http_request_cb(evhttp_request *req, void *arg)
         }
     }
 
+    const evhttp_uri *evuri = evhttp_request_get_evhttp_uri(req);
+    const char *scheme = evhttp_uri_get_scheme(evuri);
+    const char *host = evhttp_uri_get_host(evuri);
+    dns_prefetch(n, host);
+
     if (req->type == EVHTTP_REQ_CONNECT) {
         http_connect_request(n, req);
         return;
     }
 
-    const evhttp_uri *evuri = evhttp_request_get_evhttp_uri(req);
-    const char *scheme = evhttp_uri_get_scheme(evuri);
-    const char *host = evhttp_uri_get_host(evuri);
     if (req->type == EVHTTP_REQ_GET && !host &&
         evcon_is_localhost(req->evcon) && streq(evhttp_request_get_uri(req), "/proxy.pac")) {
         evhttp_add_header(req->output_headers, "Content-Type", "application/x-ns-proxy-autoconfig");

@@ -146,7 +146,7 @@ static void bufferevent_utp_bevout_to_obout(bufferevent_utp *bev_utp)
     bufferevent *bufev = &bufev_p->bev;
     assert(bufev->enabled & EV_WRITE);
 
-    ssize_t res = -1;
+    ssize_t res = 0;
     if (evbuffer_get_length(bufev->output)) {
         ev_ssize_t atmost = bufferevent_get_write_max_(bufev_p);
 
@@ -225,9 +225,9 @@ uint64 utp_on_state_change(utp_callback_arguments *a)
         bufferevent_run_eventcb_(bufev, BEV_EVENT_CONNECTED, 0);
         if (!(bufev->enabled & EV_WRITE) || bufev_p->write_suspended) {
             BEV_DEL_GENERIC_WRITE_TIMEOUT(bufev);
-            break;
+        } else {
+            BEV_RESET_GENERIC_WRITE_TIMEOUT(bufev);
         }
-        BEV_RESET_GENERIC_WRITE_TIMEOUT(bufev);
     case UTP_STATE_WRITABLE:
         bev_utp->utp_writable = true;
         bufferevent_utp_obout_to_utp(bev_utp);
