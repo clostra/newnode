@@ -146,7 +146,7 @@ static void bufferevent_utp_bevout_to_obout(bufferevent_utp *bev_utp)
     bufferevent *bufev = &bufev_p->bev;
     assert(bufev->enabled & EV_WRITE);
 
-    ssize_t res = -1;
+    ssize_t res = 0;
     if (evbuffer_get_length(bufev->output)) {
         ev_ssize_t atmost = bufferevent_get_write_max_(bufev_p);
 
