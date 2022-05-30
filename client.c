@@ -2802,7 +2802,7 @@ void connected(connect_req *c, bufferevent *other)
 
 void connect_peer(connect_req *c, bool injector_preference);
 
-void connect_invalid_reply(connect_req *c)
+void connect_peer_invalid_reply(connect_req *c)
 {
     c->attempts++;
     debug("c:%p %s (%.2fms) attempts:%d\n", c, __func__, rdelta(c), c->attempts);
@@ -2836,7 +2836,7 @@ void connect_direct_error(connect_req *c, uint8_t socks_resp, int error, const c
     connect_cleanup(c);
 }
 
-void connect_done_cb(evhttp_request *req, void *arg)
+void connect_proxy_done_cb(evhttp_request *req, void *arg)
 {
     connect_req *c = (connect_req *)arg;
     debug("c:%p %s req:%p evcon:%p\n", c, __func__, req, req ? req->evcon : NULL);
@@ -2849,12 +2849,12 @@ void connect_done_cb(evhttp_request *req, void *arg)
             peer_reuse(c->n, c->pc);
             c->pc = NULL;
         }
-        connect_invalid_reply(c);
+        connect_peer_invalid_reply(c);
     }
     connect_direct_error(c, SOCKS5_REPLY_HOSTUNREACH, 523, "Origin Is Unreachable (max-retries)");
 }
 
-int connect_header_cb(evhttp_request *req, void *arg)
+int connect_peer_header_cb(evhttp_request *req, void *arg)
 {
     connect_req *c = (connect_req *)arg;
     debug("c:%p %s (%.2fms) req:%p %d %s\n", c, __func__, rdelta(c), req, req->response_code, req->response_code_line);
@@ -2922,7 +2922,7 @@ int connect_header_cb(evhttp_request *req, void *arg)
     return -1;
 }
 
-void connect_error_cb(evhttp_request_error error, void *arg)
+void connect_peer_error_cb(evhttp_request_error error, void *arg)
 {
     connect_req *c = (connect_req *)arg;
     debug("c:%p %s (%.2fms) req:%p %d %s\n", c, __func__, rdelta(c), c->proxy_req, error, evhttp_request_error_str(error));
@@ -2983,7 +2983,7 @@ void connect_direct_completed(connect_req *c, bufferevent *bev)
           c, __func__, rdelta(c), c->tryfirst_url);
 }
 
-void connect_event_cb(bufferevent *bev, short events, void *ctx)
+void connect_direct_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
     debug("c:%p %s (%.2fms) bev:%p req:%s events:0x%x %s\n", c, __func__, rdelta(c), bev,
@@ -3040,13 +3040,13 @@ void connect_peer(connect_req *c, bool injector_preference)
 
         c->pc = pc;
         assert(!c->proxy_req);
-        c->proxy_req = evhttp_request_new(connect_done_cb, c);
+        c->proxy_req = evhttp_request_new(connect_proxy_done_cb, c);
         debug("c:%p %s (%.2fms) made req:%p\n", c, __func__, rdelta(c), c->proxy_req);
 
         append_via(c->server_req, c->proxy_req->output_headers);
 
-        evhttp_request_set_header_cb(c->proxy_req, connect_header_cb);
-        evhttp_request_set_error_cb(c->proxy_req, connect_error_cb);
+        evhttp_request_set_header_cb(c->proxy_req, connect_peer_header_cb);
+        evhttp_request_set_error_cb(c->proxy_req, connect_peer_error_cb);
         evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, c->authority);
     });
 }
@@ -3268,7 +3268,7 @@ bool connect_direct_connect(connect_req *c)
 {
     network *n = c->n;
     c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
-    bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
+    bufferevent_setcb(c->direct, NULL, NULL, connect_direct_event_cb, c);
     bufferevent_enable(c->direct, EV_READ);
     if (bufferevent_socket_connect_prefetched_address(c->direct, n->evdns, c->host, c->port) < 0) {
         debug("c:%p %s (%.2fms) bufferevent_socket_connect_prefetched_address failed: %s\n",
