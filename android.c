@@ -211,7 +211,7 @@ void cancel_https_request(network *n, https_request_token token)
         }
         jclass cNewNode = (*env)->GetObjectClass(env, newNode);
         CATCH(return);
-        CALL_VOID(cNewNode, newNode, cancelHttp, Lcom/newnode/internal/NewNode/CallblockThread;, https_request);
+        CALL_VOID(cNewNode, newNode, httpCancel, Lcom/newnode/internal/NewNode/CallblockThread;, https_request);
         CATCH(assert(false));
     });
 }
