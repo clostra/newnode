@@ -314,7 +314,7 @@ void on_utp_connect(network *n, peer_connection *pc)
     bufferevent_setfd(pc->bev, -2);
     pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, pc->bev, host, sockaddr_get_port(ss));
     bufferevent_setfd(pc->bev, EVUTIL_INVALID_SOCKET);
-    debug("on_utp_connect %s bev:%p evcon:%p\n", sockaddr_str(ss), pc->bev, pc->evcon);
+    debug("%s %s bev:%p evcon:%p\n", __func__, sockaddr_str(ss), pc->bev, pc->evcon);
     pc->bev = NULL;
 
     // handle waiting requests first
@@ -325,7 +325,7 @@ void on_utp_connect(network *n, peer_connection *pc)
         }
         TAILQ_REMOVE(&pending_requests, r, next);
         pending_requests_len--;
-        debug("on_utp_connect request:%p (outstanding:%zu)\n", r, pending_requests_len);
+        debug("%s request:%p (outstanding:%zu)\n", __func__, r, pending_requests_len);
         bool found = false;
         for (uint i = 0; i < lenof(peer_connections); i++) {
             if (peer_connections[i] == pc) {
@@ -536,13 +536,13 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
     }
 
     if (event == DHT_EVENT_VALUES) {
-        ddebug("dht_event_callback num_peers:%zu\n", num_peers);
+        ddebug("%s num_peers:%zu\n", __func__, num_peers);
         add_v4_addresses(n, peer_list, peers, num_peers);
     } else if (event == DHT_EVENT_VALUES6) {
-        ddebug("dht_event_callback v6 num_peers:%zu\n", num_peers);
+        ddebug("%s v6 num_peers:%zu\n", __func__, num_peers);
         add_v6_addresses(n, peer_list, peers, num_peers);
     } else {
-        ddebug("dht_event_callback event:%d\n", event);
+        ddebug("%s event:%d\n", __func__, event);
     }
 
     if (o_debug >= 2) {
