@@ -3100,7 +3100,7 @@ tryfirst_stats* get_tryfirst_stats(const char *host)
         return NULL;
     }
     // don't ever do try first for stats.newnode.com - it adds too much overhead
-    if (strcasecmp(host, "stats.newnode.com") == 0) {
+    if (strcaseeq(host, "stats.newnode.com")) {
         return NULL;
     }
     if (!tryfirst_per_origin_server) {
