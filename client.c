@@ -429,7 +429,6 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
     pc->peer = p;
     pc->bev = bufferevent_utp_new(n->evbase, n->utp, NULL, BEV_OPT_CLOSE_ON_FREE);
     if (!pc->bev) {
-        debug("bufferevent_utp_new could not allocate %s\n", peer_addr_str(p));
         free(pc);
         return NULL;
     }
