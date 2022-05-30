@@ -216,7 +216,6 @@ time_t g_ipinfo_timestamp = 0;          // timestamp of last ipinfo request
 time_t g_ipinfo_logged_timestamp = 0;   // last logged g_ipinfo_timestamp
 timer *g_ifchange_timer;
 
-bool g_tryfirst = true;                 // set to false to disable try first
 unsigned int g_tryfirst_timeout = 7;    // seconds
 unsigned int g_tryfirst_bufsize = 10240; // max bytes accepted on a try first attempt
                                          // (even if we're always doing Range:bytes=0,1
@@ -3096,9 +3095,6 @@ const char *https_strerror(https_result *result)
 
 tryfirst_stats* get_tryfirst_stats(const char *host)
 {
-    if (!g_tryfirst) {
-        return NULL;
-    }
     // don't ever do try first for stats.newnode.com - it adds too much overhead
     if (strcaseeq(host, "stats.newnode.com")) {
         return NULL;
@@ -3310,7 +3306,7 @@ void connect_request(connect_req *c, const char *host, port_t port)
         return;
     }
 
-    if (port != 443 || !g_tryfirst || is_ip_literal(host)) {
+    if (port != 443 || is_ip_literal(host)) {
         connect_direct_connect(c);
         return;
     }
