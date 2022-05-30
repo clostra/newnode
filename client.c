@@ -2990,18 +2990,18 @@ bool direct_likely_to_succeed(const https_result *result)
 void connect_direct_completed(connect_req *c, bufferevent *bev)
 {
     c->direct_connect_responded = true;
-    if (!c->tryfirst_request) {
-        if (direct_likely_to_succeed(&(c->tryfirst_result))) {
-            c->direct = NULL;
-            join_url_swarm(c->n, c->authority);
-            connected(c, bev);
-            return;
-        }
+    if (c->tryfirst_request) {
+        debug("c:%p %s (%.2fms) %s tryfirst request still pending; not spliced yet\n",
+              c, __func__, rdelta(c), c->tryfirst_url);
+        return;
+    }
+    if (!direct_likely_to_succeed(&(c->tryfirst_result))) {
         connect_direct_http_error(c, 523, "Origin Is Unreachable");
         return;
     }
-    debug("c:%p %s (%.2fms) %s tryfirst request still pending; not spliced yet\n",
-          c, __func__, rdelta(c), c->tryfirst_url);
+    c->direct = NULL;
+    join_url_swarm(c->n, c->authority);
+    connected(c, bev);
 }
 
 void connect_direct_event_cb(bufferevent *bev, short events, void *ctx)
