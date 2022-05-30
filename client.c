@@ -3859,7 +3859,7 @@ port_t recreate_listener(network *n, port_t port)
     socklen_t sslen = sizeof(ss);
     getsockname(fd, (sockaddr *)&ss, &sslen);
     g_port = sockaddr_get_port((sockaddr *)&ss);
-    printf("listening on TCP: %s:%d\n", "127.0.0.1", g_port);
+    printf("listening on TCP: %s\n", sockaddr_str((sockaddr *)&ss));
     return g_port;
 }
 
