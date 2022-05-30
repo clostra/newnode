@@ -3387,6 +3387,7 @@ void connect_request(connect_req *c, const char *host, port_t port)
                   c, rdelta(c), c->tryfirst_url, c->host);
             bufferevent *direct = c->direct;
             c->direct = NULL;
+            join_url_swarm(c->n, c->authority);
             connected(c, direct);
         });
         debug("%s:%d g_https_cb(%s) => request:%p\n",
