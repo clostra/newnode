@@ -220,7 +220,6 @@ unsigned int g_tryfirst_timeout = 7;    // seconds
 unsigned int g_tryfirst_bufsize = 10240; // max bytes accepted on a try first attempt
                                          // (even if we're always doing Range:bytes=0,1
                                          // some servers ignore or refuse to do this)
-bool g_have_ipv6 = false;                // can communicate directly with public IPv6 addresses
 
 peer_array *injectors;
 peer_array *injector_proxies;
