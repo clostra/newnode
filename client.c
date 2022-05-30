@@ -2567,7 +2567,6 @@ typedef struct {
     bool dont_free:1;
 
     // start of TF additions
-    bool connected:1;
     bool direct_connect_responded:1;
     char *host;                 // just hostname, no port #
     port_t port;
@@ -2692,6 +2691,7 @@ void connect_direct_cancel(connect_req *c)
         bufferevent_free(c->direct);
         c->direct = NULL;
     }
+    connect_tryfirst_requests_cancel(c);
 }
 
 void connect_server_read_cb(bufferevent *bev, void *ctx)
@@ -2772,7 +2772,6 @@ void connected(connect_req *c, bufferevent *other)
 {
     debug("c:%p %s (%.2fms) other:%p\n", c, __func__, rdelta(c), other);
 
-    c->connected = true;
     if (c->server_req) {
         evhttp_connection *evcon = c->server_req->evcon;
         c->pending_bev = evhttp_connection_detach_bufferevent(evcon);
@@ -3384,21 +3383,18 @@ void connect_request(connect_req *c, const char *host, port_t port)
 
             update_tryfirst_stats(n, tfs, req.flags, req_time, result, c->host);
 
-            if (c->connected) {
-                debug("c:%p %s (%.2fms) already connected via a peer\n", c, __func__, rdelta(c));
+            debug("c:%p %s (%.2fms) %s direct connection appears likely to succeed\n",
+                  c, __func__, rdelta(c), c->tryfirst_url);
+            assert(c->direct);
+            if (!c->direct_connect_responded) {
+                debug("c:%p (%.2fms) %s try first ok; SYN-ACK not yet received from %s; not spliced yet\n",
+                      c, rdelta(c), c->tryfirst_url, c->host);
                 return;
             }
             if (!direct_likely_to_succeed(result)) {
                 debug("c:%p %s (%.2fms) %s direct connection is unlikely to succeed; cancelling\n",
                       c, __func__, rdelta(c), c->tryfirst_url);
                 connect_direct_cancel(c);
-                return;
-            }
-            debug("c:%p %s (%.2fms) %s direct connection appears likely to succeed\n",
-                  c, __func__, rdelta(c), c->tryfirst_url);
-            if (!c->direct || !c->direct_connect_responded) {
-                debug("c:%p (%.2fms) %s try first ok; SYN-ACK not yet received from %s; not spliced yet\n",
-                      c, rdelta(c), c->tryfirst_url, c->host);
                 return;
             }
             // splice the two ends (browser and direct) together
