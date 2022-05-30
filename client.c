@@ -214,7 +214,6 @@ char g_country[3];                      // 2-letter ISO country code + '\0'
 int g_asn = -1;                         // autonomous system number (if returned by ipinfo)
 time_t g_ipinfo_timestamp = 0;          // timestamp of last ipinfo request
 time_t g_ipinfo_logged_timestamp = 0;   // last logged g_ipinfo_timestamp
-time_t g_ifchange_time = 0;             // time when network config change was detected (if supported)
 timer *g_ifchange_timer;
 
 bool g_tryfirst = true;                 // set to false to disable try first
@@ -3976,7 +3975,6 @@ void network_ifchange(network *n)
         // client not initialized;
         return;
     }
-    g_ifchange_time = time(NULL);
     timer_cancel(g_ifchange_timer);
     g_ifchange_timer = timer_start(n, 5 * 1000, ^{
         g_ifchange_timer = NULL;
