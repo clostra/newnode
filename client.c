@@ -2538,6 +2538,7 @@ typedef struct {
 
     char *authority;
     int attempts;
+#define CONNECT_ATTEMPTS 10
 
     bool dont_free:1;
 
@@ -2578,8 +2579,8 @@ void socks_error(bufferevent *bev, uint8_t resp)
 
 bool connect_exhausted(connect_req *c)
 {
-    debug("c:%p %s (%.2fms) direct:%p proxy_req:%p on_connect:%p tryfirst_request:%p\n",
-          c, __func__, rdelta(c), c->direct, c->proxy_req, c->r.on_connect, c->tryfirst_request);
+    debug("c:%p %s (%.2fms) direct:%p proxy_req:%p on_connect:%p tryfirst_request:%p attempts:%d\n",
+          c, __func__, rdelta(c), c->direct, c->proxy_req, c->r.on_connect, c->tryfirst_request, c->attempts);
     if (c->tryfirst_request) {
         return false;
     }
@@ -2803,7 +2804,7 @@ void connect_peer_invalid_reply(connect_req *c)
 {
     c->attempts++;
     debug("c:%p %s (%.2fms) attempts:%d\n", c, __func__, rdelta(c), c->attempts);
-    if (c->attempts < 10) {
+    if (c->attempts < CONNECT_ATTEMPTS) {
         connect_peer(c, true);
     }
 }
