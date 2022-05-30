@@ -2544,7 +2544,6 @@ typedef struct {
 
     // start of TF additions
     bool connected:1;
-    bool dont_count_bytes:1;
     bool direct_connect_responded:1;
     char *host;                 // just hostname, no port #
     port_t port;
@@ -2717,8 +2716,8 @@ void connect_other_read_cb(bufferevent *bev, void *ctx)
     c->dont_free = true;
     connect_proxy_cancel(c);
     connect_direct_cancel(c);
-    if (c->dont_count_bytes) {
-        debug("c:%p (%.2fms) not counting bytes for %s\n", c, rdelta(c), c->authority);
+    if (strcaseeq(c->host, "stats.newnode.com")) {
+        //debug("c:%p (%.2fms) not counting bytes for %s\n", c, rdelta(c), c->host);
     } else {
         bufferevent_count_bytes(c->n, c->host, bufferevent_is_localhost(server), server, bev);
     }
@@ -3298,10 +3297,6 @@ void connect_request(connect_req *c, const char *host, port_t port)
     char buf[2048];
     snprintf(buf, sizeof(buf), "https://%s:%d/", host, port);
     c->tryfirst_url = strdup(buf);
-
-    if (strcasecmp(c->host, "stats.newnode.com") == 0) {
-        c->dont_count_bytes = true;
-    }
 
     debug("c:%p %s (%.2fms) CONNECT %s:%u\n", c, __func__, rdelta(c), host, port);
 
