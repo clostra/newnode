@@ -2702,7 +2702,7 @@ void connect_server_read_cb(bufferevent *bev, void *ctx)
 
     for (size_t i = 0; i < lenof(c->bevs); i++) {
         if (c->bevs[i]) {
-            evbuffer_add_buffer_reference(bufferevent_get_output(c->bevs[i]), input);
+            evbuffer_copy(bufferevent_get_output(c->bevs[i]), input);
         }
     }
     bufferevent_read_buffer(c->pending_bev, c->intro_data);
@@ -2784,7 +2784,7 @@ void connected(connect_req *c, bufferevent *other)
         bufferevent_enable(c->pending_bev, EV_READ|EV_WRITE);
         bufferevent_enable(other, EV_READ|EV_WRITE);
         if (c->intro_data) {
-            evbuffer_add_buffer_reference(bufferevent_get_output(other), c->intro_data);
+            evbuffer_copy(bufferevent_get_output(other), c->intro_data);
         } else {
             c->intro_data = evbuffer_new();
             bufferevent_read_buffer(c->pending_bev, c->intro_data);
@@ -2801,7 +2801,7 @@ void connected(connect_req *c, bufferevent *other)
         bufferevent_enable(c->pending_bev, EV_READ|EV_WRITE);
         bufferevent_enable(other, EV_READ|EV_WRITE);
         if (c->intro_data) {
-            evbuffer_add_buffer_reference(bufferevent_get_output(other), c->intro_data);
+            evbuffer_copy(bufferevent_get_output(other), c->intro_data);
         } else {
             c->intro_data = evbuffer_new();
             bufferevent_read_buffer(c->pending_bev, c->intro_data);
