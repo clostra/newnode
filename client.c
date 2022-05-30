@@ -20,6 +20,8 @@
 #include <event2/buffer.h>
 #include <event2/listener.h>
 #include <event2/bufferevent.h>
+#include <event2/http.h>
+#include "libevent/http-internal.h"
 
 #include <parson.h>
 
@@ -273,6 +275,7 @@ void pending_request_complete(pending_request *r, peer_connection *pc)
     free(r->via);
     r->via = NULL;
     r->on_connect = NULL;
+    evhttp_connection_set_closecb(pc->evcon, NULL, NULL);
     on_connect(pc);
     Block_release(on_connect);
 }
@@ -300,22 +303,41 @@ bool bufferevent_is_utp(bufferevent *bev)
     return ss.ss_family == AF_LOCAL;
 }
 
-void on_utp_connect(network *n, peer_connection *pc)
+void peer_disconnect(peer_connection *pc)
 {
-    const sockaddr *ss = (const sockaddr *)&pc->peer->addr;
-    char host[NI_MAXHOST];
-    getnameinfo(ss, sockaddr_get_length(ss), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
-    bufferevent_disable(pc->bev, EV_READ|EV_WRITE);
-    assert(pc->bev);
-    // XXX: hack around evhttp requiring fd != -1 to assume the bev is connected. it doesn't have to be a valid fd, though.
-    // https://github.com/libevent/libevent/issues/1268
-    bufferevent_setfd(pc->bev, -2);
-    pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, pc->bev, host, sockaddr_get_port(ss));
-    bufferevent_setfd(pc->bev, EVUTIL_INVALID_SOCKET);
-    debug("%s %s bev:%p evcon:%p\n", __func__, sockaddr_str(ss), pc->bev, pc->evcon);
-    pc->bev = NULL;
+    debug("disconnecting pc:%p\n", pc);
+    if (pc->evcon) {
+        evhttp_connection_free(pc->evcon);
+    }
+    if (pc->bev) {
+        bufferevent_free(pc->bev);
+    }
+    free(pc);
+}
 
-    // handle waiting requests first
+void peer_connection_remove(peer_connection *pc)
+{
+    bool found = false;
+    for (uint i = 0; i < lenof(peer_connections); i++) {
+        if (peer_connections[i] == pc) {
+            peer_connections[i] = NULL;
+            found = true;
+            break;
+        }
+    }
+    assert(found);
+}
+
+void peer_evcon_close_cb(evhttp_connection *evcon, void *ctx)
+{
+    peer_connection *pc = (peer_connection *)ctx;
+    evhttp_connection_set_closecb(evcon, NULL, NULL);
+    peer_connection_remove(pc);
+    peer_disconnect(pc);
+}
+
+pending_request* pending_request_pop(peer_connection *pc)
+{
     pending_request *r;
     TAILQ_FOREACH(r, &pending_requests, next) {
         if (via_contains(r->via, pc->peer->via)) {
@@ -324,21 +346,42 @@ void on_utp_connect(network *n, peer_connection *pc)
         TAILQ_REMOVE(&pending_requests, r, next);
         pending_requests_len--;
         debug("%s request:%p (outstanding:%zu)\n", __func__, r, pending_requests_len);
-        bool found = false;
-        for (uint i = 0; i < lenof(peer_connections); i++) {
-            if (peer_connections[i] == pc) {
-                peer_connections[i] = NULL;
-                found = true;
-                break;
-            }
-        }
-        assert(found);
-        debug("using new pc:%p evcon:%p via:%c (%s) for request:%p\n", pc, pc->evcon, pc->peer->via ? pc->peer->via : ' ', r->via, r);
-        pending_request_complete(r, pc);
-        if (!TAILQ_EMPTY(&pending_requests)) {
-            connect_more_injectors(n, false);
-        }
-        break;
+        return r;
+    }
+    return NULL;
+}
+
+void on_utp_connect(network *n, peer_connection *pc)
+{
+    const sockaddr *ss = (const sockaddr *)&pc->peer->addr;
+    char host[NI_MAXHOST];
+    getnameinfo(ss, sockaddr_get_length(ss), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
+
+    bufferevent *bev = pc->bev;
+    pc->bev = NULL;
+
+    // XXX: hack around evhttp requiring fd != -1 to assume the bev is connected. it doesn't have to be a valid fd, though.
+    // https://github.com/libevent/libevent/issues/1268
+    bufferevent_setfd(bev, -2);
+    pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, bev, host, sockaddr_get_port(ss));
+    bufferevent_setfd(bev, EVUTIL_INVALID_SOCKET);
+
+    debug("%s %s bev:%p evcon:%p\n", __func__, sockaddr_str(ss), bev, pc->evcon);
+
+    pc->evcon->flags |= EVHTTP_CON_CLOSEDETECT;
+    evhttp_connection_set_closecb(pc->evcon, peer_evcon_close_cb, pc);
+    bufferevent_disable(bev, EV_WRITE);
+    bufferevent_enable(bev, EV_READ);
+
+    pending_request *r = pending_request_pop(pc);
+    if (!r) {
+        return;
+    }
+    debug("using new pc:%p evcon:%p via:%c (%s) for request:%p\n", pc, pc->evcon, pc->peer->via ? pc->peer->via : ' ', r->via, r);
+    peer_connection_remove(pc);
+    pending_request_complete(r, pc);
+    if (!TAILQ_EMPTY(&pending_requests)) {
+        connect_more_injectors(n, false);
     }
 }
 
@@ -390,9 +433,8 @@ peer_connection* evhttp_utp_connect(network *n, peer *p)
         free(pc);
         return NULL;
     }
-    bufferevent_utp_connect(pc->bev, (const sockaddr*)&p->addr, sockaddr_get_length((const sockaddr*)&p->addr));
     bufferevent_setcb(pc->bev, NULL, NULL, utp_connect_event_cb, pc);
-    bufferevent_enable(pc->bev, EV_READ);
+    bufferevent_utp_connect(pc->bev, (const sockaddr*)&p->addr, sockaddr_get_length((const sockaddr*)&p->addr));
     return pc;
 }
 
@@ -592,18 +634,6 @@ void abort_connect(pending_request *r)
     debug("abort_connect request:%p (outstanding:%zu)\n", r, pending_requests_len);
 }
 
-void peer_disconnect(peer_connection *pc)
-{
-    debug("disconnecting pc:%p\n", pc);
-    if (pc->evcon) {
-        evhttp_connection_free(pc->evcon);
-    }
-    if (pc->bev) {
-        bufferevent_free(pc->bev);
-    }
-    free(pc);
-}
-
 void proxy_cache_delete(proxy_request *p)
 {
     if (p->cache_file != -1) {
@@ -731,17 +761,12 @@ void peer_request_cleanup(peer_request *r, const char *reason)
 
 void peer_reuse(network *n, peer_connection *pc)
 {
-    if (pc->bev) {
-        bufferevent_disable(pc->bev, EV_READ|EV_WRITE);
+    if (pc->evcon) {
+        evhttp_connection_set_closecb(pc->evcon, peer_evcon_close_cb, pc);
     }
     // handle waiting requests first
-    pending_request *r;
-    TAILQ_FOREACH(r, &pending_requests, next) {
-        if (via_contains(r->via, pc->peer->via)) {
-            continue;
-        }
-        TAILQ_REMOVE(&pending_requests, r, next);
-        pending_requests_len--;
+    pending_request *r = pending_request_pop(pc);
+    if (r) {
         debug("reusing pc:%p evcon:%p via:%c (%s) for request:%p (outstanding:%zu)\n",
               pc, pc->evcon, pc->peer->via ? pc->peer->via : ' ', r->via, r, pending_requests_len);
         pending_request_complete(r, pc);
@@ -2171,6 +2196,7 @@ void queue_request(network *n, pending_request *r, peer_filter filter, peer_conn
         }
         peer_connections[i] = NULL;
         debug("using pc:%p evcon:%p via:%c for request:%p\n", pc, pc->evcon, pc->peer->via ? pc->peer->via : ' ', r);
+        evhttp_connection_set_closecb(pc->evcon, NULL, NULL);
         on_connect(pc);
         return;
     }
