@@ -381,7 +381,7 @@ const char* peer_addr_str(const peer *p)
 peer_connection* evhttp_utp_connect(network *n, peer *p)
 {
     utp_socket *s = utp_create_socket(n->utp);
-    debug("evhttp_utp_connect %s\n", peer_addr_str(p));
+    debug("%s %s\n", __func__, peer_addr_str(p));
     p->last_connect_attempt = time(NULL);
     peer_connection *pc = alloc(peer_connection);
     pc->n = n;
