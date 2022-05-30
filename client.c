@@ -3303,11 +3303,15 @@ void connect_request(connect_req *c, const char *host, port_t port)
     }
 
     if (NO_DIRECT) {
+        c->dont_free = false;
+        connect_cleanup(c);
         return;
     }
 
     if (port != 443 || is_ip_literal(host)) {
         connect_direct_connect(c);
+        c->dont_free = false;
+        connect_cleanup(c);
         return;
     }
 
@@ -3392,8 +3396,6 @@ void connect_request(connect_req *c, const char *host, port_t port)
     }
 
     c->dont_free = false;
-
-    // may need to be cleaned up already
     connect_cleanup(c);
 }
 
