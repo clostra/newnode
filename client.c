@@ -2588,6 +2588,7 @@ void free_write_cb(bufferevent *bev, void *ctx)
 {
     debug("%s bev:%p\n", __func__, bev);
     if (!evbuffer_get_length(bufferevent_get_output(bev))) {
+        bufferevent_disable(bev, EV_WRITE);
         bufferevent_free_checked(bev);
     }
 }
@@ -2595,6 +2596,7 @@ void free_write_cb(bufferevent *bev, void *ctx)
 void socks_error(bufferevent *bev, uint8_t resp)
 {
     debug("%s bev:%p reply:%02x\n", __func__, bev, resp);
+    bufferevent_disable(bev, EV_READ);
     bufferevent_setcb(bev, NULL, free_write_cb, NULL, NULL);
     uint8_t r[] = {0x05, resp, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     bufferevent_write(bev, r, sizeof(r));
