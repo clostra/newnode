@@ -2772,44 +2772,37 @@ void connected(connect_req *c, bufferevent *other)
 {
     debug("c:%p %s (%.2fms) other:%p\n", c, __func__, rdelta(c), other);
 
-    if (c->server_req) {
-        evhttp_connection *evcon = c->server_req->evcon;
-        c->pending_bev = evhttp_connection_detach_bufferevent(evcon);
-        evhttp_connection_free(evcon);
-        c->server_req = NULL;
-        debug("c:%p (%.2fms) detach from server_req req:%p evcon:%p bev:%p\n", c, rdelta(c), c->server_req, evcon, c->pending_bev);
-
-        bufferevent_setcb(c->pending_bev, connect_server_read_cb, NULL, connect_server_event_cb, c);
-        bufferevent_setcb(other, connect_other_read_cb, NULL, connect_other_event_cb, c);
-        bufferevent_enable(c->pending_bev, EV_READ|EV_WRITE);
-        bufferevent_enable(other, EV_READ|EV_WRITE);
-        if (c->intro_data) {
-            evbuffer_copy(bufferevent_get_output(other), c->intro_data);
-        } else {
-            c->intro_data = evbuffer_new();
-            bufferevent_read_buffer(c->pending_bev, c->intro_data);
+    if (!c->pending_bev) {
+        if (c->server_req) {
+            evhttp_connection *evcon = c->server_req->evcon;
+            c->pending_bev = evhttp_connection_detach_bufferevent(evcon);
+            evhttp_connection_free(evcon);
+            c->server_req = NULL;
+            debug("c:%p (%.2fms) detach from server_req req:%p evcon:%p bev:%p\n", c, rdelta(c), c->server_req, evcon, c->pending_bev);
             evbuffer_add_printf(bufferevent_get_output(c->pending_bev), "HTTP/1.0 200 Connection established\r\n\r\n");
-        }
-    } else {
-        if (c->server_bev) {
+        } else {
             c->pending_bev = c->server_bev;
             c->server_bev = NULL;
             debug("c:%p (%.2fms) detach from server_bev bev:%p\n", c, rdelta(c), c->pending_bev);
-        }
-        bufferevent_setcb(c->pending_bev, connect_server_read_cb, NULL, connect_server_event_cb, c);
-        bufferevent_setcb(other, connect_other_read_cb, NULL, connect_other_event_cb, c);
-        bufferevent_enable(c->pending_bev, EV_READ|EV_WRITE);
-        bufferevent_enable(other, EV_READ|EV_WRITE);
-        if (c->intro_data) {
-            evbuffer_copy(bufferevent_get_output(other), c->intro_data);
-        } else {
-            c->intro_data = evbuffer_new();
-            bufferevent_read_buffer(c->pending_bev, c->intro_data);
             // XXX: should contain ipv4/v6:port instead of 0x00s
             uint8_t r[] = {0x05, SOCKS5_REPLY_GRANTED, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
             bufferevent_write(c->pending_bev, r, sizeof(r));
         }
+
+        bufferevent_setcb(c->pending_bev, connect_server_read_cb, NULL, connect_server_event_cb, c);
+        bufferevent_enable(c->pending_bev, EV_READ|EV_WRITE);
+
+        c->intro_data = evbuffer_new();
+        bufferevent_read_buffer(c->pending_bev, c->intro_data);
     }
+
+    bufferevent_setcb(other, connect_other_read_cb, NULL, connect_other_event_cb, c);
+    bufferevent_enable(other, EV_READ|EV_WRITE);
+
+    if (c->intro_data) {
+        evbuffer_copy(bufferevent_get_output(other), c->intro_data);
+    }
+
     debug("c:%p %s (%.2fms) intro_data_length:%zu\n", c, __func__, rdelta(c), evbuffer_get_length(c->intro_data));
     for (size_t i = 0; i < lenof(c->bevs); i++) {
         if (!c->bevs[i]) {
