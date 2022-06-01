@@ -305,14 +305,22 @@ public class Bluetooth {
     public void stopAdvertising() {
         Log.d(TAG, "stopAdvertising");
         if (bluetoothAdapter().getBluetoothLeAdvertiser() != null) {
-            bluetoothAdapter().getBluetoothLeAdvertiser().stopAdvertising(advertiseCallback);
+            try {
+                bluetoothAdapter().getBluetoothLeAdvertiser().stopAdvertising(advertiseCallback);
+            } catch (Exception e) {
+                Log.e(TAG, "stopAdvertising", e);
+            }
         }
     }
 
     public void stopScan() {
         Log.d(TAG, "stopScan");
         if (bluetoothAdapter().getBluetoothLeScanner() != null) {
-            bluetoothAdapter().getBluetoothLeScanner().stopScan(scanCallback);
+            try {
+                bluetoothAdapter().getBluetoothLeScanner().stopScan(scanCallback);
+            } catch (Exception e) {
+                Log.e(TAG, "stopScan", e);
+            }
         }
     }
 
