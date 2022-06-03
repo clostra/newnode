@@ -307,6 +307,7 @@ void peer_disconnect(peer_connection *pc)
 {
     debug("disconnecting pc:%p\n", pc);
     if (pc->evcon) {
+        evhttp_connection_set_closecb(pc->evcon, NULL, NULL);
         evhttp_connection_free(pc->evcon);
     }
     if (pc->bev) {
@@ -1768,7 +1769,7 @@ void peer_request_error_cb(evhttp_request_error error, void *arg)
 void peer_request_done_cb(evhttp_request *req, void *arg)
 {
     peer_request *r = (peer_request*)arg;
-    debug("r:%p peer_request_done_cb req:%p\n", r, req);
+    debug("r:%p %s req:%p\n", r, __func__, req);
     if (!req) {
         return;
     }
@@ -2547,8 +2548,8 @@ typedef struct {
 
     uint64 start_time;
 
-    // through proxy
-    evhttp_request *proxy_req;
+    // through peer
+    evhttp_request *peer_req;
     pending_request r;
     peer_connection *pc;
     // direct
@@ -2604,12 +2605,12 @@ void socks_error(bufferevent *bev, uint8_t resp)
 
 bool connect_exhausted(connect_req *c)
 {
-    debug("c:%p %s (%.2fms) direct:%p proxy_req:%p on_connect:%p tryfirst_request:%p attempts:%d\n",
-          c, __func__, rdelta(c), c->direct, c->proxy_req, c->r.on_connect, c->tryfirst_request, c->attempts);
+    debug("c:%p %s (%.2fms) direct:%p peer_req:%p on_connect:%p tryfirst_request:%p attempts:%d\n",
+          c, __func__, rdelta(c), c->direct, c->peer_req, c->r.on_connect, c->tryfirst_request, c->attempts);
     if (c->tryfirst_request) {
         return false;
     }
-    if (c->direct || c->proxy_req || c->r.on_connect) {
+    if (c->direct || c->peer_req || c->r.on_connect) {
         return false;
     }
     for (size_t i = 0; i < lenof(c->bevs); i++) {
@@ -2674,12 +2675,12 @@ void connect_cleanup(connect_req *c)
     free(c);
 }
 
-void connect_proxy_cancel(connect_req *c)
+void connect_peer_cancel(connect_req *c)
 {
-    debug("c:%p %s (%.2fms) req:%p\n", c, __func__, rdelta(c), c->proxy_req);
-    if (c->proxy_req) {
-        evhttp_cancel_request(c->proxy_req);
-        c->proxy_req = NULL;
+    debug("c:%p %s (%.2fms) req:%p\n", c, __func__, rdelta(c), c->peer_req);
+    if (c->peer_req) {
+        evhttp_cancel_request(c->peer_req);
+        c->peer_req = NULL;
     }
     if (!c->pc) {
         abort_connect(&c->r);
@@ -2716,7 +2717,7 @@ void connect_server_event_cb(bufferevent *bev, short events, void *ctx)
     connect_req *c = (connect_req *)ctx;
     debug("c:%p %s (%.2fms) events:0x%x %s\n", c, __func__, rdelta(c), events, bev_events_to_str(events));
     c->dont_free = true;
-    connect_proxy_cancel(c);
+    connect_peer_cancel(c);
     connect_direct_cancel(c);
     c->dont_free = false;
     connect_cleanup(c);
@@ -2740,7 +2741,7 @@ void connect_other_read_cb(bufferevent *bev, void *ctx)
     debug("c:%p %s (%.2fms) connection complete server:%p bev:%p intro_data_length:%zu\n", c, __func__, rdelta(c), server, bev, evbuffer_get_length(c->intro_data));
     c->pending_bev = NULL;
     c->dont_free = true;
-    connect_proxy_cancel(c);
+    connect_peer_cancel(c);
     connect_direct_cancel(c);
     if (strcaseeq(c->host, "stats.newnode.com")) {
         //debug("c:%p (%.2fms) not counting bytes for %s\n", c, rdelta(c), c->host);
@@ -2818,7 +2819,7 @@ void connected(connect_req *c, bufferevent *other)
 
 void connect_peer(connect_req *c, bool injector_preference);
 
-void connect_peer_invalid_reply(connect_req *c)
+void connect_peer_retry(connect_req *c)
 {
     c->attempts++;
     debug("c:%p %s (%.2fms) attempts:%d\n", c, __func__, rdelta(c), c->attempts);
@@ -2852,97 +2853,90 @@ void connect_direct_error(connect_req *c, uint8_t socks_resp, int error, const c
     connect_cleanup(c);
 }
 
-void connect_proxy_done_cb(evhttp_request *req, void *arg)
+void connect_peer_done_cb(evhttp_request *req, void *arg)
 {
     connect_req *c = (connect_req *)arg;
     debug("c:%p %s req:%p evcon:%p\n", c, __func__, req, req ? req->evcon : NULL);
     if (!req) {
         return;
     }
-    c->proxy_req = NULL;
-    if (!c->direct && (c->server_req || c->server_bev)) {
-        if (c->pc) {
-            peer_reuse(c->n, c->pc);
-            c->pc = NULL;
+    c->peer_req = NULL;
+
+    const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
+    if (msign) {
+        debug("c:%p (%.2fms) verifying sig for %s %s\n", c, rdelta(c), evhttp_request_get_uri(req), msign);
+
+        merkle_tree *m = alloc(merkle_tree);
+        merkle_tree_hash_request(m, req, req->input_headers);
+        uint8_t root_hash[crypto_generichash_BYTES];
+        merkle_tree_get_root(m, root_hash);
+        merkle_tree_free(m);
+
+        if (!verify_signature(root_hash, msign)) {
+            fprintf(stderr, "signature failed!\n");
+            c->pc->peer->last_verified = 0;
+        } else {
+            debug("c:%p (%.2fms) signature good!\n", c, rdelta(c));
+
+            peer_verified(c->n, c->pc->peer);
+
+            if (c->server_req) {
+                if (connect_exhausted(c)) {
+                    if (!evcon_is_localhost(c->server_req->evcon)) {
+                        copy_header(req, c->server_req, "Content-Location");
+                        copy_header(req, c->server_req, "X-MSign");
+                    }
+                    connect_http_error(c, req->response_code, req->response_code_line);
+                }
+            }
+            if (c->server_bev) {
+                switch (req->response_code) {
+                case 504: connect_socks_error(c, SOCKS5_REPLY_TIMEDOUT); break;
+                case 523: connect_socks_error(c, SOCKS5_REPLY_HOSTUNREACH); break;
+                case 521: connect_socks_error(c, SOCKS5_REPLY_CONNREFUSED); break;
+                default:
+                case 0: connect_socks_error(c, SOCKS5_REPLY_FAILURE); break;
+                }
+            }
         }
-        connect_peer_invalid_reply(c);
     }
-    connect_direct_error(c, SOCKS5_REPLY_HOSTUNREACH, 523, "Origin Is Unreachable (max-retries)");
+    if (c->pc) {
+        peer_reuse(c->n, c->pc);
+        c->pc = NULL;
+    }
+    if (c->server_req || c->server_bev || c->pending_bev) {
+        connect_peer_retry(c);
+    }
+    connect_cleanup(c);
 }
 
 int connect_peer_header_cb(evhttp_request *req, void *arg)
 {
     connect_req *c = (connect_req *)arg;
     debug("c:%p %s (%.2fms) req:%p %d %s\n", c, __func__, rdelta(c), req, req->response_code, req->response_code_line);
-    if (req->response_code != 200) {
-        debug("%s req->response_code:%d\n", __func__, req->response_code);
 
-        if (req->response_code == 508) {
-            peer_is_loop(c->pc->peer);
-        }
+    if (req->response_code == 200) {
+        c->pc->peer->last_connect = time(NULL);
+        free(c->pc);
+        c->pc = NULL;
 
-        const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
-        if (msign) {
-            debug("c:%p (%.2fms) verifying sig for %s %s\n", c, rdelta(c), evhttp_request_get_uri(req), msign);
-
-            merkle_tree *m = alloc(merkle_tree);
-            merkle_tree_hash_request(m, req, req->input_headers);
-            uint8_t root_hash[crypto_generichash_BYTES];
-            merkle_tree_get_root(m, root_hash);
-            merkle_tree_free(m);
-
-            if (verify_signature(root_hash, msign)) {
-                debug("c:%p (%.2fms) signature good!\n", c, rdelta(c));
-
-                peer_verified(c->n, c->pc->peer);
-
-                c->proxy_req = NULL;
-
-                if (c->server_req) {
-                    if (connect_exhausted(c)) {
-                        if (!evcon_is_localhost(c->server_req->evcon)) {
-                            copy_header(req, c->server_req, "Content-Location");
-                            copy_header(req, c->server_req, "X-MSign");
-                        }
-                        evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
-                        debug("req:%p evcon:%p responding with %d %s\n", c->server_req, c->server_req->evcon,
-                              req->response_code, req->response_code_line);
-                        evhttp_send_reply(c->server_req, req->response_code, req->response_code_line, NULL);
-                        c->server_req = NULL;
-                    }
-                }
-                if (c->server_bev) {
-                    switch (req->response_code) {
-                    case 504: connect_socks_error(c, SOCKS5_REPLY_TIMEDOUT); break;
-                    case 523: connect_socks_error(c, SOCKS5_REPLY_HOSTUNREACH); break;
-                    case 521: connect_socks_error(c, SOCKS5_REPLY_CONNREFUSED); break;
-                    default:
-                    case 0: connect_socks_error(c, SOCKS5_REPLY_FAILURE); break;
-                    }
-                }
-                return 0;
-            }
-            fprintf(stderr, "signature failed!\n");
-            c->pc->peer->last_verified = 0;
-        }
-        return 0;
+        debug("c:%p (%.2fms) detach from peer req:%p evcon:%p\n", c, rdelta(c), req, req->evcon);
+        connected(c, evhttp_connection_detach_bufferevent(req->evcon));
+        evhttp_connection_free_on_completion(req->evcon);
+        return -1;
     }
 
-    c->pc->peer->last_connect = time(NULL);
-    free(c->pc);
-    c->pc = NULL;
-
-    debug("c:%p (%.2fms) detach from client req:%p evcon:%p\n", c, rdelta(c), req, req->evcon);
-    connected(c, evhttp_connection_detach_bufferevent(req->evcon));
-    evhttp_connection_free_on_completion(req->evcon);
-    return -1;
+    if (req->response_code == 508) {
+        peer_is_loop(c->pc->peer);
+    }
+    return 0;
 }
 
 void connect_peer_error_cb(evhttp_request_error error, void *arg)
 {
     connect_req *c = (connect_req *)arg;
-    debug("c:%p %s (%.2fms) req:%p %d %s\n", c, __func__, rdelta(c), c->proxy_req, error, evhttp_request_error_str(error));
-    c->proxy_req = NULL;
+    debug("c:%p %s (%.2fms) req:%p %d %s\n", c, __func__, rdelta(c), c->peer_req, error, evhttp_request_error_str(error));
+    c->peer_req = NULL;
     if (c->server_req) {
         switch (error) {
         case EVREQ_HTTP_TIMEOUT: connect_http_error(c, 504, "Gateway Timeout"); break;
@@ -3032,7 +3026,7 @@ void connect_evcon_close_cb(evhttp_connection *evcon, void *ctx)
     evhttp_connection_set_closecb(evcon, NULL, NULL);
     c->server_req = NULL;
     c->dont_free = true;
-    connect_proxy_cancel(c);
+    connect_peer_cancel(c);
     connect_direct_cancel(c);
     c->dont_free = false;
     connect_cleanup(c);
@@ -3044,7 +3038,7 @@ void connect_peer(connect_req *c, bool injector_preference)
 
     assert(!c->pc);
     assert(!c->r.on_connect);
-    assert(!c->proxy_req);
+    assert(!c->peer_req);
     const char *via = c->server_req ? evhttp_find_header(c->server_req->input_headers, "Via") : NULL;
     c->r.via = via?strdup(via):NULL;
     queue_request(c->n, &c->r, ^bool(peer *peer) {
@@ -3055,15 +3049,15 @@ void connect_peer(connect_req *c, bool injector_preference)
         assert(!c->r.on_connect);
 
         c->pc = pc;
-        assert(!c->proxy_req);
-        c->proxy_req = evhttp_request_new(connect_proxy_done_cb, c);
-        debug("c:%p %s (%.2fms) made req:%p\n", c, __func__, rdelta(c), c->proxy_req);
+        assert(!c->peer_req);
+        c->peer_req = evhttp_request_new(connect_peer_done_cb, c);
+        debug("c:%p %s (%.2fms) made req:%p\n", c, __func__, rdelta(c), c->peer_req);
 
-        append_via(c->server_req, c->proxy_req->output_headers);
+        append_via(c->server_req, c->peer_req->output_headers);
 
-        evhttp_request_set_header_cb(c->proxy_req, connect_peer_header_cb);
-        evhttp_request_set_error_cb(c->proxy_req, connect_peer_error_cb);
-        evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, c->authority);
+        evhttp_request_set_header_cb(c->peer_req, connect_peer_header_cb);
+        evhttp_request_set_error_cb(c->peer_req, connect_peer_error_cb);
+        evhttp_make_request(c->pc->evcon, c->peer_req, EVHTTP_REQ_CONNECT, c->authority);
     });
 }
 
