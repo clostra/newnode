@@ -21,9 +21,6 @@
 // choose address - random selection for now
 bool choose_addr(evutil_addrinfo *g, choose_addr_cb cb)
 {
-    if (!g) {
-        return NULL;
-    }
     int count = 0;
     for (evutil_addrinfo *p = g; p; p = p->ai_next) {
         count++;
@@ -43,33 +40,9 @@ bool choose_addr(evutil_addrinfo *g, choose_addr_cb cb)
     return false;
 }
 
-void newnode_evdns_cache_write(network *n, const char *nodename, evutil_addrinfo *res, uint32_t ttl)
-{
-    // max DNS TTL per RFC 2181 = 2^31 - 1
-    ttl = MIN(ttl, 2147483647);
-    evdns_cache_write(n->evdns, (char *)nodename, res, ttl);
-}
-
-// allow peek into the evdns cache
-int newnode_evdns_cache_lookup(evdns_base *base, const char *host, evutil_addrinfo *hints,
-                               uint16_t port, evutil_addrinfo **res)
-{
-    evutil_addrinfo nullhints = {
-        .ai_family = PF_UNSPEC,
-        .ai_socktype = SOCK_STREAM,
-        .ai_protocol = IPPROTO_TCP
-    };
-    if (!hints) {
-        hints = &nullhints;
-    }
-    return evdns_cache_lookup(base, host, hints, port, res);
-}
-
 // use the host platform's DNS query engine to "pre-query" the hostname,
 // so that both the libevent DNS cache and the host's DNS cache can be
-// populated from a single query.   The result will be stored in
-// dns_prefetch_results[result_index] assuming the IDs match.
-
+// populated from a single query.
 void dns_prefetch(network *n, const char *host)
 {
     debug("%s host:%s\n", __func__, host);
@@ -77,7 +50,8 @@ void dns_prefetch(network *n, const char *host)
     // if this is already in libevent's cache, skip the platform DNS
     // lookup and use the already-cached addresses.
     evutil_addrinfo *res;
-    if (newnode_evdns_cache_lookup(n->evdns, host, NULL, 443, &res) == 0) {
+    evutil_addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_TCP};
+    if (evdns_cache_lookup(n->evdns, host, &hints, 443, &res) == 0) {
         debug("%s found %s in libevent dns cache %s\n", __func__, host, make_ip_addr_list(res));
         evutil_freeaddrinfo(res);
         return;
@@ -122,22 +96,21 @@ void dns_prefetch_store_result(network *n, evutil_addrinfo *ai, const char *host
         // don't have a ttl from DNS query.  add to evdns cache with
         // a minimum ttl (like 60 seconds), but don't overwrite
         // a cache entry that already exists.
-        evutil_addrinfo hints = {
-            .ai_socktype = SOCK_STREAM,
-            .ai_protocol = IPPROTO_TCP
-        };
+        ttl = 60;
         evutil_addrinfo *res;
-        if (newnode_evdns_cache_lookup(n->evdns, host, &hints, 0, &res) == 0) {
+        evutil_addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_TCP};
+        if (evdns_cache_lookup(n->evdns, host, &hints, 0, &res) == 0) {
             debug("%s NOT adding (host:%s=>%s) to evdns cache - already present in cache\n",
                   __func__, host, make_ip_addr_list(ai));
             evutil_freeaddrinfo(res);
             return;
         }
-        ttl = 60;
     }
 
     // have a ttl obtained from DNS query, add to evdns cache
     debug("%s adding (host:%s=>%s) to evdns cache with ttl:%d)\n",
           __func__, host, make_ip_addr_list(ai), ttl);
-    newnode_evdns_cache_write(n, host, ai, ttl);
+    // max DNS TTL per RFC 2181 = 2^31 - 1
+    ttl = MIN(ttl, 2147483647);
+    evdns_cache_write(n->evdns, (char*)host, ai, ttl);
 }

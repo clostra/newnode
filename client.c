@@ -3250,7 +3250,8 @@ int bufferevent_socket_connect_prefetched_address(bufferevent *bev, evdns_base *
     };
 
     evutil_addrinfo *res;
-    if (newnode_evdns_cache_lookup(dns_base, host, NULL, port, &res) == 0 && res) {
+    evutil_addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_TCP};
+    if (evdns_cache_lookup(dns_base, host, &hints, port, &res) == 0) {
         debug("bev:%p %s host:%s found in evdns cache\n", bev, __func__, host);
         if (!choose_addr(res, try_connect)) {
             debug("bev:%p %s host:%s unable to connect to any of: %s (%s)\n",
