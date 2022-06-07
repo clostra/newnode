@@ -14,6 +14,7 @@ https_request *https_request_alloc(size_t bufsize, unsigned int flags, unsigned 
 
 void ui_display_stats(const char *type, uint64_t direct, uint64_t peers) {}
 bool network_process_udp_cb(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) { return false; }
+ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6) { return -1; }
 
 int main(int argc, char *argv[])
 {

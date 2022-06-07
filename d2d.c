@@ -5,13 +5,6 @@
 #include "d2d.h"
 
 
-#if !defined ANDROID && !defined __APPLE__
-ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6)
-{
-    return -1;
-}
-#endif
-
 sockaddr_in6 endpoint_to_addr(const endpoint *endpoint)
 {
     sockaddr_in6 sin6 = {
