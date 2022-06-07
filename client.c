@@ -333,6 +333,8 @@ void peer_evcon_close_cb(evhttp_connection *evcon, void *ctx)
 {
     peer_connection *pc = (peer_connection *)ctx;
     evhttp_connection_set_closecb(evcon, NULL, NULL);
+    evhttp_connection_free_on_completion(evcon);
+    pc->evcon = NULL;
     peer_connection_remove(pc);
     peer_disconnect(pc);
 }
