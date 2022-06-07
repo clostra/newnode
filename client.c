@@ -3474,9 +3474,11 @@ static void http_request_cb(evhttp_request *req, void *arg)
     }
 
     const evhttp_uri *evuri = evhttp_request_get_evhttp_uri(req);
-    const char *scheme = evhttp_uri_get_scheme(evuri);
     const char *host = evhttp_uri_get_host(evuri);
-    dns_prefetch(n, host);
+    const char *scheme = evhttp_uri_get_scheme(evuri);
+    if (host) {
+        dns_prefetch(n, host);
+    }
 
     if (req->type == EVHTTP_REQ_CONNECT) {
         http_connect_request(n, req);
@@ -3493,6 +3495,7 @@ static void http_request_cb(evhttp_request *req, void *arg)
         evhttp_send_reply(req, 200, "OK", body);
         return;
     }
+
     if (req->type != EVHTTP_REQ_TRACE &&
         (!host || !scheme ||
          (evutil_ascii_strcasecmp(scheme, "http") && evutil_ascii_strcasecmp(scheme, "https")))) {
