@@ -2,7 +2,10 @@
 #include "network.h"
 #include "lsd.h"
 
+#if TARGET_OS_IOS
 @import UIKit;
+#endif
+
 
 #define ServiceType @"_newnode._udp."
 
@@ -21,11 +24,13 @@
 {
     self = super.init;
     if (self != nil) {
+#if TARGET_OS_IOS
         UIDevice.currentDevice.batteryMonitoringEnabled = true;
         [NSNotificationCenter.defaultCenter addObserver:self
                                                selector:@selector(batteryLevelChanged)
                                                    name:UIDeviceBatteryLevelDidChangeNotification
                                                  object:self];
+#endif
         _n = n;
         _discovering = NSMutableSet.new;
         // XXX: NSNetService is deprecated. Switch to NWParameters.includePeerToPeer = true
@@ -55,7 +60,11 @@
 
 - (bool)batteryLow
 {
+#if TARGET_OS_IOS
     return UIDevice.currentDevice.batteryLevel < 0.15;
+#else
+    return false;
+#endif
 }
 
 - (void)batteryLevelChanged
