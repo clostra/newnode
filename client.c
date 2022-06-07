@@ -20,6 +20,8 @@
 #include <event2/buffer.h>
 #include <event2/listener.h>
 #include <event2/bufferevent.h>
+#include <event2/http.h>
+#include "libevent/http-internal.h"
 
 #include <parson.h>
 
@@ -214,15 +216,12 @@ char g_country[3];                      // 2-letter ISO country code + '\0'
 int g_asn = -1;                         // autonomous system number (if returned by ipinfo)
 time_t g_ipinfo_timestamp = 0;          // timestamp of last ipinfo request
 time_t g_ipinfo_logged_timestamp = 0;   // last logged g_ipinfo_timestamp
-time_t g_ifchange_time = 0;             // time when network config change was detected (if supported)
 timer *g_ifchange_timer;
 
-bool g_tryfirst = true;                 // set to false to disable try first
 unsigned int g_tryfirst_timeout = 7;    // seconds
 unsigned int g_tryfirst_bufsize = 10240; // max bytes accepted on a try first attempt
                                          // (even if we're always doing Range:bytes=0,1
                                          // some servers ignore or refuse to do this)
-bool g_have_ipv6 = false;                // can communicate directly with public IPv6 addresses
 
 peer_array *injectors;
 peer_array *injector_proxies;
@@ -276,6 +275,7 @@ void pending_request_complete(pending_request *r, peer_connection *pc)
     free(r->via);
     r->via = NULL;
     r->on_connect = NULL;
+    evhttp_connection_set_closecb(pc->evcon, NULL, NULL);
     on_connect(pc);
     Block_release(on_connect);
 }
@@ -303,22 +303,44 @@ bool bufferevent_is_utp(bufferevent *bev)
     return ss.ss_family == AF_LOCAL;
 }
 
-void on_utp_connect(network *n, peer_connection *pc)
+void peer_disconnect(peer_connection *pc)
 {
-    const sockaddr *ss = (const sockaddr *)&pc->peer->addr;
-    char host[NI_MAXHOST];
-    getnameinfo(ss, sockaddr_get_length(ss), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
-    bufferevent_disable(pc->bev, EV_READ|EV_WRITE);
-    assert(pc->bev);
-    // XXX: hack around evhttp requiring fd != -1 to assume the bev is connected. it doesn't have to be a valid fd, though.
-    // https://github.com/libevent/libevent/issues/1268
-    bufferevent_setfd(pc->bev, -2);
-    pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, pc->bev, host, sockaddr_get_port(ss));
-    bufferevent_setfd(pc->bev, EVUTIL_INVALID_SOCKET);
-    debug("on_utp_connect %s bev:%p evcon:%p\n", sockaddr_str(ss), pc->bev, pc->evcon);
-    pc->bev = NULL;
+    debug("disconnecting pc:%p\n", pc);
+    if (pc->evcon) {
+        evhttp_connection_set_closecb(pc->evcon, NULL, NULL);
+        evhttp_connection_free(pc->evcon);
+    }
+    if (pc->bev) {
+        bufferevent_free(pc->bev);
+    }
+    free(pc);
+}
 
-    // handle waiting requests first
+void peer_connection_remove(peer_connection *pc)
+{
+    bool found = false;
+    for (uint i = 0; i < lenof(peer_connections); i++) {
+        if (peer_connections[i] == pc) {
+            peer_connections[i] = NULL;
+            found = true;
+            break;
+        }
+    }
+    assert(found);
+}
+
+void peer_evcon_close_cb(evhttp_connection *evcon, void *ctx)
+{
+    peer_connection *pc = (peer_connection *)ctx;
+    evhttp_connection_set_closecb(evcon, NULL, NULL);
+    evhttp_connection_free_on_completion(evcon);
+    pc->evcon = NULL;
+    peer_connection_remove(pc);
+    peer_disconnect(pc);
+}
+
+pending_request* pending_request_pop(peer_connection *pc)
+{
     pending_request *r;
     TAILQ_FOREACH(r, &pending_requests, next) {
         if (via_contains(r->via, pc->peer->via)) {
@@ -326,22 +348,43 @@ void on_utp_connect(network *n, peer_connection *pc)
         }
         TAILQ_REMOVE(&pending_requests, r, next);
         pending_requests_len--;
-        debug("on_utp_connect request:%p (outstanding:%zu)\n", r, pending_requests_len);
-        bool found = false;
-        for (uint i = 0; i < lenof(peer_connections); i++) {
-            if (peer_connections[i] == pc) {
-                peer_connections[i] = NULL;
-                found = true;
-                break;
-            }
-        }
-        assert(found);
-        debug("using new pc:%p evcon:%p via:%c (%s) for request:%p\n", pc, pc->evcon, pc->peer->via ? pc->peer->via : ' ', r->via, r);
-        pending_request_complete(r, pc);
-        if (!TAILQ_EMPTY(&pending_requests)) {
-            connect_more_injectors(n, false);
-        }
-        break;
+        debug("%s request:%p (outstanding:%zu)\n", __func__, r, pending_requests_len);
+        return r;
+    }
+    return NULL;
+}
+
+void on_utp_connect(network *n, peer_connection *pc)
+{
+    const sockaddr *ss = (const sockaddr *)&pc->peer->addr;
+    char host[NI_MAXHOST];
+    getnameinfo(ss, sockaddr_get_length(ss), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
+
+    bufferevent *bev = pc->bev;
+    pc->bev = NULL;
+
+    // XXX: hack around evhttp requiring fd != -1 to assume the bev is connected. it doesn't have to be a valid fd, though.
+    // https://github.com/libevent/libevent/issues/1268
+    bufferevent_setfd(bev, -2);
+    pc->evcon = evhttp_connection_base_bufferevent_new(n->evbase, n->evdns, bev, host, sockaddr_get_port(ss));
+    bufferevent_setfd(bev, EVUTIL_INVALID_SOCKET);
+
+    debug("%s %s bev:%p evcon:%p\n", __func__, sockaddr_str(ss), bev, pc->evcon);
+
+    pc->evcon->flags |= EVHTTP_CON_CLOSEDETECT;
+    evhttp_connection_set_closecb(pc->evcon, peer_evcon_close_cb, pc);
+    bufferevent_disable(bev, EV_WRITE);
+    bufferevent_enable(bev, EV_READ);
+
+    pending_request *r = pending_request_pop(pc);
+    if (!r) {
+        return;
+    }
+    debug("using new pc:%p evcon:%p via:%c (%s) for request:%p\n", pc, pc->evcon, pc->peer->via ? pc->peer->via : ' ', r->via, r);
+    peer_connection_remove(pc);
+    pending_request_complete(r, pc);
+    if (!TAILQ_EMPTY(&pending_requests)) {
+        connect_more_injectors(n, false);
     }
 }
 
@@ -382,20 +425,18 @@ const char* peer_addr_str(const peer *p)
 peer_connection* evhttp_utp_connect(network *n, peer *p)
 {
     utp_socket *s = utp_create_socket(n->utp);
-    debug("evhttp_utp_connect %s\n", peer_addr_str(p));
+    debug("%s %s\n", __func__, peer_addr_str(p));
     p->last_connect_attempt = time(NULL);
     peer_connection *pc = alloc(peer_connection);
     pc->n = n;
     pc->peer = p;
     pc->bev = bufferevent_utp_new(n->evbase, n->utp, NULL, BEV_OPT_CLOSE_ON_FREE);
     if (!pc->bev) {
-        debug("bufferevent_utp_new could not allocate %s\n", peer_addr_str(p));
         free(pc);
         return NULL;
     }
-    bufferevent_utp_connect(pc->bev, (const sockaddr*)&p->addr, sockaddr_get_length((const sockaddr*)&p->addr));
     bufferevent_setcb(pc->bev, NULL, NULL, utp_connect_event_cb, pc);
-    bufferevent_enable(pc->bev, EV_READ);
+    bufferevent_utp_connect(pc->bev, (const sockaddr*)&p->addr, sockaddr_get_length((const sockaddr*)&p->addr));
     return pc;
 }
 
@@ -537,13 +578,13 @@ void dht_event_callback(void *closure, int event, const unsigned char *info_hash
     }
 
     if (event == DHT_EVENT_VALUES) {
-        ddebug("dht_event_callback num_peers:%zu\n", num_peers);
+        ddebug("%s num_peers:%zu\n", __func__, num_peers);
         add_v4_addresses(n, peer_list, peers, num_peers);
     } else if (event == DHT_EVENT_VALUES6) {
-        ddebug("dht_event_callback v6 num_peers:%zu\n", num_peers);
+        ddebug("%s v6 num_peers:%zu\n", __func__, num_peers);
         add_v6_addresses(n, peer_list, peers, num_peers);
     } else {
-        ddebug("dht_event_callback event:%d\n", event);
+        ddebug("%s event:%d\n", __func__, event);
     }
 
     if (o_debug >= 2) {
@@ -593,18 +634,6 @@ void abort_connect(pending_request *r)
     TAILQ_REMOVE(&pending_requests, r, next);
     pending_requests_len--;
     debug("abort_connect request:%p (outstanding:%zu)\n", r, pending_requests_len);
-}
-
-void peer_disconnect(peer_connection *pc)
-{
-    debug("disconnecting pc:%p\n", pc);
-    if (pc->evcon) {
-        evhttp_connection_free(pc->evcon);
-    }
-    if (pc->bev) {
-        bufferevent_free(pc->bev);
-    }
-    free(pc);
 }
 
 void proxy_cache_delete(proxy_request *p)
@@ -734,17 +763,12 @@ void peer_request_cleanup(peer_request *r, const char *reason)
 
 void peer_reuse(network *n, peer_connection *pc)
 {
-    if (pc->bev) {
-        bufferevent_disable(pc->bev, EV_READ|EV_WRITE);
+    if (pc->evcon) {
+        evhttp_connection_set_closecb(pc->evcon, peer_evcon_close_cb, pc);
     }
     // handle waiting requests first
-    pending_request *r;
-    TAILQ_FOREACH(r, &pending_requests, next) {
-        if (via_contains(r->via, pc->peer->via)) {
-            continue;
-        }
-        TAILQ_REMOVE(&pending_requests, r, next);
-        pending_requests_len--;
+    pending_request *r = pending_request_pop(pc);
+    if (r) {
         debug("reusing pc:%p evcon:%p via:%c (%s) for request:%p (outstanding:%zu)\n",
               pc, pc->evcon, pc->peer->via ? pc->peer->via : ' ', r->via, r, pending_requests_len);
         pending_request_complete(r, pc);
@@ -1747,7 +1771,7 @@ void peer_request_error_cb(evhttp_request_error error, void *arg)
 void peer_request_done_cb(evhttp_request *req, void *arg)
 {
     peer_request *r = (peer_request*)arg;
-    debug("r:%p peer_request_done_cb req:%p\n", r, req);
+    debug("r:%p %s req:%p\n", r, __func__, req);
     if (!req) {
         return;
     }
@@ -2174,6 +2198,7 @@ void queue_request(network *n, pending_request *r, peer_filter filter, peer_conn
         }
         peer_connections[i] = NULL;
         debug("using pc:%p evcon:%p via:%c for request:%p\n", pc, pc->evcon, pc->peer->via ? pc->peer->via : ' ', r);
+        evhttp_connection_set_closecb(pc->evcon, NULL, NULL);
         on_connect(pc);
         return;
     }
@@ -2525,8 +2550,8 @@ typedef struct {
 
     uint64 start_time;
 
-    // through proxy
-    evhttp_request *proxy_req;
+    // through peer
+    evhttp_request *peer_req;
     pending_request r;
     peer_connection *pc;
     // direct
@@ -2540,12 +2565,11 @@ typedef struct {
 
     char *authority;
     int attempts;
+#define CONNECT_ATTEMPTS 10
 
     bool dont_free:1;
 
     // start of TF additions
-    bool connected:1;
-    bool dont_count_bytes:1;
     bool direct_connect_responded:1;
     char *host;                 // just hostname, no port #
     port_t port;
@@ -2567,6 +2591,7 @@ void free_write_cb(bufferevent *bev, void *ctx)
 {
     debug("%s bev:%p\n", __func__, bev);
     if (!evbuffer_get_length(bufferevent_get_output(bev))) {
+        bufferevent_disable(bev, EV_WRITE);
         bufferevent_free_checked(bev);
     }
 }
@@ -2574,6 +2599,7 @@ void free_write_cb(bufferevent *bev, void *ctx)
 void socks_error(bufferevent *bev, uint8_t resp)
 {
     debug("%s bev:%p reply:%02x\n", __func__, bev, resp);
+    bufferevent_disable(bev, EV_READ);
     bufferevent_setcb(bev, NULL, free_write_cb, NULL, NULL);
     uint8_t r[] = {0x05, resp, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     bufferevent_write(bev, r, sizeof(r));
@@ -2581,12 +2607,12 @@ void socks_error(bufferevent *bev, uint8_t resp)
 
 bool connect_exhausted(connect_req *c)
 {
-    debug("c:%p %s (%.2fms) direct:%p proxy_req:%p on_connect:%p tryfirst_request:%p\n",
-          c, __func__, rdelta(c), c->direct, c->proxy_req, c->r.on_connect, c->tryfirst_request);
+    debug("c:%p %s (%.2fms) direct:%p peer_req:%p on_connect:%p tryfirst_request:%p attempts:%d\n",
+          c, __func__, rdelta(c), c->direct, c->peer_req, c->r.on_connect, c->tryfirst_request, c->attempts);
     if (c->tryfirst_request) {
         return false;
     }
-    if (c->direct || c->proxy_req || c->r.on_connect) {
+    if (c->direct || c->peer_req || c->r.on_connect) {
         return false;
     }
     for (size_t i = 0; i < lenof(c->bevs); i++) {
@@ -2651,12 +2677,12 @@ void connect_cleanup(connect_req *c)
     free(c);
 }
 
-void connect_proxy_cancel(connect_req *c)
+void connect_peer_cancel(connect_req *c)
 {
-    debug("c:%p %s (%.2fms) req:%p\n", c, __func__, rdelta(c), c->proxy_req);
-    if (c->proxy_req) {
-        evhttp_cancel_request(c->proxy_req);
-        c->proxy_req = NULL;
+    debug("c:%p %s (%.2fms) req:%p\n", c, __func__, rdelta(c), c->peer_req);
+    if (c->peer_req) {
+        evhttp_cancel_request(c->peer_req);
+        c->peer_req = NULL;
     }
     if (!c->pc) {
         abort_connect(&c->r);
@@ -2670,6 +2696,7 @@ void connect_direct_cancel(connect_req *c)
         bufferevent_free(c->direct);
         c->direct = NULL;
     }
+    connect_tryfirst_requests_cancel(c);
 }
 
 void connect_server_read_cb(bufferevent *bev, void *ctx)
@@ -2680,7 +2707,7 @@ void connect_server_read_cb(bufferevent *bev, void *ctx)
 
     for (size_t i = 0; i < lenof(c->bevs); i++) {
         if (c->bevs[i]) {
-            evbuffer_add_buffer_reference(bufferevent_get_output(c->bevs[i]), input);
+            evbuffer_copy(bufferevent_get_output(c->bevs[i]), input);
         }
     }
     bufferevent_read_buffer(c->pending_bev, c->intro_data);
@@ -2692,7 +2719,7 @@ void connect_server_event_cb(bufferevent *bev, short events, void *ctx)
     connect_req *c = (connect_req *)ctx;
     debug("c:%p %s (%.2fms) events:0x%x %s\n", c, __func__, rdelta(c), events, bev_events_to_str(events));
     c->dont_free = true;
-    connect_proxy_cancel(c);
+    connect_peer_cancel(c);
     connect_direct_cancel(c);
     c->dont_free = false;
     connect_cleanup(c);
@@ -2716,10 +2743,10 @@ void connect_other_read_cb(bufferevent *bev, void *ctx)
     debug("c:%p %s (%.2fms) connection complete server:%p bev:%p intro_data_length:%zu\n", c, __func__, rdelta(c), server, bev, evbuffer_get_length(c->intro_data));
     c->pending_bev = NULL;
     c->dont_free = true;
-    connect_proxy_cancel(c);
+    connect_peer_cancel(c);
     connect_direct_cancel(c);
-    if (c->dont_count_bytes) {
-        debug("c:%p (%.2fms) not counting bytes for %s\n", c, rdelta(c), c->authority);
+    if (strcaseeq(c->host, "stats.newnode.com")) {
+        //debug("c:%p (%.2fms) not counting bytes for %s\n", c, rdelta(c), c->host);
     } else {
         bufferevent_count_bytes(c->n, c->host, bufferevent_is_localhost(server), server, bev);
     }
@@ -2750,45 +2777,37 @@ void connected(connect_req *c, bufferevent *other)
 {
     debug("c:%p %s (%.2fms) other:%p\n", c, __func__, rdelta(c), other);
 
-    c->connected = true;
-    if (c->server_req) {
-        evhttp_connection *evcon = c->server_req->evcon;
-        c->pending_bev = evhttp_connection_detach_bufferevent(evcon);
-        evhttp_connection_free(evcon);
-        c->server_req = NULL;
-        debug("c:%p (%.2fms) detach from server_req req:%p evcon:%p bev:%p\n", c, rdelta(c), c->server_req, evcon, c->pending_bev);
-
-        bufferevent_setcb(c->pending_bev, connect_server_read_cb, NULL, connect_server_event_cb, c);
-        bufferevent_setcb(other, connect_other_read_cb, NULL, connect_other_event_cb, c);
-        bufferevent_enable(c->pending_bev, EV_READ|EV_WRITE);
-        bufferevent_enable(other, EV_READ|EV_WRITE);
-        if (c->intro_data) {
-            evbuffer_add_buffer_reference(bufferevent_get_output(other), c->intro_data);
-        } else {
-            c->intro_data = evbuffer_new();
-            bufferevent_read_buffer(c->pending_bev, c->intro_data);
+    if (!c->pending_bev) {
+        if (c->server_req) {
+            evhttp_connection *evcon = c->server_req->evcon;
+            c->pending_bev = evhttp_connection_detach_bufferevent(evcon);
+            evhttp_connection_free(evcon);
+            c->server_req = NULL;
+            debug("c:%p (%.2fms) detach from server_req req:%p evcon:%p bev:%p\n", c, rdelta(c), c->server_req, evcon, c->pending_bev);
             evbuffer_add_printf(bufferevent_get_output(c->pending_bev), "HTTP/1.0 200 Connection established\r\n\r\n");
-        }
-    } else {
-        if (c->server_bev) {
+        } else {
             c->pending_bev = c->server_bev;
             c->server_bev = NULL;
             debug("c:%p (%.2fms) detach from server_bev bev:%p\n", c, rdelta(c), c->pending_bev);
-        }
-        bufferevent_setcb(c->pending_bev, connect_server_read_cb, NULL, connect_server_event_cb, c);
-        bufferevent_setcb(other, connect_other_read_cb, NULL, connect_other_event_cb, c);
-        bufferevent_enable(c->pending_bev, EV_READ|EV_WRITE);
-        bufferevent_enable(other, EV_READ|EV_WRITE);
-        if (c->intro_data) {
-            evbuffer_add_buffer_reference(bufferevent_get_output(other), c->intro_data);
-        } else {
-            c->intro_data = evbuffer_new();
-            bufferevent_read_buffer(c->pending_bev, c->intro_data);
             // XXX: should contain ipv4/v6:port instead of 0x00s
             uint8_t r[] = {0x05, SOCKS5_REPLY_GRANTED, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
             bufferevent_write(c->pending_bev, r, sizeof(r));
         }
+
+        bufferevent_setcb(c->pending_bev, connect_server_read_cb, NULL, connect_server_event_cb, c);
+        bufferevent_enable(c->pending_bev, EV_READ|EV_WRITE);
+
+        c->intro_data = evbuffer_new();
+        bufferevent_read_buffer(c->pending_bev, c->intro_data);
     }
+
+    bufferevent_setcb(other, connect_other_read_cb, NULL, connect_other_event_cb, c);
+    bufferevent_enable(other, EV_READ|EV_WRITE);
+
+    if (c->intro_data) {
+        evbuffer_copy(bufferevent_get_output(other), c->intro_data);
+    }
+
     debug("c:%p %s (%.2fms) intro_data_length:%zu\n", c, __func__, rdelta(c), evbuffer_get_length(c->intro_data));
     for (size_t i = 0; i < lenof(c->bevs); i++) {
         if (!c->bevs[i]) {
@@ -2802,11 +2821,11 @@ void connected(connect_req *c, bufferevent *other)
 
 void connect_peer(connect_req *c, bool injector_preference);
 
-void connect_invalid_reply(connect_req *c)
+void connect_peer_retry(connect_req *c)
 {
     c->attempts++;
     debug("c:%p %s (%.2fms) attempts:%d\n", c, __func__, rdelta(c), c->attempts);
-    if (c->attempts < 10) {
+    if (c->attempts < CONNECT_ATTEMPTS) {
         connect_peer(c, true);
     }
 }
@@ -2836,97 +2855,90 @@ void connect_direct_error(connect_req *c, uint8_t socks_resp, int error, const c
     connect_cleanup(c);
 }
 
-void connect_done_cb(evhttp_request *req, void *arg)
+void connect_peer_done_cb(evhttp_request *req, void *arg)
 {
     connect_req *c = (connect_req *)arg;
     debug("c:%p %s req:%p evcon:%p\n", c, __func__, req, req ? req->evcon : NULL);
     if (!req) {
         return;
     }
-    c->proxy_req = NULL;
-    if (!c->direct && (c->server_req || c->server_bev)) {
-        if (c->pc) {
-            peer_reuse(c->n, c->pc);
-            c->pc = NULL;
+    c->peer_req = NULL;
+
+    const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
+    if (msign) {
+        debug("c:%p (%.2fms) verifying sig for %s %s\n", c, rdelta(c), evhttp_request_get_uri(req), msign);
+
+        merkle_tree *m = alloc(merkle_tree);
+        merkle_tree_hash_request(m, req, req->input_headers);
+        uint8_t root_hash[crypto_generichash_BYTES];
+        merkle_tree_get_root(m, root_hash);
+        merkle_tree_free(m);
+
+        if (!verify_signature(root_hash, msign)) {
+            fprintf(stderr, "signature failed!\n");
+            c->pc->peer->last_verified = 0;
+        } else {
+            debug("c:%p (%.2fms) signature good!\n", c, rdelta(c));
+
+            peer_verified(c->n, c->pc->peer);
+
+            if (c->server_req) {
+                if (connect_exhausted(c)) {
+                    if (!evcon_is_localhost(c->server_req->evcon)) {
+                        copy_header(req, c->server_req, "Content-Location");
+                        copy_header(req, c->server_req, "X-MSign");
+                    }
+                    connect_http_error(c, req->response_code, req->response_code_line);
+                }
+            }
+            if (c->server_bev) {
+                switch (req->response_code) {
+                case 504: connect_socks_error(c, SOCKS5_REPLY_TIMEDOUT); break;
+                case 523: connect_socks_error(c, SOCKS5_REPLY_HOSTUNREACH); break;
+                case 521: connect_socks_error(c, SOCKS5_REPLY_CONNREFUSED); break;
+                default:
+                case 0: connect_socks_error(c, SOCKS5_REPLY_FAILURE); break;
+                }
+            }
         }
-        connect_invalid_reply(c);
     }
-    connect_direct_error(c, SOCKS5_REPLY_HOSTUNREACH, 523, "Origin Is Unreachable (max-retries)");
+    if (c->pc) {
+        peer_reuse(c->n, c->pc);
+        c->pc = NULL;
+    }
+    if (c->server_req || c->server_bev || c->pending_bev) {
+        connect_peer_retry(c);
+    }
+    connect_cleanup(c);
 }
 
-int connect_header_cb(evhttp_request *req, void *arg)
+int connect_peer_header_cb(evhttp_request *req, void *arg)
 {
     connect_req *c = (connect_req *)arg;
     debug("c:%p %s (%.2fms) req:%p %d %s\n", c, __func__, rdelta(c), req, req->response_code, req->response_code_line);
-    if (req->response_code != 200) {
-        debug("%s req->response_code:%d\n", __func__, req->response_code);
 
-        if (req->response_code == 508) {
-            peer_is_loop(c->pc->peer);
-        }
+    if (req->response_code == 200) {
+        c->pc->peer->last_connect = time(NULL);
+        free(c->pc);
+        c->pc = NULL;
 
-        const char *msign = evhttp_find_header(req->input_headers, "X-MSign");
-        if (msign) {
-            debug("c:%p (%.2fms) verifying sig for %s %s\n", c, rdelta(c), evhttp_request_get_uri(req), msign);
-
-            merkle_tree *m = alloc(merkle_tree);
-            merkle_tree_hash_request(m, req, req->input_headers);
-            uint8_t root_hash[crypto_generichash_BYTES];
-            merkle_tree_get_root(m, root_hash);
-            merkle_tree_free(m);
-
-            if (verify_signature(root_hash, msign)) {
-                debug("c:%p (%.2fms) signature good!\n", c, rdelta(c));
-
-                peer_verified(c->n, c->pc->peer);
-
-                c->proxy_req = NULL;
-
-                if (c->server_req) {
-                    if (connect_exhausted(c)) {
-                        if (!evcon_is_localhost(c->server_req->evcon)) {
-                            copy_header(req, c->server_req, "Content-Location");
-                            copy_header(req, c->server_req, "X-MSign");
-                        }
-                        evhttp_connection_set_closecb(c->server_req->evcon, NULL, NULL);
-                        debug("req:%p evcon:%p responding with %d %s\n", c->server_req, c->server_req->evcon,
-                              req->response_code, req->response_code_line);
-                        evhttp_send_reply(c->server_req, req->response_code, req->response_code_line, NULL);
-                        c->server_req = NULL;
-                    }
-                }
-                if (c->server_bev) {
-                    switch (req->response_code) {
-                    case 504: connect_socks_error(c, SOCKS5_REPLY_TIMEDOUT); break;
-                    case 523: connect_socks_error(c, SOCKS5_REPLY_HOSTUNREACH); break;
-                    case 521: connect_socks_error(c, SOCKS5_REPLY_CONNREFUSED); break;
-                    default:
-                    case 0: connect_socks_error(c, SOCKS5_REPLY_FAILURE); break;
-                    }
-                }
-                return 0;
-            }
-            fprintf(stderr, "signature failed!\n");
-            c->pc->peer->last_verified = 0;
-        }
-        return 0;
+        debug("c:%p (%.2fms) detach from peer req:%p evcon:%p\n", c, rdelta(c), req, req->evcon);
+        connected(c, evhttp_connection_detach_bufferevent(req->evcon));
+        evhttp_connection_free_on_completion(req->evcon);
+        return -1;
     }
 
-    c->pc->peer->last_connect = time(NULL);
-    free(c->pc);
-    c->pc = NULL;
-
-    debug("c:%p (%.2fms) detach from client req:%p evcon:%p\n", c, rdelta(c), req, req->evcon);
-    connected(c, evhttp_connection_detach_bufferevent(req->evcon));
-    evhttp_connection_free_on_completion(req->evcon);
-    return -1;
+    if (req->response_code == 508) {
+        peer_is_loop(c->pc->peer);
+    }
+    return 0;
 }
 
-void connect_error_cb(evhttp_request_error error, void *arg)
+void connect_peer_error_cb(evhttp_request_error error, void *arg)
 {
     connect_req *c = (connect_req *)arg;
-    debug("c:%p %s (%.2fms) req:%p %d %s\n", c, __func__, rdelta(c), c->proxy_req, error, evhttp_request_error_str(error));
-    c->proxy_req = NULL;
+    debug("c:%p %s (%.2fms) req:%p %d %s\n", c, __func__, rdelta(c), c->peer_req, error, evhttp_request_error_str(error));
+    c->peer_req = NULL;
     if (c->server_req) {
         switch (error) {
         case EVREQ_HTTP_TIMEOUT: connect_http_error(c, 504, "Gateway Timeout"); break;
@@ -2969,21 +2981,21 @@ bool direct_likely_to_succeed(const https_result *result)
 void connect_direct_completed(connect_req *c, bufferevent *bev)
 {
     c->direct_connect_responded = true;
-    if (!c->tryfirst_request) {
-        if (direct_likely_to_succeed(&(c->tryfirst_result))) {
-            c->direct = NULL;
-            join_url_swarm(c->n, c->authority);
-            connected(c, bev);
-            return;
-        }
+    if (c->tryfirst_request) {
+        debug("c:%p %s (%.2fms) %s tryfirst request still pending; not spliced yet\n",
+              c, __func__, rdelta(c), c->tryfirst_url);
+        return;
+    }
+    if (!direct_likely_to_succeed(&(c->tryfirst_result))) {
         connect_direct_http_error(c, 523, "Origin Is Unreachable");
         return;
     }
-    debug("c:%p %s (%.2fms) %s tryfirst request still pending; not spliced yet\n",
-          c, __func__, rdelta(c), c->tryfirst_url);
+    c->direct = NULL;
+    join_url_swarm(c->n, c->authority);
+    connected(c, bev);
 }
 
-void connect_event_cb(bufferevent *bev, short events, void *ctx)
+void connect_direct_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
     debug("c:%p %s (%.2fms) bev:%p req:%s events:0x%x %s\n", c, __func__, rdelta(c), bev,
@@ -3016,7 +3028,7 @@ void connect_evcon_close_cb(evhttp_connection *evcon, void *ctx)
     evhttp_connection_set_closecb(evcon, NULL, NULL);
     c->server_req = NULL;
     c->dont_free = true;
-    connect_proxy_cancel(c);
+    connect_peer_cancel(c);
     connect_direct_cancel(c);
     c->dont_free = false;
     connect_cleanup(c);
@@ -3028,7 +3040,7 @@ void connect_peer(connect_req *c, bool injector_preference)
 
     assert(!c->pc);
     assert(!c->r.on_connect);
-    assert(!c->proxy_req);
+    assert(!c->peer_req);
     const char *via = c->server_req ? evhttp_find_header(c->server_req->input_headers, "Via") : NULL;
     c->r.via = via?strdup(via):NULL;
     queue_request(c->n, &c->r, ^bool(peer *peer) {
@@ -3039,15 +3051,15 @@ void connect_peer(connect_req *c, bool injector_preference)
         assert(!c->r.on_connect);
 
         c->pc = pc;
-        assert(!c->proxy_req);
-        c->proxy_req = evhttp_request_new(connect_done_cb, c);
-        debug("c:%p %s (%.2fms) made req:%p\n", c, __func__, rdelta(c), c->proxy_req);
+        assert(!c->peer_req);
+        c->peer_req = evhttp_request_new(connect_peer_done_cb, c);
+        debug("c:%p %s (%.2fms) made req:%p\n", c, __func__, rdelta(c), c->peer_req);
 
-        append_via(c->server_req, c->proxy_req->output_headers);
+        append_via(c->server_req, c->peer_req->output_headers);
 
-        evhttp_request_set_header_cb(c->proxy_req, connect_header_cb);
-        evhttp_request_set_error_cb(c->proxy_req, connect_error_cb);
-        evhttp_make_request(c->pc->evcon, c->proxy_req, EVHTTP_REQ_CONNECT, c->authority);
+        evhttp_request_set_header_cb(c->peer_req, connect_peer_header_cb);
+        evhttp_request_set_error_cb(c->peer_req, connect_peer_error_cb);
+        evhttp_make_request(c->pc->evcon, c->peer_req, EVHTTP_REQ_CONNECT, c->authority);
     });
 }
 
@@ -3098,11 +3110,8 @@ const char *https_strerror(https_result *result)
 
 tryfirst_stats* get_tryfirst_stats(const char *host)
 {
-    if (!g_tryfirst) {
-        return NULL;
-    }
     // don't ever do try first for stats.newnode.com - it adds too much overhead
-    if (strcasecmp(host, "stats.newnode.com") == 0) {
+    if (strcaseeq(host, "stats.newnode.com")) {
         return NULL;
     }
     if (!tryfirst_per_origin_server) {
@@ -3241,7 +3250,8 @@ int bufferevent_socket_connect_prefetched_address(bufferevent *bev, evdns_base *
     };
 
     evutil_addrinfo *res;
-    if (newnode_evdns_cache_lookup(dns_base, host, NULL, port, &res) == 0 && res) {
+    evutil_addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_TCP};
+    if (evdns_cache_lookup(dns_base, host, &hints, port, &res) == 0) {
         debug("bev:%p %s host:%s found in evdns cache\n", bev, __func__, host);
         if (!choose_addr(res, try_connect)) {
             debug("bev:%p %s host:%s unable to connect to any of: %s (%s)\n",
@@ -3268,7 +3278,7 @@ bool connect_direct_connect(connect_req *c)
 {
     network *n = c->n;
     c->direct = bufferevent_socket_new(n->evbase, -1, BEV_OPT_CLOSE_ON_FREE);
-    bufferevent_setcb(c->direct, NULL, NULL, connect_event_cb, c);
+    bufferevent_setcb(c->direct, NULL, NULL, connect_direct_event_cb, c);
     bufferevent_enable(c->direct, EV_READ);
     if (bufferevent_socket_connect_prefetched_address(c->direct, n->evdns, c->host, c->port) < 0) {
         debug("c:%p %s (%.2fms) bufferevent_socket_connect_prefetched_address failed: %s\n",
@@ -3300,10 +3310,6 @@ void connect_request(connect_req *c, const char *host, port_t port)
     snprintf(buf, sizeof(buf), "https://%s:%d/", host, port);
     c->tryfirst_url = strdup(buf);
 
-    if (strcasecmp(c->host, "stats.newnode.com") == 0) {
-        c->dont_count_bytes = true;
-    }
-
     debug("c:%p %s (%.2fms) CONNECT %s:%u\n", c, __func__, rdelta(c), host, port);
 
     c->dont_free = true;
@@ -3313,11 +3319,15 @@ void connect_request(connect_req *c, const char *host, port_t port)
     }
 
     if (NO_DIRECT) {
+        c->dont_free = false;
+        connect_cleanup(c);
         return;
     }
 
-    if (port != 443 || !g_tryfirst || is_ip_literal(host)) {
+    if (port != 443 || is_ip_literal(host)) {
         connect_direct_connect(c);
+        c->dont_free = false;
+        connect_cleanup(c);
         return;
     }
 
@@ -3365,21 +3375,18 @@ void connect_request(connect_req *c, const char *host, port_t port)
 
             update_tryfirst_stats(n, tfs, req.flags, req_time, result, c->host);
 
-            if (c->connected) {
-                debug("c:%p %s (%.2fms) already connected via a peer\n", c, __func__, rdelta(c));
+            debug("c:%p %s (%.2fms) %s direct connection appears likely to succeed\n",
+                  c, __func__, rdelta(c), c->tryfirst_url);
+            assert(c->direct);
+            if (!c->direct_connect_responded) {
+                debug("c:%p (%.2fms) %s try first ok; SYN-ACK not yet received from %s; not spliced yet\n",
+                      c, rdelta(c), c->tryfirst_url, c->host);
                 return;
             }
             if (!direct_likely_to_succeed(result)) {
                 debug("c:%p %s (%.2fms) %s direct connection is unlikely to succeed; cancelling\n",
                       c, __func__, rdelta(c), c->tryfirst_url);
                 connect_direct_cancel(c);
-                return;
-            }
-            debug("c:%p %s (%.2fms) %s direct connection appears likely to succeed\n",
-                  c, __func__, rdelta(c), c->tryfirst_url);
-            if (!c->direct || !c->direct_connect_responded) {
-                debug("c:%p (%.2fms) %s try first ok; SYN-ACK not yet received from %s; not spliced yet\n",
-                      c, rdelta(c), c->tryfirst_url, c->host);
                 return;
             }
             // splice the two ends (browser and direct) together
@@ -3393,6 +3400,7 @@ void connect_request(connect_req *c, const char *host, port_t port)
                   c, rdelta(c), c->tryfirst_url, c->host);
             bufferevent *direct = c->direct;
             c->direct = NULL;
+            join_url_swarm(c->n, c->authority);
             connected(c, direct);
         });
         debug("%s:%d g_https_cb(%s) => request:%p\n",
@@ -3401,8 +3409,6 @@ void connect_request(connect_req *c, const char *host, port_t port)
     }
 
     c->dont_free = false;
-
-    // may need to be cleaned up already
     connect_cleanup(c);
 }
 
@@ -3469,9 +3475,11 @@ static void http_request_cb(evhttp_request *req, void *arg)
     }
 
     const evhttp_uri *evuri = evhttp_request_get_evhttp_uri(req);
-    const char *scheme = evhttp_uri_get_scheme(evuri);
     const char *host = evhttp_uri_get_host(evuri);
-    dns_prefetch(n, host);
+    const char *scheme = evhttp_uri_get_scheme(evuri);
+    if (host) {
+        dns_prefetch(n, host);
+    }
 
     if (req->type == EVHTTP_REQ_CONNECT) {
         http_connect_request(n, req);
@@ -3488,6 +3496,7 @@ static void http_request_cb(evhttp_request *req, void *arg)
         evhttp_send_reply(req, 200, "OK", body);
         return;
     }
+
     if (req->type != EVHTTP_REQ_TRACE &&
         (!host || !scheme ||
          (evutil_ascii_strcasecmp(scheme, "http") && evutil_ascii_strcasecmp(scheme, "https")))) {
@@ -3860,7 +3869,7 @@ port_t recreate_listener(network *n, port_t port)
     socklen_t sslen = sizeof(ss);
     getsockname(fd, (sockaddr *)&ss, &sslen);
     g_port = sockaddr_get_port((sockaddr *)&ss);
-    printf("listening on TCP: %s:%d\n", "127.0.0.1", g_port);
+    printf("listening on TCP: %s\n", sockaddr_str((sockaddr *)&ss));
     return g_port;
 }
 
@@ -3972,11 +3981,6 @@ void query_ipinfo(network *n)
 
 void network_ifchange(network *n)
 {
-    if (!g_app_name) {
-        // client not initialized;
-        return;
-    }
-    g_ifchange_time = time(NULL);
     timer_cancel(g_ifchange_timer);
     g_ifchange_timer = timer_start(n, 5 * 1000, ^{
         g_ifchange_timer = NULL;

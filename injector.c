@@ -53,6 +53,7 @@ unsigned char sk[crypto_sign_SECRETKEYBYTES];
 void network_recreate_sockets_cb(network *n) {}
 bool network_process_udp_cb(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) { return false; }
 void network_ifchange(network *n) {}
+ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6) { return -1; }
 
 void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
 {

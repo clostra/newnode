@@ -135,10 +135,12 @@ struct network {
     dht *dht;
     timer *dht_timer;
     evhttp *http;
+    bool request_discovery_permission:1;
 };
 
 uint64_t us_clock(void);
 
+int evbuffer_copy(evbuffer *out, evbuffer *in);
 void evbuffer_clear(evbuffer *buf);
 void evbuffer_hash_update(evbuffer *buf, crypto_generichash_state *content_state);
 bool evbuffer_write_to_file(evbuffer *buf, int fd);

@@ -26,15 +26,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         NewNode.logLevel = 1
         let d = NewNode.connectionProxyDictionary
-        let http_port = (d?["HTTPPort"] ?? 0) as! Int
-        let socks_port = (d?["SOCKSPort"] ?? 0) as! Int
+        let port = (d?["HTTPPort"] ?? 0) as! Int
 
-        if (http_port == 0 || socks_port == 0) {
+        if (port == 0) {
             os_log("Error: NewNode could not be initialized")
             completionHandler(NewNodeError.initializationError)
             return
         }
-        os_log("NewNode initialized on %d,%d", http_port, socks_port)
+        os_log("NewNode initialized on %d", port)
         
         let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
 
@@ -45,16 +44,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         // in order of precedence:
         // 1
-        //proxySettings.proxyAutoConfigurationJavaScript = "function FindProxyForURL(url, host) {return \"PROXY 127.0.0.1:\(http_port); SOCKS 127.0.0.1:\(socks_port); DIRECT\";}";
+        //proxySettings.proxyAutoConfigurationJavaScript = "function FindProxyForURL(url, host) {return \"PROXY 127.0.0.1:\(port); SOCKS 127.0.0.1:\(port); DIRECT\";}";
 
         // 2
-        proxySettings.proxyAutoConfigurationURL = URL(string: "http://127.0.0.1:\(http_port)/proxy.pac")
+        proxySettings.proxyAutoConfigurationURL = URL(string: "http://127.0.0.1:\(port)/proxy.pac")
 
         // 3
         proxySettings.httpEnabled = true
-        proxySettings.httpServer = NEProxyServer(address: "127.0.0.1", port: Int(http_port))
+        proxySettings.httpServer = NEProxyServer(address: "127.0.0.1", port: Int(port))
         proxySettings.httpsEnabled = true
-        proxySettings.httpsServer = NEProxyServer(address: "127.0.0.1", port: Int(http_port))
+        proxySettings.httpsServer = NEProxyServer(address: "127.0.0.1", port: Int(port))
 
         settings.proxySettings = proxySettings
         

@@ -366,6 +366,12 @@ bool evbuffer_write_to_file(evbuffer *buf, int fd)
     return true;
 }
 
+int evbuffer_copy(evbuffer *out, evbuffer *in)
+{
+    const uint8_t *i = evbuffer_pullup(in, evbuffer_get_length(in));
+    return evbuffer_add(out, i, evbuffer_get_length(in));
+}
+
 void evbuffer_clear(evbuffer *buf)
 {
     // XXX: should unfreeze/freeze start depnding on input or output
@@ -663,6 +669,7 @@ network* network_setup(char *address, port_t port)
 
     network *n = alloc(network);
 
+    n->request_discovery_permission = true;
     n->address = strdup(address);
     n->port = port;
 

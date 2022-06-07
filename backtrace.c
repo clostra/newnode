@@ -1,9 +1,9 @@
 #ifndef ANDROID
 #include <execinfo.h>
 #else
-#include "log.h"
 // TODO: libunwind-ndk
 #endif
+#include "log.h"
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,7 +24,7 @@ void print_backtrace_array(void *array, size_t size)
 {
     char **strings = backtrace_symbols(array, size);
     for (size_t i = 0; i < size; i++) {
-        printf("%s\n", strings[i]);
+        log_error("%s\n", strings[i]);
     }
     free(strings);
 }
