@@ -455,7 +455,7 @@ ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6)
     dispatch_sync(dispatch_get_main_queue(), ^{
         Peer *peer = gBluetooth.peers[nsuuid];
         if (!peer) {
-            NSLog(@"endpoint not found: %@", nsuuid);
+            //NSLog(@"endpoint not found: %@", nsuuid);
             r = -1;
             return;
         }
