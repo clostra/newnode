@@ -135,6 +135,7 @@ struct network {
     dht *dht;
     timer *dht_timer;
     evhttp *http;
+    bool request_discovery_permission:1;
 };
 
 uint64_t us_clock(void);

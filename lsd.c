@@ -53,6 +53,13 @@ char* strnstr(const char *s, const char *find, size_t slen)
 
 void lsd_send(network *n, bool reply)
 {
+#if defined TARGET_OS_IOS && TARGET_OS_IOS
+    // iOS 14 decided multicast sendto() should prompt the user
+    if (!n->request_discovery_permission) {
+        return;
+    }
+#endif
+
     sockaddr_storage ss;
     socklen_t sslen = sizeof(ss);
     getsockname(n->fd, (sockaddr *)&ss, &sslen);

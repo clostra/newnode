@@ -13,6 +13,8 @@
 NetService *ns;
 Bluetooth *bt;
 network *g_n;
+bool request_bluetooth_permission = true;
+bool request_discovery_permission = true;
 
 @implementation NewNode
 
@@ -45,8 +47,8 @@ network *g_n;
         NSLog(@"Error: NewNode could not be initialized");
         return;
     }
-    ns = [NetService.alloc initWithNetwork:g_n];
-    bt = [Bluetooth.alloc initWithNetwork:g_n];
+    NewNodeExperimental.requestBluetoothPermission = request_bluetooth_permission;
+    NewNodeExperimental.requestDiscoveryPermission = request_discovery_permission;
     newnode_thread(g_n);
 }
 
@@ -80,6 +82,31 @@ network *g_n;
 }
 
 @end
+
+
+@implementation NewNodeExperimental
+
++ (void)setRequestBluetoothPermission:(bool)enabled
+{
+    request_bluetooth_permission = enabled;
+    if (!bt && request_bluetooth_permission) {
+        bt = [Bluetooth.alloc initWithNetwork:g_n];
+    }
+}
+
++ (void)setRequestDiscoveryPermission:(bool)enabled
+{
+    request_discovery_permission = enabled;
+    if (g_n) {
+        g_n->request_discovery_permission = request_discovery_permission;
+    }
+    if (!ns && request_discovery_permission) {
+        ns = [NetService.alloc initWithNetwork:g_n];
+    }
+}
+
+@end
+
 
 void ui_display_stats(const char *type, uint64_t direct, uint64_t peers)
 {

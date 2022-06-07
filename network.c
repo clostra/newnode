@@ -669,6 +669,7 @@ network* network_setup(char *address, port_t port)
 
     network *n = alloc(network);
 
+    n->request_discovery_permission = true;
     n->address = strdup(address);
     n->port = port;
 
