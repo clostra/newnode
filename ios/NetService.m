@@ -43,7 +43,7 @@
         _browser.includesPeerToPeer = YES;
         _browser.delegate = self;
 
-        if (![self batteryLow]) {
+        if (!self.batteryLow) {
             [_service publishWithOptions:0];
             [_browser searchForServicesOfType:ServiceType inDomain:@"local"];
         }
@@ -69,7 +69,7 @@
 
 - (void)batteryLevelChanged
 {
-    if ([self batteryLow]) {
+    if (self.batteryLow) {
         [_service stop];
         [_browser stop];
     } else {
