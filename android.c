@@ -154,49 +154,53 @@ void platform_dns_prefetch(network *n, const char *host)
     JNIEnv *env = get_env();
     jvm_frame(env, ^() {
         jclass cNewNode = (*env)->GetObjectClass(env, newNode);
-        CATCH(
-            debug("%s exception line %d\n", __func__, __LINE__);
-            return;
-        );
-        CALL_VOID(cNewNode, newNode,
-                  dnsPrefetch,
-                  Ljava/lang/String;,
-                  JSTR(host));
-        CATCH(
-            debug("%s exception line %d\n", __func__, __LINE__);
-            return;
-        );
+        CATCH(return);
+        CALL_VOID(cNewNode, newNode, dnsPrefetch, Ljava/lang/String;, JSTR(host));
+        CATCH(return);
     });
 }
 
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetchResult(JNIEnv *env, jobject thiz, jstring host, jobjectArray addresses)
 {
-
-    const char *hoststr = (*env)->GetStringUTFChars(env, host, NULL);
+    const char *cHost = (*env)->GetStringUTFChars(env, host, NULL);
     int n_addresses = (*env)->GetArrayLength(env, addresses);
 
-    debug("%s host:%s n_addresses:%d\n", __func__, hoststr, n_addresses);
+    debug("%s host:%s n_addresses:%d\n", __func__, cHost, n_addresses);
 
     evutil_addrinfo *rai = NULL;
     for (int i = 0; i < n_addresses; ++i) {
         jbyteArray jaddr = (jbyteArray)(*env)->GetObjectArrayElement(env, addresses, i);
         jbyte* addr = (*env)->GetByteArrayElements(env, jaddr, NULL); 
         socklen_t addrlen = (*env)->GetArrayLength(env, jaddr);
-        evutil_addrinfo nullhints = {
-            .ai_family = PF_UNSPEC,
-            .ai_socktype = SOCK_STREAM,
-            .ai_protocol = IPPROTO_TCP
-        };
-        evutil_addrinfo *ai = evutil_new_addrinfo_((sockaddr*)addr, addrlen, &nullhints);
-        rai = evutil_addrinfo_append_(rai, ai);
+        evutil_addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_TCP};
+        switch (addrlen) {
+        case sizeof(in_addr_t): {
+            sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = *(in_addr_t*)addr};
+            evutil_addrinfo *ai = evutil_new_addrinfo_((sockaddr*)&sin, sizeof(sin), &hints);
+            rai = evutil_addrinfo_append_(rai, ai);
+            break;
+        }
+        case sizeof(in6_addr): {
+            sockaddr_in6 sin6 = {.sin6_family = AF_INET6};
+            memcpy(&sin6.sin6_addr, &addr, sizeof(sin6.sin6_addr));
+            evutil_addrinfo *ai = evutil_new_addrinfo_((sockaddr*)&sin6, sizeof(sin6), &hints);
+            rai = evutil_addrinfo_append_(rai, ai);
+            break;
+        }
+        default:
+        case 0:
+            debug("unsupported addrlen:%u\n", addrlen);
+            break;
+        }
         (*env)->ReleaseByteArrayElements(env, jaddr, addr, JNI_ABORT);
     } 
 
-    char *temp_hoststr = strdup(hoststr);
+    char *temp_host = strdup(cHost);
+    (*env)->ReleaseStringUTFChars(env, host, cHost);
     network_async(g_n, ^{
-        dns_prefetch_store_result(g_n, rai, host, 0);
+        dns_prefetch_store_result(g_n, rai, temp_host, 0);
         evutil_freeaddrinfo(rai);
-        free(temp_hoststr);
+        free(temp_host);
     });
 }
 
@@ -211,7 +215,7 @@ void cancel_https_request(network *n, https_request_token token)
         }
         jclass cNewNode = (*env)->GetObjectClass(env, newNode);
         CATCH(return);
-        CALL_VOID(cNewNode, newNode, httpCancel, Lcom/newnode/internal/NewNode/CallblockThread;, https_request);
+        CALL_VOID(cNewNode, newNode, httpCancel, Lcom/clostra/newnode/internal/NewNode$CallblockThread;, https_request);
         CATCH(assert(false));
     });
 }
