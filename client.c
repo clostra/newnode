@@ -1845,7 +1845,7 @@ void stats_set_timer(network *n, uint64_t ms)
     if (stats_report_timer) {
         return;
     }
-    debug("%s ms:%"PRIu64"\n", __func__, ms);
+    //debug("%s ms:%"PRIu64"\n", __func__, ms);
     stats_report_timer = timer_start(n, ms, ^{
         stats_report_timer = NULL;
         stats_report(n);
@@ -1854,7 +1854,7 @@ void stats_set_timer(network *n, uint64_t ms)
 
 void stats_report(network *n)
 {
-    debug("%s\n", __func__);
+    //debug("%s\n", __func__);
     __block double next_time = -1;
     hash_iter(byte_count_per_authority, ^bool (const char *authority, void *val) {
         if (streq("stats.newnode.com", authority)) {
