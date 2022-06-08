@@ -557,7 +557,7 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
         return thread;
     }
 
-    static void httpCancel(CallblockThread t) {
+    void httpCancel(CallblockThread t) {
         t.callblock = 0;
         t.interrupt();
     }
