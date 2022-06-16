@@ -22,6 +22,9 @@ void evtimer_callback(evutil_socket_t fd, short events, void *arg)
 
 void timer_cancel(timer *t)
 {
+    if (!t) {
+        return;
+    }
     evtimer_del(&t->event);
     timer_free(t);
 }
@@ -35,9 +38,10 @@ timer* timer_new(network *n, uint64_t timeout_ms, short events, timer_callback c
         return NULL;
     }
     if (timeout_ms) {
-        timeval timeout;
-        timeout.tv_sec = timeout_ms / 1000;
-        timeout.tv_usec = (timeout_ms % 1000) * 1000;
+        timeval timeout = {
+            .tv_sec = timeout_ms / 1000,
+            .tv_usec = (timeout_ms % 1000) * 1000
+        };
         evtimer_add(&t->event, &timeout);
     } else {
         event_active(&t->event, 0, 0);

@@ -24,7 +24,8 @@ dependencies {
     implementation 'com.android.support.constraint:constraint-layout:1.+'
 
     // include AAR directly (must include dependencies)
-    implementation project(':newnode')
+    releaseImplementation files('../../../build/outputs/aar/newnode-release.aar')
+    debugImplementation files('../../../build/outputs/aar/newnode-debug.aar')
     implementation 'com.bugsnag:bugsnag-android:4.7.0'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0'
     implementation 'androidx.appcompat:appcompat:1.4.1'

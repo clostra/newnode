@@ -3,6 +3,7 @@
 #else
 // TODO: libunwind-ndk
 #endif
+#include "log.h"
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,7 +16,6 @@
 
 volatile bool g_backtrace_occurred;
 volatile pthread_t g_backtrace_thread;
-
 void *backtrace_array[100];
 size_t backtrace_array_size;
 
@@ -24,7 +24,7 @@ void print_backtrace_array(void *array, size_t size)
 {
     char **strings = backtrace_symbols(array, size);
     for (size_t i = 0; i < size; i++) {
-        printf("%s\n", strings[i]);
+        log_error("%s\n", strings[i]);
     }
     free(strings);
 }
@@ -39,6 +39,12 @@ void print_trace_skip(int skip)
 {
     // TODO: libunwind-ndk
 }
+
+int backtrace(void **buffer, int size)
+{
+    return 0;
+}
+
 #endif
 
 void print_trace()
@@ -46,6 +52,12 @@ void print_trace()
     print_trace_skip(0);
 }
 
+#ifdef ANDROID
+void backtrace_thread(pthread_t thread)
+{
+    debug("(alas, backtrace isn't implemented yet for Android.)\n");
+}
+#else
 static void backtrace_signal_handler(int signum, siginfo_t *info, void *context)
 {
     if (!pthread_equal(g_backtrace_thread, pthread_self())) {
@@ -79,3 +91,4 @@ void backtrace_thread(pthread_t thread)
     int skip = MIN(backtrace_array_size, 2);
     print_backtrace_array(&backtrace_array[skip], backtrace_array_size - skip);
 }
+#endif

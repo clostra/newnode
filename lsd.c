@@ -12,6 +12,7 @@
 #include "network.h"
 #include "log.h"
 #include "lsd.h"
+#include "newnode.h"
 
 
 typedef struct ip_mreq ip_mreq;
@@ -21,6 +22,7 @@ int lsd_fd = -1;
 int route_fd = -1;
 event lsd_event;
 event route_event;
+timer *route_timer;
 
 
 #ifndef __APPLE__
@@ -28,8 +30,7 @@ event route_event;
  * Find the first occurrence of find in s, where the search is limited to the
  * first slen characters of s.
  */
-char *
-strnstr(const char *s, const char *find, size_t slen)
+char* strnstr(const char *s, const char *find, size_t slen)
 {
     char c, sc;
     size_t len;
@@ -52,6 +53,13 @@ strnstr(const char *s, const char *find, size_t slen)
 
 void lsd_send(network *n, bool reply)
 {
+#if defined TARGET_OS_IOS && TARGET_OS_IOS
+    // iOS 14 decided multicast sendto() should prompt the user
+    if (!n->request_discovery_permission) {
+        return;
+    }
+#endif
+
     sockaddr_storage ss;
     socklen_t sslen = sizeof(ss);
     getsockname(n->fd, (sockaddr *)&ss, &sslen);
@@ -88,6 +96,7 @@ void lsd_send(network *n, bool reply)
 void lsd_read_cb(evutil_socket_t fd, short events, void *arg)
 {
     network *n = arg;
+
     for (;;) {
         uint8_t packet[1500];
         sockaddr_storage addr;
@@ -133,7 +142,13 @@ void route_read_cb(evutil_socket_t fd, short events, void *arg)
     network *n = arg;
     char buf[2048];
     recv(fd, buf, sizeof(buf), 0);
-    lsd_setup(n);
+    timer_cancel(route_timer);
+    route_timer = timer_start(n, 500, ^{
+        route_timer = NULL;
+        lsd_setup(n);
+    });
+    extern void network_ifchange(network *n);
+    network_ifchange(n);
 }
 
 void lsd_setup(network *n)
@@ -213,5 +228,7 @@ void lsd_setup(network *n)
     event_assign(&lsd_event, n->evbase, lsd_fd, EV_READ|EV_PERSIST, lsd_read_cb, n);
     event_add(&lsd_event, NULL);
 
-    lsd_send(n, false);
+    network_async(n, ^{
+        lsd_send(n, false);
+    });
 }

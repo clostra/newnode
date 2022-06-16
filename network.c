@@ -34,7 +34,7 @@
 #include "timer.h"
 #include "network.h"
 #include "icmp_handler.h"
-#include "utp_bufferevent.h"
+#include "bufferevent_utp.h"
 
 
 uint64 utp_on_firewall(utp_callback_arguments *a)
@@ -73,7 +73,7 @@ void map6to4(const in6_addr *in, in_addr *out)
     ((uint8_t *)&out->s_addr)[3] = in->s6_addr[15];
 }
 
-int udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
+ssize_t udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
 {
     ddebug("sendto(%zd, %s)\n", len, sockaddr_str(sa));
 
@@ -128,9 +128,7 @@ uint64 utp_callback_log(utp_callback_arguments *a)
 
 void dht_schedule(network *n, time_t tosleep)
 {
-    if (n->dht_timer) {
-        timer_cancel(n->dht_timer);
-    }
+    timer_cancel(n->dht_timer);
     n->dht_timer = timer_start(n, tosleep * 1000, ^{
         n->dht_timer = NULL;
         dht_schedule(n, dht_tick(n->dht));
@@ -238,15 +236,9 @@ void network_recreate_sockets(network *n)
     event_del(&n->udp_event);
     evutil_closesocket(n->fd);
     network_make_socket(n);
-    if (n->recreate_sockets_cb) {
-        n->recreate_sockets_cb();
+    if (network_recreate_sockets_cb != NULL) {
+        network_recreate_sockets_cb(n);
     }
-}
-
-void network_set_recreate_sockets(network *n, recreate_sockets_callback recreate_sockets_cb)
-{
-    Block_release(n->recreate_sockets_cb);
-    n->recreate_sockets_cb = Block_copy(recreate_sockets_cb);
 }
 
 bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
@@ -255,6 +247,12 @@ bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa
     if (utp_process_udp(n->utp, buf, len, sa, salen)) {
         return true;
     }
+    if (network_process_udp_cb != NULL) {
+        if (network_process_udp_cb(n, buf, len, sa, salen)) {
+            return true;
+        }
+    }
+    // dht last because dht_process_udp doesn't really tell us if it was a valid dht packet
     time_t tosleep;
     bool r = dht_process_udp(n->dht, buf, len, sa, salen, &tosleep);
     dht_schedule(n, tosleep);
@@ -368,6 +366,12 @@ bool evbuffer_write_to_file(evbuffer *buf, int fd)
     return true;
 }
 
+int evbuffer_copy(evbuffer *out, evbuffer *in)
+{
+    const uint8_t *i = evbuffer_pullup(in, evbuffer_get_length(in));
+    return evbuffer_add(out, i, evbuffer_get_length(in));
+}
+
 void evbuffer_clear(evbuffer *buf)
 {
     // XXX: should unfreeze/freeze start depnding on input or output
@@ -412,6 +416,12 @@ void evdns_log_cb(int severity, const char *msg)
 
 bufferevent* create_bev(event_base *base, void *userdata)
 {
+    network *n = (network*)userdata;
+    if (n->accepting_utp) {
+        utp_socket *s = n->accepting_utp;
+        n->accepting_utp = NULL;
+        return bufferevent_utp_new(base, n->utp, s, BEV_OPT_CLOSE_ON_FREE);
+    }
     return bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 }
 
@@ -549,6 +559,21 @@ const char* sockaddr_str(const sockaddr *sa)
     return buf;
 }
 
+const char* sockaddr_str_addronly(const sockaddr *sa)
+{
+    if (sa->sa_family == AF_LOCAL) {
+        const sockaddr_un *sun = (const sockaddr_un*)sa;
+        return sun->sun_path;
+    }
+    static char host[NI_MAXHOST] = {0};
+    int r = getnameinfo(sa, sockaddr_get_length(sa), host, sizeof(host), NULL, 0, NI_NUMERICHOST);
+    if (r) {
+        debug("getnameinfo failed %d %s\n", r, gai_strerror(r));
+        return "";
+    }
+    return host;
+}
+
 bool sockaddr_is_localhost(const sockaddr *sa, socklen_t salen)
 {
     switch(sa->sa_family) {
@@ -571,20 +596,25 @@ bool sockaddr_is_localhost(const sockaddr *sa, socklen_t salen)
     return false;
 }
 
-bool bufferevent_is_localhost(const bufferevent *bev)
+int bufferevent_getpeername(const bufferevent *bev, sockaddr *address, socklen_t *address_len)
 {
-    int fd = bufferevent_getfd((bufferevent*)bev);
-    sockaddr_storage ss;
-    socklen_t len = sizeof(ss);
-    getsockname(fd, (sockaddr *)&ss, &len);
-    // AF_LOCAL is from socketpair(), which means utp
-    if (ss.ss_family == AF_LOCAL) {
-        return false;
+    if (BEV_IS_UTP(bev)) {
+        utp_socket *utp = bufferevent_get_utp(bev);
+        return utp_getpeername(utp, address, address_len);
     }
-    return sockaddr_is_localhost((sockaddr *)&ss, len);
+    evutil_socket_t fd = bufferevent_getfd((bufferevent*)bev);
+    return getpeername(fd, address, address_len);
 }
 
-void set_max_nofile()
+bool bufferevent_is_localhost(const bufferevent *bev)
+{
+    sockaddr_storage ss;
+    socklen_t len = sizeof(ss);
+    bufferevent_getpeername(bev, (sockaddr*)&ss, &len);
+    return sockaddr_is_localhost((sockaddr*)&ss, len);
+}
+
+void set_max_nofile(void)
 {
     rlimit nofile;
     int r = getrlimit(RLIMIT_NOFILE, &nofile);
@@ -639,6 +669,7 @@ network* network_setup(char *address, port_t port)
 
     network *n = alloc(network);
 
+    n->request_discovery_permission = true;
     n->address = strdup(address);
     n->port = port;
 
@@ -703,7 +734,7 @@ network* network_setup(char *address, port_t port)
     }
     // don't add any content type automatically
     evhttp_set_default_content_type(n->http, NULL);
-    evhttp_set_bevcb(n->http, create_bev, NULL);
+    evhttp_set_bevcb(n->http, create_bev, n);
     evhttp_set_timeout(n->http, 50);
 
     if (evthread_make_base_notifiable(n->evbase)) {

@@ -3,7 +3,7 @@
 	url = https://github.com/clostra/libutp
 [submodule "libsodium"]
 	path = libsodium
-	url = https://github.com/jedisct1/libsodium
+	url = https://github.com/clostra/libsodium
 [submodule "blocksruntime"]
 	path = blocksruntime
 	url = https://github.com/mackyle/blocksruntime.git
@@ -12,15 +12,15 @@
 	url = https://github.com/clostra/dht
 [submodule "libunwind-ndk"]
 	path = libunwind-ndk
-	url = https://github.com/ivanarh/libunwind-ndk.git
+	url = https://github.com/clostra/libunwind-ndk.git
 [submodule "bugsnag-cocoa"]
 	path = bugsnag-cocoa
 	url = https://github.com/clostra/bugsnag-cocoa
 [submodule "libevent"]
 	path = libevent
 	url = https://github.com/clostra/libevent
-[submodule "ios/NewNode VPN/MMWormhole"]
-	path = ios/NewNode VPN/MMWormhole
+[submodule "ios/NewNode/MMWormhole"]
+	path = ios/vpn/MMWormhole
 	url = https://github.com/mutualmobile/MMWormhole.git
 [submodule "parson"]
 	path = parson

@@ -1,6 +1,8 @@
 #ifndef __OBFOO_H__
 #define __OBFOO_H__
 
+#include <assert.h>
+
 #include <sodium.h>
 
 #include "log.h"
@@ -65,15 +67,14 @@ typedef struct {
         uint8_t vc[member_sizeof(crypt_intro, vc)];
     };
     of_state state;
-    evbuffer *output;
     uint16_t discarding;
     bool incoming:1;
 } obfoo;
 
 obfoo* obfoo_new(void);
 void obfoo_write_intro(obfoo *o, evbuffer *out);
-ssize_t obfoo_input_filter(evbuffer *in, evbuffer *out, obfoo *o);
-ssize_t obfoo_output_filter(evbuffer *in, evbuffer *out, obfoo *o);
+ssize_t obfoo_input_filter(obfoo *o, evbuffer *in, evbuffer *out, evbuffer *response);
+ssize_t obfoo_output_filter(obfoo *o, evbuffer *in, evbuffer *out);
 void obfoo_free(obfoo *o);
 
 #endif // __OBFOO_H__

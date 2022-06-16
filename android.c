@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <assert.h>
 #include <pthread.h>
@@ -7,6 +8,7 @@
 #include <jni.h>
 #include <android/log.h>
 
+#include "libevent/util-internal.h"
 #include "bugsnag/bugsnag_ndk.h"
 
 #include "network.h"
@@ -16,13 +18,15 @@
 #include "newnode.h"
 #include "d2d.h"
 #include "lsd.h"
-
+#include "inttypes.h"
+#include "dns_prefetch.h"
 
 static int pfd[2];
 static JavaVM *g_jvm;
 static jobject bugsnagClient;
 static jobject newNode;
 static network *g_n;
+
 
 void* stdio_thread(void *useradata)
 {
@@ -132,11 +136,116 @@ JNIEnv* get_env()
     return env;
 }
 
-JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_callback(JNIEnv* env, jobject thiz, jlong callblock, jint value)
+// Request that the platform's DNS asychronously library query IPv4
+// and IPv6 addresses (as appropriate) for 'host'.  The results are
+// stored in evdns cache so that NN can connect directly to an address
+// and hopefully also in the platform's DNS cache so that any "try first"
+// attempts will be faster.
+//
+// This routine doesn't return a result.  NN will use the result of
+// the query if it arrives in time, or fallback to evdns.
+
+void platform_dns_prefetch(network *n, const char *host)
 {
+    debug("%s host:%s\n", __func__, host);
+    if (!newNode) {
+        return;
+    }
+    JNIEnv *env = get_env();
+    jvm_frame(env, ^() {
+        jclass cNewNode = (*env)->GetObjectClass(env, newNode);
+        CATCH(return);
+        CALL_VOID(cNewNode, newNode, dnsPrefetch, Ljava/lang/String;, JSTR(host));
+        CATCH(return);
+    });
+}
+
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetchResult(JNIEnv *env, jobject thiz, jstring host, jobjectArray addresses)
+{
+    const char *cHost = (*env)->GetStringUTFChars(env, host, NULL);
+    int n_addresses = (*env)->GetArrayLength(env, addresses);
+
+    debug("%s host:%s n_addresses:%d\n", __func__, cHost, n_addresses);
+
+    evutil_addrinfo *rai = NULL;
+    for (int i = 0; i < n_addresses; ++i) {
+        jbyteArray jaddr = (jbyteArray)(*env)->GetObjectArrayElement(env, addresses, i);
+        jbyte* addr = (*env)->GetByteArrayElements(env, jaddr, NULL); 
+        socklen_t addrlen = (*env)->GetArrayLength(env, jaddr);
+        evutil_addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_TCP};
+        switch (addrlen) {
+        case sizeof(in_addr_t): {
+            sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = *(in_addr_t*)addr};
+            evutil_addrinfo *ai = evutil_new_addrinfo_((sockaddr*)&sin, sizeof(sin), &hints);
+            rai = evutil_addrinfo_append_(rai, ai);
+            break;
+        }
+        case sizeof(in6_addr): {
+            sockaddr_in6 sin6 = {.sin6_family = AF_INET6};
+            memcpy(&sin6.sin6_addr, &addr, sizeof(sin6.sin6_addr));
+            evutil_addrinfo *ai = evutil_new_addrinfo_((sockaddr*)&sin6, sizeof(sin6), &hints);
+            rai = evutil_addrinfo_append_(rai, ai);
+            break;
+        }
+        default:
+        case 0:
+            debug("unsupported addrlen:%u\n", addrlen);
+            break;
+        }
+        (*env)->ReleaseByteArrayElements(env, jaddr, addr, JNI_ABORT);
+    } 
+
+    char *temp_host = strdup(cHost);
+    (*env)->ReleaseStringUTFChars(env, host, cHost);
     network_async(g_n, ^{
-        https_complete_callback cb = (https_complete_callback)callblock;
-        cb(value == 200);
+        dns_prefetch_store_result(g_n, rai, temp_host, 0);
+        evutil_freeaddrinfo(rai);
+        free(temp_host);
+    });
+}
+
+void cancel_https_request(network *n, https_request_token token)
+{
+    debug("%s request:%p)\n", __func__, token);
+    JNIEnv *env = get_env();
+    jvm_frame(env, ^{
+        jobject https_request = (*env)->NewLocalRef(env, token);
+        if (!https_request) {
+            return;
+        }
+        jclass cNewNode = (*env)->GetObjectClass(env, newNode);
+        CATCH(return);
+        CALL_VOID(cNewNode, newNode, httpCancel, Lcom/clostra/newnode/internal/NewNode$CallblockThread;, https_request);
+        CATCH(assert(false));
+    });
+}
+
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_httpCallback(JNIEnv* env, jobject thiz, jlong callblock, jint https_error, jint http_status_code, jint flags, jbyteArray body)
+{
+    extern char *https_strerror(https_result *result);
+
+    https_result result = {
+        .flags = flags,
+        .https_error = https_error,
+        .http_status = http_status_code,
+        .body_length = (*env)->GetArrayLength(env, body)
+    };
+
+    debug("g_https_cb callback length:%zu https_error:%d(%s) http_status_code:%d flags:0x%x\n", 
+          result.body_length, https_error, https_strerror(&result),
+          http_status_code, flags);
+
+    if (result.body_length > 0 && http_status_code == 200) {
+        result.body = malloc(result.body_length);
+        (*env)->GetByteArrayRegion(env, body, 0, result.body_length, (jbyte*)result.body);
+    }
+
+    https_complete_callback cb = (https_complete_callback)callblock;
+    network_async(g_n, ^{
+        if (cb) {
+            cb(http_status_code == 200, &result);
+        }
+        free(result.body);
         Block_release(cb);
     });
 }
@@ -157,29 +266,74 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeInit(JNI
     // XXX: TODO: use real app name
     const char *app_name = app_id;
     port_t newnode_port = 0;
-    g_n = newnode_init(app_name, app_id, &newnode_port, ^(const char* url, https_complete_callback cb) {
+    g_n = newnode_init(app_name, app_id, &newnode_port, ^(const https_request *request, const char* url, https_complete_callback cb) {
+        network *n = g_n;
+        debug("g_https_cb(%s)\n", url);
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshadow"
         JNIEnv *env = get_env();
 #pragma clang diagnostic pop
+        __block jobject https_request = NULL;
         jvm_frame(env, ^{
-            if (!newNode) {
-                cb(false);
-                return;
+            jbyteArray request_body = (*env)->NewByteArray(env, request->body_size);
+            if (request->body && request->body_size > 0) {
+                (*env)->SetByteArrayRegion(env, request_body, 0, request->body_size, (const jbyte *)request->body);
             }
+            jobjectArray request_header_names = NULL;
+            jobjectArray request_header_values = NULL;
+            if (request->headers) {
+                int nheaders;
+                for (nheaders = 0; request->headers[nheaders]; ++nheaders);
+                if (request->body_content_type) {
+                    ++nheaders;
+                }
+                request_header_names = (*env)->NewObjectArray(env, nheaders, (*env)->FindClass(env, "java/lang/String"), 0);
+                request_header_values = (*env)->NewObjectArray(env, nheaders, (*env)->FindClass(env, "java/lang/String"), 0);
+                for (int i = 0; request->headers[i]; ++i) {
+                    char *colon = strchr(request->headers[i], ':');
+                    if (!colon) {
+                        continue;
+                    }
+                    auto_free char *name = strndup(request->headers[i], colon - request->headers[i]);
+                    char *value = colon + 1;
+                    // debug("%s setting header[%d] %s=%s\n", __func__, i, name, value);
+                    (*env)->SetObjectArrayElement(env, request_header_names, i, JSTR(name));
+                    (*env)->SetObjectArrayElement(env, request_header_values, i, JSTR(value));
+                }
+                if (request->body_content_type) {
+                    (*env)->SetObjectArrayElement(env, request_header_names, nheaders - 1, JSTR("Content-Type"));
+                    (*env)->SetObjectArrayElement(env, request_header_values, nheaders - 1, JSTR(request->body_content_type));
+                }
+            } else {
+                request_header_names = (*env)->NewObjectArray(env, 0, (*env)->FindClass(env, "java/lang/String"), 0);
+                request_header_values = (*env)->NewObjectArray(env, 0, (*env)->FindClass(env, "java/lang/String"), 0);
+            }
+
+            // debug("(jni call) http(url:%s, cbc:%p, flags:0x%08x, timeout:%d, bufsize:%lu)\n",
+            //       url, cbc, request->flags, request->timeout_sec, (unsigned long) request->bufsize);
+            // debug("           flags=%s\n", expand_flags(request->flags));
+
             jclass cNewNode = (*env)->GetObjectClass(env, newNode);
-            CATCH(
-                cb(false);
-                return;
-            );
-            https_complete_callback cbc = Block_copy(cb);
-            CALL_VOID(cNewNode, newNode, http, Ljava/lang/String;J, JSTR(url), (jlong)cbc);
-            CATCH(
-                cb(false);
-                Block_release(cbc);
-                return;
-            );
+            CATCH(return);
+            // javap -s -classpath ./build/intermediates/javac/debug/classes com.clostra.newnode.internal.NewNode
+            jmethodID mHttp = (*env)->GetMethodID(env, cNewNode, "http", "(Ljava/lang/String;JIIII[Ljava/lang/String;[Ljava/lang/String;[B)Lcom/clostra/newnode/internal/NewNode$CallblockThread;");
+            if (mHttp) {
+                https_complete_callback cbc = Block_copy(cb);
+                jobject t = (*env)->CallObjectMethod(env, newNode, mHttp,
+                    JSTR(url),
+                    (jlong)cbc,               // callblock pointer (encoded as long)
+                    (jint)request->flags,
+                    (jint)(request->timeout_sec * 1000), // timeout_msec
+                    (jint)request->bufsize, // bufsize
+                    (jint)newnode_get_port(n),
+                    request_header_names,
+                    request_header_values,
+                    request_body);
+                CATCH(assert(false));
+                https_request = (*env)->NewWeakGlobalRef(env, t);
+            }
         });
+        return (https_request_token)https_request;
     });
 }
 
@@ -261,8 +415,8 @@ bool vpn_protect(int socket)
     return r;
 }
 
-int __real_bind(int socket, const struct sockaddr *address, socklen_t length);
-int __wrap_bind(int socket, const struct sockaddr *address, socklen_t length)
+int __real_bind(int socket, const sockaddr *address, socklen_t length);
+int __wrap_bind(int socket, const sockaddr *address, socklen_t length)
 {
     //debug("bind %d %s\n", socket, sockaddr_str(address));
     if (!sockaddr_is_localhost(address, length) && !vpn_protect(socket)) {
@@ -273,8 +427,8 @@ int __wrap_bind(int socket, const struct sockaddr *address, socklen_t length)
     return __real_bind(socket, address, length);
 }
 
-int __real_connect(int socket, const struct sockaddr *address, socklen_t length);
-int __wrap_connect(int socket, const struct sockaddr *address, socklen_t length)
+int __real_connect(int socket, const sockaddr *address, socklen_t length);
+int __wrap_connect(int socket, const sockaddr *address, socklen_t length)
 {
     //debug("connect %d %s\n", socket, sockaddr_str(address));
     sockaddr_storage ss;
@@ -289,8 +443,8 @@ int __wrap_connect(int socket, const struct sockaddr *address, socklen_t length)
     return __real_connect(socket, address, length);
 }
 
-ssize_t __real_sendto(int socket, const void *buffer, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len);
-ssize_t __wrap_sendto(int socket, const void *buffer, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len)
+ssize_t __real_sendto(int socket, const void *buffer, size_t length, int flags, const sockaddr *dest_addr, socklen_t dest_len);
+ssize_t __wrap_sendto(int socket, const void *buffer, size_t length, int flags, const sockaddr *dest_addr, socklen_t dest_len)
 {
     //debug("sendto %d %s\n", socket, sockaddr_str(dest_addr));
     sockaddr_storage ss;
@@ -353,6 +507,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(
 
 ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6)
 {
+    return -1;
     JNIEnv *env = get_env();
     push_frame();
     ssize_t r = ^ssize_t() {
@@ -400,48 +555,6 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_setLogLevel(JNI
 JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_newnodeRun(JNIEnv* env, jobject thiz)
 {
     newnode_run(g_n);
-}
-
-
-// XXX: compat. can be removed when we have a NewNode.aar loader here in JNI
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_updateBugsnagDetails(JNIEnv* env, jobject thiz, int notifyType)
-{
-    Java_com_clostra_newnode_internal_NewNode_updateBugsnagDetails(env, thiz, notifyType);
-}
-
-// XXX: compat
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_useEphemeralPort(JNIEnv* env, jobject thiz)
-{
-}
-
-// XXX: compat
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
-{
-    Java_com_clostra_newnode_internal_NewNode_setCacheDir(env, thiz, cacheDir);
-}
-
-// XXX: compat
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_registerProxy(JNIEnv* env, jobject thiz)
-{
-    Java_com_clostra_newnode_internal_NewNode_registerProxy(env, thiz);
-}
-
-// XXX: compat
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_unregisterProxy(JNIEnv* env, jobject thiz)
-{
-    Java_com_clostra_newnode_internal_NewNode_unregisterProxy(env, thiz);
-}
-
-// XXX: compat
-JNIEXPORT void JNICALL Java_com_clostra_newnode_NewNode_setLogLevel(JNIEnv* env, jobject thiz, jint level)
-{
-    Java_com_clostra_newnode_internal_NewNode_setLogLevel(env, thiz, level);
-}
-
-// XXX: compat
-JNIEXPORT void JNICALL Java_com_clostra_dcdn_Dcdn_setCacheDir(JNIEnv* env, jobject thiz, jstring cacheDir)
-{
-    Java_com_clostra_newnode_internal_NewNode_setCacheDir(env, thiz, cacheDir);
 }
 
 jint JNI_OnLoad(JavaVM *vm, void *reserved)

@@ -1,0 +1,2 @@
+@interface HTTPSRequest : NSObject
+@end

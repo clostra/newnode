@@ -3,6 +3,7 @@
 #include "log.h"
 #import "NetService.h"
 #import "Bluetooth.h"
+#import "HTTPSRequest.h"
 #import "NewNode-iOS.h"
 #define BSG_KSLogger_Level TRACE
 #define BSG_LOG_LEVEL BSG_LOGLEVEL_DEBUG
@@ -12,6 +13,8 @@
 NetService *ns;
 Bluetooth *bt;
 network *g_n;
+bool request_bluetooth_permission = true;
+bool request_discovery_permission = true;
 
 @implementation NewNode
 
@@ -36,19 +39,16 @@ network *g_n;
     NSString *appId = NSBundle.mainBundle.infoDictionary[@"CFBundleIdentifier"];
 
     port_t port = 0;
-    g_n = newnode_init(appName.UTF8String, appId.UTF8String, &port, ^(const char *url, https_complete_callback cb) {
-        debug("https: %s\n", url);
-        [[NSURLSession.sharedSession downloadTaskWithURL:[NSURL URLWithString:@(url)]
-                                       completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
-            cb(!!error);
-        }] resume];
+    g_n = newnode_init(appName.UTF8String, appId.UTF8String, &port, ^(const https_request *request, const char *url, const https_complete_callback cb) {
+        network *n = g_n;
+        return do_https(n, request, url, cb);
     });
     if (!g_n) {
         NSLog(@"Error: NewNode could not be initialized");
         return;
     }
-    ns = [NetService.alloc initWithNetwork:g_n];
-    bt = [Bluetooth.alloc initWithNetwork:g_n];
+    NewNodeExperimental.requestBluetoothPermission = request_bluetooth_permission;
+    NewNodeExperimental.requestDiscoveryPermission = request_discovery_permission;
     newnode_thread(g_n);
 }
 
@@ -83,6 +83,31 @@ network *g_n;
 
 @end
 
+
+@implementation NewNodeExperimental
+
++ (void)setRequestBluetoothPermission:(bool)enabled
+{
+    request_bluetooth_permission = enabled;
+    if (!bt && request_bluetooth_permission) {
+        bt = [Bluetooth.alloc initWithNetwork:g_n];
+    }
+}
+
++ (void)setRequestDiscoveryPermission:(bool)enabled
+{
+    request_discovery_permission = enabled;
+    if (g_n) {
+        g_n->request_discovery_permission = request_discovery_permission;
+    }
+    if (!ns && request_discovery_permission) {
+        ns = [NetService.alloc initWithNetwork:g_n];
+    }
+}
+
+@end
+
+
 void ui_display_stats(const char *type, uint64_t direct, uint64_t peers)
 {
     @autoreleasepool {
@@ -92,3 +117,5 @@ void ui_display_stats(const char *type, uint64_t direct, uint64_t peers)
                         userInfo:@{@"scope": @(type), @"direct_bytes": @(direct), @"peers_bytes": @(peers)}];
     }
 }
+
+bool network_process_udp_cb(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) { return false; }

@@ -8,31 +8,31 @@ function build_android {
     HOST_TAG=$(echo "$HOST_OS-$HOST_ARCH" | tr '[:upper:]' '[:lower:]')
     TRIPLE=$NDK_TRIPLE
 
-
-    export ANDROID_NDK_HOME=$NDK
-    cd libsodium
-    test -f configure || ./autogen.sh
-    test -f libsodium-android-$CPU_ARCH/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
-    cd ..
-    LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-android-$CPU_ARCH/include
-    LIBSODIUM=libsodium/libsodium-android-$CPU_ARCH/lib/libsodium.a
-
-
     export TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/$HOST_TAG
-    export AR=$TOOLCHAIN/bin/$NDK_TRIPLE-ar
-    export AS=$TOOLCHAIN/bin/$NDK_TRIPLE-as
+    export AR=$TOOLCHAIN/bin/llvm-ar
+    export AS=$TOOLCHAIN/bin/llvm-as
     export CC=$TOOLCHAIN/bin/$NDK_CLANG_TRIPLE-clang
     export CXX=$TOOLCHAIN/bin/$NDK_CLANG_TRIPLE-clang++
-    export LD=$TOOLCHAIN/bin/$NDK_TRIPLE-ld
-    export OBJDUMP=$TOOLCHAIN/bin/$NDK_TRIPLE-objdump
-    export RANLIB=$TOOLCHAIN/bin/$NDK_TRIPLE-ranlib
-    export STRIP=$TOOLCHAIN/bin/$NDK_TRIPLE-strip
+    export LD=$TOOLCHAIN/bin/ld
+    export OBJDUMP=$TOOLCHAIN/bin/llvm-objdump
+    export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
+    export STRIP=$TOOLCHAIN/bin/llvm-strip
+
+
+    PARSON_CFLAGS=-Iparson
+
+    cd libsodium
+    export ANDROID_NDK_HOME=$NDK
+    test -f libsodium-android-$SODIUM_CPU_ARCH/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
+    cd ..
+    LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-android-$SODIUM_CPU_ARCH/include
+    LIBSODIUM=libsodium/libsodium-android-$SODIUM_CPU_ARCH/lib/libsodium.a
 
 
     cd libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
-        CFLAGS="-fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" ./configure --disable-shared --disable-openssl --with-pic $LIBEVENT_CONFIG --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
+        CFLAGS="-fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" ./configure --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --with-pic $LIBEVENT_CONFIG --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
         make clean
         make -j`nproc`
         make install
@@ -95,14 +95,16 @@ function build_android {
     rm *.o || true
     $CC $CFLAGS -c dht/dht.c -o dht_dht.o
     for file in android.c bev_splice.c base64.c client.c d2d.c dht.c http.c log.c lsd.c \
-                icmp_handler.c hash_table.c merkle_tree.c network.c obfoo.c sha1.c thread.c timer.c utp_bufferevent.c \
+                icmp_handler.c hash_table.c merkle_tree.c network.c obfoo.c sha1.c thread.c timer.c bufferevent_utp.c \
+                backtrace.c stall_detector.c \
+                dns_prefetch.c \
                 bugsnag/bugsnag_ndk.c \
                 bugsnag/bugsnag_ndk_report.c \
                 bugsnag/bugsnag_unwind.c \
                 bugsnag/deps/bugsnag/report.c \
                 bugsnag/deps/bugsnag/serialize.c \
-                bugsnag/deps/deps/parson/parson.c; do
-        $CC $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBUNWIND_CFLAGS -c $file
+                parson/parson.c; do
+        $CC $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBUNWIND_CFLAGS $PARSON_CFLAGS -c $file
     done
     #$CC $CFLAGS -shared -Wl,--version-script=android_export_list -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND
     $CC $CFLAGS -shared -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND -Wl,--wrap=bind -Wl,--wrap=connect -Wl,--wrap=sendto
@@ -114,13 +116,14 @@ function build_android {
     ls -ld $OUT/*
 }
 
-NDK_API=16
+NDK_API=19
 ARCH=arm
 ABI=armeabi-v7a
 CPU_ARCH=armv7-a
 NDK_TRIPLE=arm-linux-androideabi
 NDK_CLANG_TRIPLE=armv7a-linux-androideabi$NDK_API
 SODIUM_SCRIPT=$CPU_ARCH
+SODIUM_CPU_ARCH=$CPU_ARCH
 # large file support doesn't work for sendfile until API 21
 # https://github.com/android-ndk/ndk/issues/536#issuecomment-333197557
 LIBEVENT_CONFIG=--disable-largefile
@@ -135,6 +138,7 @@ CPU_ARCH=armv8-a
 NDK_TRIPLE=aarch64-linux-android
 NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$CPU_ARCH
+SODIUM_CPU_ARCH=$CPU_ARCH+crypto
 build_android &
 wait %%
 
@@ -145,6 +149,7 @@ CPU_ARCH=i686
 NDK_TRIPLE=i686-linux-android
 NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$ABI
+SODIUM_CPU_ARCH=$CPU_ARCH
 # disabled until libsodium is fixed https://github.com/jedisct1/libsodium/issues/1047
 #build_android &
 #wait %%
@@ -156,5 +161,6 @@ CPU_ARCH=westmere
 NDK_TRIPLE=x86_64-linux-android
 NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$ABI
+SODIUM_CPU_ARCH=$CPU_ARCH
 build_android &
 wait %%

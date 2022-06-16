@@ -1,0 +1,675 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 52;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0F0A7FF32667C9F20093B85D /* FontUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F0A7FF22667C9F20093B85D /* FontUpdater.swift */; };
+		0F5C8AB92664F94A00D013D7 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 0F5C8AB82664F94A00D013D7 /* Localizable.strings */; };
+		0F5C8ABC2664FB8800D013D7 /* InfoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F5C8ABB2664FB8800D013D7 /* InfoViewController.swift */; };
+		0F7D6A662667003C0002A2E2 /* SpinnerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F7D6A652667003C0002A2E2 /* SpinnerView.swift */; };
+		0FBB0AF726616E0F00D89502 /* Colors.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0FBB0AF626616E0F00D89502 /* Colors.xcassets */; };
+		0FBB0AFA2661789F00D89502 /* GradientView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FBB0AF92661789F00D89502 /* GradientView.swift */; };
+		3C34FA8522D54A160001F694 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C34FA8422D54A160001F694 /* NetworkExtension.framework */; platformFilter = ios; };
+		3C3C057C22D6192600C68AF5 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C34FA8422D54A160001F694 /* NetworkExtension.framework */; };
+		3C3D5BDD24E457ED00F17659 /* NewNode.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C3D5BCD24E3BA1E00F17659 /* NewNode.xcframework */; };
+		3C50125422D4AF5000F8487C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C50125322D4AF5000F8487C /* AppDelegate.swift */; };
+		3C50125622D4AF5000F8487C /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C50125522D4AF5000F8487C /* ViewController.swift */; };
+		3C50125922D4AF5000F8487C /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 3C50125722D4AF5000F8487C /* Main.storyboard */; };
+		3C50125B22D4AF5100F8487C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3C50125A22D4AF5100F8487C /* Assets.xcassets */; };
+		3C50125E22D4AF5100F8487C /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 3C50125C22D4AF5100F8487C /* LaunchScreen.storyboard */; };
+		3C50127122D4B10000F8487C /* Tunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 3C50126922D4B10000F8487C /* Tunnel.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		3C5012C222D5316F00F8487C /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C50126B22D4B10000F8487C /* PacketTunnelProvider.swift */; };
+		3CA15F1B2692D91B00924A2F /* MMWormholeFileTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F0C2692D91B00924A2F /* MMWormholeFileTransiting.m */; };
+		3CA15F1C2692D91B00924A2F /* MMWormholeFileTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F0C2692D91B00924A2F /* MMWormholeFileTransiting.m */; };
+		3CA15F1D2692D91B00924A2F /* MMWormholeSessionMessageTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F112692D91B00924A2F /* MMWormholeSessionMessageTransiting.m */; };
+		3CA15F1E2692D91B00924A2F /* MMWormholeSessionMessageTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F112692D91B00924A2F /* MMWormholeSessionMessageTransiting.m */; };
+		3CA15F1F2692D91B00924A2F /* MMWormhole.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F122692D91B00924A2F /* MMWormhole.m */; };
+		3CA15F202692D91B00924A2F /* MMWormhole.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F122692D91B00924A2F /* MMWormhole.m */; };
+		3CA15F212692D91B00924A2F /* MMWormholeSessionContextTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F132692D91B00924A2F /* MMWormholeSessionContextTransiting.m */; };
+		3CA15F222692D91B00924A2F /* MMWormholeSessionContextTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F132692D91B00924A2F /* MMWormholeSessionContextTransiting.m */; };
+		3CA15F232692D91B00924A2F /* MMWormholeSessionFileTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F162692D91B00924A2F /* MMWormholeSessionFileTransiting.m */; };
+		3CA15F242692D91B00924A2F /* MMWormholeSessionFileTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F162692D91B00924A2F /* MMWormholeSessionFileTransiting.m */; };
+		3CA15F252692D91B00924A2F /* MMWormholeSession.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F172692D91B00924A2F /* MMWormholeSession.m */; };
+		3CA15F262692D91B00924A2F /* MMWormholeSession.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F172692D91B00924A2F /* MMWormholeSession.m */; };
+		3CA15F272692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F192692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.m */; };
+		3CA15F282692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F192692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.m */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3C50126F22D4B10000F8487C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3C50124822D4AF5000F8487C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3C50126822D4B10000F8487C;
+			remoteInfo = Tunnel;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		3C3D5B6624E3A45A00F17659 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3C50127522D4B10000F8487C /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				3C50127122D4B10000F8487C /* Tunnel.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		0F0A7FF22667C9F20093B85D /* FontUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontUpdater.swift; sourceTree = "<group>"; };
+		0F5C8AB82664F94A00D013D7 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
+		0F5C8ABB2664FB8800D013D7 /* InfoViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InfoViewController.swift; sourceTree = "<group>"; };
+		0F7D6A652667003C0002A2E2 /* SpinnerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpinnerView.swift; sourceTree = "<group>"; };
+		0FBB0AF626616E0F00D89502 /* Colors.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Colors.xcassets; sourceTree = "<group>"; };
+		0FBB0AF92661789F00D89502 /* GradientView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GradientView.swift; sourceTree = "<group>"; };
+		3C34FA8322D54A160001F694 /* NewNode VPN.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "NewNode VPN.entitlements"; sourceTree = "<group>"; };
+		3C34FA8422D54A160001F694 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
+		3C34FA8622D560C80001F694 /* NewNode-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NewNode-Bridging-Header.h"; sourceTree = "<group>"; };
+		3C3C05A122DD3CB700C68AF5 /* NewNode VPN-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NewNode VPN-Bridging-Header.h"; sourceTree = "<group>"; };
+		3C3D5BCD24E3BA1E00F17659 /* NewNode.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = NewNode.xcframework; path = ../../NewNode.xcframework; sourceTree = "<group>"; };
+		3C50125022D4AF5000F8487C /* NewNode VPN.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NewNode VPN.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		3C50125322D4AF5000F8487C /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		3C50125522D4AF5000F8487C /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		3C50125822D4AF5000F8487C /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		3C50125A22D4AF5100F8487C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		3C50125D22D4AF5100F8487C /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		3C50125F22D4AF5100F8487C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		3C50126922D4B10000F8487C /* Tunnel.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = Tunnel.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		3C50126B22D4B10000F8487C /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
+		3C50126D22D4B10000F8487C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		3C50126E22D4B10000F8487C /* Tunnel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tunnel.entitlements; sourceTree = "<group>"; };
+		3CA15F0C2692D91B00924A2F /* MMWormholeFileTransiting.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MMWormholeFileTransiting.m; path = MMWormhole/Source/MMWormholeFileTransiting.m; sourceTree = "<group>"; };
+		3CA15F0D2692D91B00924A2F /* MMWormholeSession.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MMWormholeSession.h; path = MMWormhole/Source/MMWormholeSession.h; sourceTree = "<group>"; };
+		3CA15F0E2692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MMWormholeCoordinatedFileTransiting.h; path = MMWormhole/Source/MMWormholeCoordinatedFileTransiting.h; sourceTree = "<group>"; };
+		3CA15F0F2692D91B00924A2F /* MMWormholeSessionMessageTransiting.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MMWormholeSessionMessageTransiting.h; path = MMWormhole/Source/MMWormholeSessionMessageTransiting.h; sourceTree = "<group>"; };
+		3CA15F102692D91B00924A2F /* MMWormholeSessionFileTransiting.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MMWormholeSessionFileTransiting.h; path = MMWormhole/Source/MMWormholeSessionFileTransiting.h; sourceTree = "<group>"; };
+		3CA15F112692D91B00924A2F /* MMWormholeSessionMessageTransiting.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MMWormholeSessionMessageTransiting.m; path = MMWormhole/Source/MMWormholeSessionMessageTransiting.m; sourceTree = "<group>"; };
+		3CA15F122692D91B00924A2F /* MMWormhole.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MMWormhole.m; path = MMWormhole/Source/MMWormhole.m; sourceTree = "<group>"; };
+		3CA15F132692D91B00924A2F /* MMWormholeSessionContextTransiting.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MMWormholeSessionContextTransiting.m; path = MMWormhole/Source/MMWormholeSessionContextTransiting.m; sourceTree = "<group>"; };
+		3CA15F142692D91B00924A2F /* MMWormhole.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MMWormhole.h; path = MMWormhole/Source/MMWormhole.h; sourceTree = "<group>"; };
+		3CA15F152692D91B00924A2F /* MMWormholeTransiting.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MMWormholeTransiting.h; path = MMWormhole/Source/MMWormholeTransiting.h; sourceTree = "<group>"; };
+		3CA15F162692D91B00924A2F /* MMWormholeSessionFileTransiting.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MMWormholeSessionFileTransiting.m; path = MMWormhole/Source/MMWormholeSessionFileTransiting.m; sourceTree = "<group>"; };
+		3CA15F172692D91B00924A2F /* MMWormholeSession.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MMWormholeSession.m; path = MMWormhole/Source/MMWormholeSession.m; sourceTree = "<group>"; };
+		3CA15F182692D91B00924A2F /* MMWormholeFileTransiting.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MMWormholeFileTransiting.h; path = MMWormhole/Source/MMWormholeFileTransiting.h; sourceTree = "<group>"; };
+		3CA15F192692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MMWormholeCoordinatedFileTransiting.m; path = MMWormhole/Source/MMWormholeCoordinatedFileTransiting.m; sourceTree = "<group>"; };
+		3CA15F1A2692D91B00924A2F /* MMWormholeSessionContextTransiting.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MMWormholeSessionContextTransiting.h; path = MMWormhole/Source/MMWormholeSessionContextTransiting.h; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3C50124D22D4AF5000F8487C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3C34FA8522D54A160001F694 /* NetworkExtension.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3C50126622D4B10000F8487C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3C3C057C22D6192600C68AF5 /* NetworkExtension.framework in Frameworks */,
+				3C3D5BDD24E457ED00F17659 /* NewNode.xcframework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3C50124722D4AF5000F8487C = {
+			isa = PBXGroup;
+			children = (
+				3CA15F0B2692D8F300924A2F /* MMWormhole */,
+				3C50125222D4AF5000F8487C /* NewNode VPN */,
+				3C50126A22D4B10000F8487C /* Tunnel */,
+				3C50125122D4AF5000F8487C /* Products */,
+				3C50127622D5256700F8487C /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		3C50125122D4AF5000F8487C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				3C50125022D4AF5000F8487C /* NewNode VPN.app */,
+				3C50126922D4B10000F8487C /* Tunnel.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		3C50125222D4AF5000F8487C /* NewNode VPN */ = {
+			isa = PBXGroup;
+			children = (
+				3C34FA8322D54A160001F694 /* NewNode VPN.entitlements */,
+				3C3C05A122DD3CB700C68AF5 /* NewNode VPN-Bridging-Header.h */,
+				3C50125722D4AF5000F8487C /* Main.storyboard */,
+				3C50125A22D4AF5100F8487C /* Assets.xcassets */,
+				0FBB0AF626616E0F00D89502 /* Colors.xcassets */,
+				3C50125C22D4AF5100F8487C /* LaunchScreen.storyboard */,
+				0F5C8AB82664F94A00D013D7 /* Localizable.strings */,
+				3C50125F22D4AF5100F8487C /* Info.plist */,
+				3C50125322D4AF5000F8487C /* AppDelegate.swift */,
+				3C50125522D4AF5000F8487C /* ViewController.swift */,
+				0F5C8ABB2664FB8800D013D7 /* InfoViewController.swift */,
+				0FBB0AF92661789F00D89502 /* GradientView.swift */,
+				0F0A7FF22667C9F20093B85D /* FontUpdater.swift */,
+				0F7D6A652667003C0002A2E2 /* SpinnerView.swift */,
+			);
+			path = "NewNode VPN";
+			sourceTree = "<group>";
+		};
+		3C50126A22D4B10000F8487C /* Tunnel */ = {
+			isa = PBXGroup;
+			children = (
+				3C50126B22D4B10000F8487C /* PacketTunnelProvider.swift */,
+				3C50126D22D4B10000F8487C /* Info.plist */,
+				3C50126E22D4B10000F8487C /* Tunnel.entitlements */,
+				3C34FA8622D560C80001F694 /* NewNode-Bridging-Header.h */,
+			);
+			path = Tunnel;
+			sourceTree = "<group>";
+		};
+		3C50127622D5256700F8487C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				3C3D5BCD24E3BA1E00F17659 /* NewNode.xcframework */,
+				3C34FA8422D54A160001F694 /* NetworkExtension.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		3CA15F0B2692D8F300924A2F /* MMWormhole */ = {
+			isa = PBXGroup;
+			children = (
+				3CA15F142692D91B00924A2F /* MMWormhole.h */,
+				3CA15F122692D91B00924A2F /* MMWormhole.m */,
+				3CA15F0E2692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.h */,
+				3CA15F192692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.m */,
+				3CA15F182692D91B00924A2F /* MMWormholeFileTransiting.h */,
+				3CA15F0C2692D91B00924A2F /* MMWormholeFileTransiting.m */,
+				3CA15F0D2692D91B00924A2F /* MMWormholeSession.h */,
+				3CA15F172692D91B00924A2F /* MMWormholeSession.m */,
+				3CA15F1A2692D91B00924A2F /* MMWormholeSessionContextTransiting.h */,
+				3CA15F132692D91B00924A2F /* MMWormholeSessionContextTransiting.m */,
+				3CA15F102692D91B00924A2F /* MMWormholeSessionFileTransiting.h */,
+				3CA15F162692D91B00924A2F /* MMWormholeSessionFileTransiting.m */,
+				3CA15F0F2692D91B00924A2F /* MMWormholeSessionMessageTransiting.h */,
+				3CA15F112692D91B00924A2F /* MMWormholeSessionMessageTransiting.m */,
+				3CA15F152692D91B00924A2F /* MMWormholeTransiting.h */,
+			);
+			name = MMWormhole;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3C50124F22D4AF5000F8487C /* NewNode VPN */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3C50126222D4AF5100F8487C /* Build configuration list for PBXNativeTarget "NewNode VPN" */;
+			buildPhases = (
+				3C50124C22D4AF5000F8487C /* Sources */,
+				3C50124D22D4AF5000F8487C /* Frameworks */,
+				3C50124E22D4AF5000F8487C /* Resources */,
+				3C50127522D4B10000F8487C /* Embed App Extensions */,
+				3C3D5B6624E3A45A00F17659 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3C50127022D4B10000F8487C /* PBXTargetDependency */,
+			);
+			name = "NewNode VPN";
+			productName = "NewNode VPN";
+			productReference = 3C50125022D4AF5000F8487C /* NewNode VPN.app */;
+			productType = "com.apple.product-type.application";
+		};
+		3C50126822D4B10000F8487C /* Tunnel */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3C50127222D4B10000F8487C /* Build configuration list for PBXNativeTarget "Tunnel" */;
+			buildPhases = (
+				3C50126522D4B10000F8487C /* Sources */,
+				3C50126622D4B10000F8487C /* Frameworks */,
+				3C50126722D4B10000F8487C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Tunnel;
+			productName = Tunnel;
+			productReference = 3C50126922D4B10000F8487C /* Tunnel.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		3C50124822D4AF5000F8487C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 1020;
+				LastUpgradeCheck = 1200;
+				ORGANIZATIONNAME = Clostra;
+				TargetAttributes = {
+					3C50124F22D4AF5000F8487C = {
+						CreatedOnToolsVersion = 10.2.1;
+						LastSwiftMigration = 1100;
+					};
+					3C50126822D4B10000F8487C = {
+						CreatedOnToolsVersion = 10.2.1;
+						SystemCapabilities = {
+							com.apple.ApplicationGroups.iOS = {
+								enabled = 0;
+							};
+						};
+					};
+				};
+			};
+			buildConfigurationList = 3C50124B22D4AF5000F8487C /* Build configuration list for PBXProject "NewNode VPN" */;
+			compatibilityVersion = "Xcode 10.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 3C50124722D4AF5000F8487C;
+			productRefGroup = 3C50125122D4AF5000F8487C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				3C50124F22D4AF5000F8487C /* NewNode VPN */,
+				3C50126822D4B10000F8487C /* Tunnel */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3C50124E22D4AF5000F8487C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0F5C8AB92664F94A00D013D7 /* Localizable.strings in Resources */,
+				3C50125E22D4AF5100F8487C /* LaunchScreen.storyboard in Resources */,
+				0FBB0AF726616E0F00D89502 /* Colors.xcassets in Resources */,
+				3C50125B22D4AF5100F8487C /* Assets.xcassets in Resources */,
+				3C50125922D4AF5000F8487C /* Main.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3C50126722D4B10000F8487C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3C50124C22D4AF5000F8487C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3C50125622D4AF5000F8487C /* ViewController.swift in Sources */,
+				3C50125422D4AF5000F8487C /* AppDelegate.swift in Sources */,
+				3CA15F212692D91B00924A2F /* MMWormholeSessionContextTransiting.m in Sources */,
+				3CA15F1D2692D91B00924A2F /* MMWormholeSessionMessageTransiting.m in Sources */,
+				3CA15F1B2692D91B00924A2F /* MMWormholeFileTransiting.m in Sources */,
+				3CA15F252692D91B00924A2F /* MMWormholeSession.m in Sources */,
+				0F5C8ABC2664FB8800D013D7 /* InfoViewController.swift in Sources */,
+				3CA15F232692D91B00924A2F /* MMWormholeSessionFileTransiting.m in Sources */,
+				3CA15F1F2692D91B00924A2F /* MMWormhole.m in Sources */,
+				3CA15F272692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.m in Sources */,
+				0F0A7FF32667C9F20093B85D /* FontUpdater.swift in Sources */,
+				0FBB0AFA2661789F00D89502 /* GradientView.swift in Sources */,
+				0F7D6A662667003C0002A2E2 /* SpinnerView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3C50126522D4B10000F8487C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3CA15F242692D91B00924A2F /* MMWormholeSessionFileTransiting.m in Sources */,
+				3CA15F1E2692D91B00924A2F /* MMWormholeSessionMessageTransiting.m in Sources */,
+				3C5012C222D5316F00F8487C /* PacketTunnelProvider.swift in Sources */,
+				3CA15F222692D91B00924A2F /* MMWormholeSessionContextTransiting.m in Sources */,
+				3CA15F202692D91B00924A2F /* MMWormhole.m in Sources */,
+				3CA15F1C2692D91B00924A2F /* MMWormholeFileTransiting.m in Sources */,
+				3CA15F282692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.m in Sources */,
+				3CA15F262692D91B00924A2F /* MMWormholeSession.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3C50127022D4B10000F8487C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3C50126822D4B10000F8487C /* Tunnel */;
+			targetProxy = 3C50126F22D4B10000F8487C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		3C50125722D4AF5000F8487C /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				3C50125822D4AF5000F8487C /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		3C50125C22D4AF5100F8487C /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				3C50125D22D4AF5100F8487C /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		3C50126022D4AF5100F8487C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = "";
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = "";
+				CLANG_CXX_LANGUAGE_STANDARD = "";
+				CLANG_CXX_LIBRARY = "";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = "";
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = "";
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_TREAT_INCOMPATIBLE_POINTER_TYPE_WARNINGS_AS_ERRORS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		3C50126122D4AF5100F8487C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = "";
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = "";
+				CLANG_CXX_LANGUAGE_STANDARD = "";
+				CLANG_CXX_LIBRARY = "";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = "";
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = "";
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_TREAT_INCOMPATIBLE_POINTER_TYPE_WARNINGS_AS_ERRORS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		3C50126322D4AF5100F8487C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = "NewNode VPN/NewNode VPN.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 207;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
+				DEVELOPMENT_TEAM = 4AXG23WSHH;
+				INFOPLIST_FILE = "NewNode VPN/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				"IPHONEOS_DEPLOYMENT_TARGET[sdk=macosx*]" = 14.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0.7;
+				PRODUCT_BUNDLE_IDENTIFIER = com.newnode.vpn;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
+				SUPPORTS_MACCATALYST = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "NewNode VPN/NewNode VPN-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		3C50126422D4AF5100F8487C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = "NewNode VPN/NewNode VPN.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 207;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
+				DEVELOPMENT_TEAM = 4AXG23WSHH;
+				INFOPLIST_FILE = "NewNode VPN/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				"IPHONEOS_DEPLOYMENT_TARGET[sdk=macosx*]" = 14.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0.7;
+				PRODUCT_BUNDLE_IDENTIFIER = com.newnode.vpn;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
+				SUPPORTS_MACCATALYST = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "NewNode VPN/NewNode VPN-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		3C50127322D4B10000F8487C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Tunnel/Tunnel.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 207;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
+				DEVELOPMENT_TEAM = 4AXG23WSHH;
+				FRAMEWORK_SEARCH_PATHS = ../../;
+				HEADER_SEARCH_PATHS = "";
+				INFOPLIST_FILE = Tunnel/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				"IPHONEOS_DEPLOYMENT_TARGET[sdk=macosx*]" = 14.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "";
+				MARKETING_VERSION = 2.0.7;
+				PRODUCT_BUNDLE_IDENTIFIER = com.newnode.vpn.tunnel;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
+				SKIP_INSTALL = YES;
+				SUPPORTS_MACCATALYST = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "Tunnel/NewNode-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		3C50127422D4B10000F8487C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Tunnel/Tunnel.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 207;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
+				DEVELOPMENT_TEAM = 4AXG23WSHH;
+				FRAMEWORK_SEARCH_PATHS = ../../;
+				HEADER_SEARCH_PATHS = "";
+				INFOPLIST_FILE = Tunnel/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				"IPHONEOS_DEPLOYMENT_TARGET[sdk=macosx*]" = 14.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "";
+				MARKETING_VERSION = 2.0.7;
+				PRODUCT_BUNDLE_IDENTIFIER = com.newnode.vpn.tunnel;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
+				SKIP_INSTALL = YES;
+				SUPPORTS_MACCATALYST = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "Tunnel/NewNode-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3C50124B22D4AF5000F8487C /* Build configuration list for PBXProject "NewNode VPN" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3C50126022D4AF5100F8487C /* Debug */,
+				3C50126122D4AF5100F8487C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3C50126222D4AF5100F8487C /* Build configuration list for PBXNativeTarget "NewNode VPN" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3C50126322D4AF5100F8487C /* Debug */,
+				3C50126422D4AF5100F8487C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3C50127222D4B10000F8487C /* Build configuration list for PBXNativeTarget "Tunnel" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3C50127322D4B10000F8487C /* Debug */,
+				3C50127422D4B10000F8487C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 3C50124822D4AF5000F8487C /* Project object */;
+}

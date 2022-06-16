@@ -33,11 +33,17 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.lang.ClassLoader;
 import java.lang.reflect.Method;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.List;
+import java.util.Map;
 import java.util.Arrays;
 import java.util.Observable;
 import java.util.Observer;
@@ -48,7 +54,7 @@ import java.util.zip.GZIPInputStream;
 
 
 public class NewNode implements NewNodeInternal, Runnable, Application.ActivityLifecycleCallbacks {
-    static final String TAG = NearbyHelper.class.getSimpleName();
+    static final String TAG = NewNode.class.getSimpleName();
     public static String VERSION = BuildConfig.VERSION_NAME;
 
     static Thread t;
@@ -287,19 +293,273 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
         locationBroadcastManager.sendBroadcast(intent);
     }
 
-    void http(final String url, final long callblock) {
-        new Thread(){public void run() {
-            try {
-                URL jUrl = new URL(url);
-                HttpURLConnection connection = (HttpURLConnection)jUrl.openConnection();
-                connection.setRequestMethod("GET");
-                connection.connect();
-                callback(callblock, connection.getResponseCode());
-            } catch (Exception e) {
-                Log.e(TAG, "", e);
-                callback(callblock, 0);
-            }
-        }}.start();
+    void dnsPrefetch(final String hostname) {
+        try {
+            new Thread() { public void run() {
+                try {
+                    Log.i(TAG, String.format("dnsPrefetch(%s)", hostname));
+                    InetAddress[] addrs = InetAddress.getAllByName(hostname);
+                    byte[][] addresses = new byte[addrs.length][];
+                    for (int i = 0; i < addrs.length; i++) {
+                        addresses[i] = addrs[i].getAddress();
+                    }
+                    storeDnsPrefetchResult(hostname, addresses);
+                } catch (Exception e) {
+                    Log.i (TAG, "dnsPrefetch thread", e);
+                }
+            }}.start();
+        } catch (Exception e) {
+            Log.i (TAG, "dnsPrefetch", e);
+        }
+    }
+
+    // the following are defined in g_https_cb.h
+    static final int HTTPS_NO_ERROR = 0;
+    static final int HTTPS_DNS_ERROR = 2;
+    static final int HTTPS_HTTP_ERROR = 3;
+    static final int HTTPS_TLS_ERROR = 4;
+    static final int HTTPS_TLS_CERT_ERROR = 5;
+    static final int HTTPS_SOCKET_IO_ERROR = 6;
+    static final int HTTPS_TIMEOUT_ERROR = 7;
+    static final int HTTPS_PARAMETER_ERROR = 8;
+    static final int HTTPS_SYSCALL_ERROR = 9;
+    static final int HTTPS_GENERIC_ERROR = 10;
+    static final int HTTPS_BLOCKING_ERROR = 11;
+    static final int HTTPS_RESOURCE_EXHAUSTED = 12;
+
+    static final int HTTPS_METHOD_MASK = 07;
+    static final int HTTPS_METHOD_GET = 00;
+    static final int HTTPS_METHOD_PUT = 01;
+    static final int HTTPS_METHOD_HEAD = 02;
+    static final int HTTPS_METHOD_POST = 03;
+    static final int HTTPS_DIRECT = 010;
+    static final int HTTPS_ONE_BYTE = 020;
+    static final int HTTPS_NO_REDIRECT = 040;
+    static final int HTTPS_NO_RETRIES = 0100;
+    
+    static final int HTTPS_RESULT_TRUNCATED = 01;
+    static final int HTTPS_REQUEST_USE_HEAD = 02;
+    static final int HTTPS_REQUEST_ONE_BYTE = 04;
+
+    class CallblockThread extends Thread {
+        volatile long callblock = 0;
+    };
+
+    CallblockThread http(final String url, final long callblock, final int request_flags, final int timeout_msec, final int bufsize, final int http_port, final String request_header_names[], final String request_header_values[], final byte request_body[]) {
+        Log.i("newnode",
+              String.format("http(url:%s, flags:0x%x, timeout_msec:%d, bufsize:%d, http_port:%d)",
+                            url, request_flags, timeout_msec, bufsize, http_port));
+        CallblockThread thread = null;
+        try {
+            thread = new CallblockThread(){public void run() {
+                byte response_body[] = new byte[0];
+                int https_error = HTTPS_NO_ERROR;
+                int result_flags = 0;
+                int response_length = 0;
+                long start_time_msec = System.currentTimeMillis();
+                int http_response_code = 0;
+                InputStream inputStream = null;
+
+                try {
+                    URL jUrl = new URL(url);
+
+                    long timeout_time_msec = start_time_msec + 15 * 60 * 1000; // 15 minutes
+                    if (timeout_msec > 0) {
+                        timeout_time_msec = start_time_msec + timeout_msec;
+                    }
+
+                    // HTTPS_DIRECT (connect directly to origin server)
+                    HttpURLConnection connection;
+                    if ((request_flags & HTTPS_DIRECT) != 0) {
+                        Log.i(TAG, String.format("direct connection %s", this));
+                        connection = (HttpURLConnection)jUrl.openConnection(Proxy.NO_PROXY);
+                    } else {
+                        Log.i(TAG, String.format("connection via proxy %s", this));
+
+                        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", http_port));
+                        connection = (HttpURLConnection)jUrl.openConnection(proxy);
+                    }
+
+                    int https_method = request_flags & HTTPS_METHOD_MASK;
+                    boolean need_request_body = false;
+                    if (https_method == HTTPS_METHOD_GET) {
+                        connection.setRequestMethod("GET");
+                    } else if (https_method == HTTPS_METHOD_PUT) {
+                        connection.setRequestMethod("PUT");
+                        need_request_body = true;
+                    } else if (https_method == HTTPS_METHOD_HEAD) {
+                        connection.setRequestMethod("HEAD");
+                        result_flags = result_flags | HTTPS_REQUEST_USE_HEAD;
+                    } else if (https_method == HTTPS_METHOD_POST) {
+                        connection.setRequestMethod("POST");
+                        need_request_body = true;
+                    }
+
+                    // option procesing:
+
+                    // HTTPS_ONE_BYTE (explicitly request a one-byte response)
+                    if ((request_flags & HTTPS_ONE_BYTE) != 0) {
+                        connection.setRequestProperty("Range", "bytes=0,1");
+                        result_flags = result_flags | HTTPS_REQUEST_ONE_BYTE;
+                    }
+
+                    // HTTPS_NO_REDIRECT
+                    if ((request_flags & HTTPS_NO_REDIRECT) != 0) {
+                        connection.setFollowRedirects(false);
+                    } else {
+                        connection.setFollowRedirects(true);
+                    }
+                    // XXX HTTPS_NO_RETRIES not implemented
+
+                    // https_request->timeout_sec is really supposed
+                    // to set the maximum total amount of time we'll
+                    // wait before the entire response body is
+                    // returned, which is not the same as either
+                    // setConnectTimeout or setReadTimeout.  But it
+                    // still seems useful to set these as a cheap way
+                    // of interrupting the transfer in case either of
+                    // these conditions is exceeded.
+                    if (timeout_msec > 0) {
+                        connection.setConnectTimeout(timeout_msec);
+                        connection.setReadTimeout(timeout_msec);
+                    } else {
+                        connection.setConnectTimeout(15 * 60 * 1000);
+                        connection.setReadTimeout(15 * 60 * 1000);
+                    }
+
+                    // request headers
+                    boolean accept_seen = false;
+                    boolean content_type_seen = false;
+                    for (int i = 0; i < request_header_names.length; ++i) {
+                        if ((request_flags & HTTPS_ONE_BYTE) != 0 &&
+                            request_header_names[i].toLowerCase().equals("range")) {
+                            continue;
+                        }
+                        if (request_header_names[i].toLowerCase().equals("content-length")) {
+                            continue;
+                        }
+                        if (content_type_seen && request_header_names[i].toLowerCase().equals("content-type")) {
+                            continue;
+                        }
+                        if (request_header_names[i].toLowerCase().equals("accept")) {
+                            accept_seen = true;
+                        }
+                        Log.i(TAG, String.format("calling setRequestProperty(%s, %s)",
+                                                 request_header_names[i], request_header_values[i]));
+                        connection.setRequestProperty(request_header_names[i],
+                                                      request_header_values[i]);
+                        if (request_header_names[i].toLowerCase().equals("content-type")) {
+                            content_type_seen = true;
+                        }
+                    }
+                    // convince ipinfo.io to not return html.
+                    // 
+                    // XXX The accept header should be explicitly set
+                    //     in calls to https://ipinfo.io .
+                    if (accept_seen == false && (url.equals("https://ipinfo.io") || url.equals("https://ipinfo.io/"))) {
+                        connection.setRequestProperty("accept", "application/json");
+                    }
+
+                    connection.setAllowUserInteraction(false);
+                    if (need_request_body) {
+                        connection.setRequestProperty("Content-Length", String.format("%d", request_body.length));
+                        connection.setDoOutput(true);
+                    }
+                    connection.setUseCaches(false);
+                    connection.connect();
+                    // the http response code is available almost as soon as the connection
+                    // is established, but the response body won't be available that soon.
+                    // so if a response body was requested, don't call the callback until we have
+                    // it, or we have an error.
+                    if (need_request_body) {
+                        OutputStream outputStream = connection.getOutputStream();
+                        outputStream.write(request_body);
+                    }
+                    // call getResponseCode BEFORE getInputStream
+                    http_response_code = connection.getResponseCode();
+                    // XXX: if ONE_BYTE, we can stop now
+                    if (bufsize > 0 && http_response_code == connection.HTTP_OK) {
+                        response_body = new byte[bufsize];
+                        inputStream = connection.getInputStream();
+                        while (!Thread.interrupted()) {
+                            long now_msec = System.currentTimeMillis();
+                            if (now_msec > timeout_time_msec) {
+                                Log.i(TAG, String.format("t:%s HTTPS_TIMEOUT_ERROR (closing inputStream) %s", t, this));
+                                https_error = HTTPS_TIMEOUT_ERROR;
+                                break;
+                            }
+                            int room_left = bufsize - response_length;
+                            if (room_left <= 0) {
+                                // try to read one more byte to see if response is too big
+                                // (so caller will know if response is incomplete)
+                                if (inputStream.read() == -1) {
+                                    result_flags |= HTTPS_RESULT_TRUNCATED;
+                                }
+                                Log.i(TAG, String.format("result larger than bufsize %s", this));
+                                break;
+                            }
+                            int nread = inputStream.read(response_body, response_length, room_left);
+                            if (nread == -1) {
+                                break;
+                            }
+                            response_length += nread;
+                        }
+                        inputStream.close();
+                    }
+                } catch (java.net.SocketException e) {
+                    Log.e(TAG, String.format("HTTPS_SOCKET_IO_ERROR %s", this), e);
+                    https_error = HTTPS_SOCKET_IO_ERROR;
+                    return;
+                } catch (java.net.UnknownHostException e) {
+                    Log.e(TAG, String.format("HTTPS_DNS_ERROR (%s) %s", e.toString(), this), e);
+                    https_error = HTTPS_DNS_ERROR;
+                    return;
+                } catch (javax.net.ssl.SSLPeerUnverifiedException e) {
+                    Log.e(TAG, String.format("HTTPS_TLS_CERT_ERROR %s", this), e);
+                    https_error = HTTPS_TLS_CERT_ERROR;
+                    return;
+                } catch (javax.net.ssl.SSLException e) {
+                    Log.e(TAG, String.format("HTTPS_TLS_ERROR %s", this), e);
+                    https_error = HTTPS_TLS_ERROR;
+                    return;
+                } catch (java.net.SocketTimeoutException e) {
+                    long now_msec = System.currentTimeMillis();
+                    Log.e(TAG, 
+                          String.format("HTTPS_TIMEOUT_ERROR elapsed:%d ms", 
+                                        now_msec - start_time_msec), e);
+                    https_error = HTTPS_TIMEOUT_ERROR;
+                    return;
+                } catch (Exception e) {
+                    if (http_response_code == 451 || http_response_code == 403) {
+                        Log.e(TAG, String.format("HTTPS_BLOCKING_ERROR %s", this), e);
+                        https_error = HTTPS_BLOCKING_ERROR;
+                    } else {
+                        Log.e(TAG, String.format("HTTPS_GENERIC_ERROR %s", this), e);
+                        https_error = HTTPS_GENERIC_ERROR;
+                    }
+                } finally {
+                    try {
+                        if (inputStream != null) {
+                            inputStream.close();
+                        }
+                    } catch (java.io.IOException e) {
+                    }
+                    response_body = Arrays.copyOf(response_body, response_length);
+                    httpCallback(this.callblock, https_error, http_response_code, result_flags, response_body);
+                }
+            }};
+            thread.callblock = callblock;
+            thread.start();
+        } catch (Exception e) {
+            Log.e(TAG, "exception starting https thread", e);
+            return null;
+        }
+        return thread;
+    }
+
+    void httpCancel(CallblockThread t) {
+        t.callblock = 0;
+        t.interrupt();
     }
 
     static void stopNearby() {
@@ -366,8 +626,7 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
     public void onActivitySaveInstanceState(Activity activity, Bundle bundle) {}
 
     @Override
-    public void onActivityStarted(Activity activity) {
-    }
+    public void onActivityStarted(Activity activity) {}
 
     @Override
     public void onActivityStopped(Activity activity) {}
@@ -384,6 +643,8 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
     static native void registerProxy();
     static native void unregisterProxy();
     static native void updateBugsnagDetails(int notifyType);
-    public native void callback(long callblock, int value);
+    static native void httpCallback(long callblock, int https_error, int http_status_code, int result_flags, byte response_body[]);
+    static native void storeDnsPrefetchResult(String host, byte[][] addresses);
+
     public native void setLogLevel(int level);
 }
