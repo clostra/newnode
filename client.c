@@ -3643,17 +3643,17 @@ void load_peers(network *n)
     load_peer_file("peers.dat", &all_peers);
 }
 
-void connect_socks_req_event_cb(bufferevent *bev, short events, void *ctx)
+void connect_socks_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = ctx;
     debug("%s bev:%p events:0x%x %s\n", __func__, bev, events, bev_events_to_str(events));
-    connect_cleanup(c);
-}
-
-void socks_event_cb(bufferevent *bev, short events, void *ctx)
-{
-    debug("%s bev:%p events:0x%x %s\n", __func__, bev, events, bev_events_to_str(events));
     bufferevent_free(bev);
+    c->server_bev = NULL;
+    c->dont_free = true;
+    connect_peer_cancel(c);
+    connect_direct_cancel(c);
+    c->dont_free = false;
+    connect_cleanup(c);
 }
 
 void connect_socks_request(network *n, bufferevent *bev, const char *host, port_t port)
@@ -3661,7 +3661,14 @@ void connect_socks_request(network *n, bufferevent *bev, const char *host, port_
     connect_req *c = alloc(connect_req);
     c->n = n;
     c->server_bev = bev;
+    bufferevent_setcb(c->server_bev, NULL, NULL, connect_socks_event_cb, c);
     connect_request(c, host, port);
+}
+
+void socks_event_cb(bufferevent *bev, short events, void *ctx)
+{
+    debug("%s bev:%p events:0x%x %s\n", __func__, bev, events, bev_events_to_str(events));
+    bufferevent_free(bev);
 }
 
 void socks_read_req_cb(bufferevent *bev, void *ctx)
