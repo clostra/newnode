@@ -3,23 +3,17 @@ set -euo pipefail
 
 
 function build_android {
-    HOST_OS=$(uname -s)
-    HOST_ARCH=$(uname -m)
-    HOST_TAG=$(echo "$HOST_OS-$HOST_ARCH" | tr '[:upper:]' '[:lower:]')
     TRIPLE=$NDK_TRIPLE
 
-    export TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/$HOST_TAG
-    export AR=$TOOLCHAIN/bin/llvm-ar
-    export AS=$TOOLCHAIN/bin/llvm-as
     export CC=$TOOLCHAIN/bin/$NDK_CLANG_TRIPLE-clang
     export CXX=$TOOLCHAIN/bin/$NDK_CLANG_TRIPLE-clang++
-    export LD=$TOOLCHAIN/bin/ld
-    export OBJDUMP=$TOOLCHAIN/bin/llvm-objdump
-    export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
-    export STRIP=$TOOLCHAIN/bin/llvm-strip
+
+
+    CFLAGS="-fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all"
 
 
     PARSON_CFLAGS=-Iparson
+
 
     cd libsodium
     export ANDROID_NDK_HOME=$NDK
@@ -32,7 +26,7 @@ function build_android {
     cd libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
-        CFLAGS="-fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" ./configure --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --with-pic $LIBEVENT_CONFIG --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
+        CFLAGS="$CFLAGS" ./configure --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --with-pic $LIBEVENT_CONFIG --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
         make clean
         make -j`nproc`
         make install
@@ -45,7 +39,7 @@ function build_android {
     cd libutp
     if [ ! -f $TRIPLE/libutp.a ]; then
         make clean
-        OPT=-O2 CPPFLAGS="-fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" make -j`nproc` libutp.a
+        OPT=-O2 CPPFLAGS="-fno-rtti -fno-exceptions $CFLAGS" make -j`nproc` libutp.a
         mkdir $TRIPLE
         mv libutp.a $TRIPLE
     fi
@@ -69,7 +63,7 @@ function build_android {
     if [ ! -f $TRIPLE/libunwind.a ]; then
         mkdir $TRIPLE
         cd $TRIPLE
-        cmake -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
+        cmake -Wno-dev -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
             -DANDROID_NDK=$NDK -DANDROID_ABI=$ABI -DANDROID_PLATFORM=android-$NDK_API ../cmake
         make
         cd ..
@@ -79,18 +73,16 @@ function build_android {
     LIBUNWIND="libunwind-ndk/$TRIPLE/libunwind.a libunwind-ndk/$TRIPLE/lzma/liblzma.a"
 
 
-    FLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
+    CFLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
-      -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
-      -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -DANDROID"
+      $CFLAGS \
+      -std=gnu11 -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -DANDROID"
     #-fvisibility=hidden -fvisibility-inlines-hidden -flto \
     if [ ! -z ${DEBUG+x} ]; then
-        FLAGS="$FLAGS -O0 -DDEBUG=1"
+        CFLAGS="$CFLAGS -O0 -DDEBUG=1"
     else
-        FLAGS="$FLAGS -O0"
+        CFLAGS="$CFLAGS -O0"
     fi
-
-    CFLAGS="$FLAGS -std=gnu11"
 
     rm *.o || true
     $CC $CFLAGS -c dht/dht.c -o dht_dht.o
@@ -116,6 +108,26 @@ function build_android {
     ls -ld $OUT/*
 }
 
+
+HOST_OS=$(uname -s)
+HOST_ARCH=$(uname -m)
+HOST_TAG=$(echo "$HOST_OS-$HOST_ARCH" | tr '[:upper:]' '[:lower:]')
+
+if [ $HOST_TAG = darwin-arm64 ] && [ ! -d "$NDK/prebuilt/$HOST_TAG" ]; then
+    # The NDK ships universal arm64+x86_64 binaries in the darwin-x86_64
+    # directory.
+    HOST_TAG=darwin-x86_64
+fi
+
+export TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/$HOST_TAG
+export AR=$TOOLCHAIN/bin/llvm-ar
+export AS=$TOOLCHAIN/bin/llvm-as
+export LD=$TOOLCHAIN/bin/ld
+export OBJDUMP=$TOOLCHAIN/bin/llvm-objdump
+export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
+export STRIP=$TOOLCHAIN/bin/llvm-strip
+
+
 NDK_API=19
 ARCH=arm
 ABI=armeabi-v7a
@@ -127,8 +139,7 @@ SODIUM_CPU_ARCH=$CPU_ARCH
 # large file support doesn't work for sendfile until API 21
 # https://github.com/android-ndk/ndk/issues/536#issuecomment-333197557
 LIBEVENT_CONFIG=--disable-largefile
-build_android &
-wait %%
+build_android
 LIBEVENT_CONFIG=
 
 NDK_API=21
@@ -139,8 +150,7 @@ NDK_TRIPLE=aarch64-linux-android
 NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$CPU_ARCH
 SODIUM_CPU_ARCH=$CPU_ARCH+crypto
-build_android &
-wait %%
+build_android
 
 NDK_API=19
 ARCH=x86
@@ -151,8 +161,7 @@ NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$ABI
 SODIUM_CPU_ARCH=$CPU_ARCH
 # disabled until libsodium is fixed https://github.com/jedisct1/libsodium/issues/1047
-#build_android &
-#wait %%
+#build_android
 
 NDK_API=21
 ARCH=x86_64
@@ -162,5 +171,4 @@ NDK_TRIPLE=x86_64-linux-android
 NDK_CLANG_TRIPLE=$NDK_TRIPLE$NDK_API
 SODIUM_SCRIPT=$ABI
 SODIUM_CPU_ARCH=$CPU_ARCH
-build_android &
-wait %%
+build_android
