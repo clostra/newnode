@@ -6,7 +6,7 @@
     android:id="@+id/main_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/background_transition"
+    android:background="@drawable/tr_background"
     android:visibility="visible"
     tools:visibility="visible">
 
@@ -19,131 +19,99 @@
         android:background="@null"
         android:onClick="openInfo"
         android:scaleType="fitCenter"
-        android:src="@drawable/ic_white_info_icon"
+        android:src="@drawable/tr_info"
         android:visibility="visible"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        tools:visibility="visible" />
+        tools:visibility="visible"
+        android:contentDescription="Info button" />
 
     <ImageView
-        android:id="@+id/imageView"
+        android:id="@+id/newnode_vpn_logo"
         android:layout_width="0dp"
         android:layout_height="48dp"
         android:layout_marginTop="8dp"
+        android:layout_marginEnd="8dp"
         android:contentDescription="@string/app"
-        android:src="@drawable/newnode_logo"
+        android:src="@drawable/tr_newnode_logo"
         app:layout_constraintDimensionRatio="w,3:1"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
     <ImageView
-        android:id="@+id/net_globes"
+        android:id="@+id/map"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:rotation="160"
-        android:scaleX="0.8"
-        android:scaleY="0.8"
+        android:rotation="0"
+        android:scaleX="1.8"
+        android:scaleY="1.8"
+        android:visibility="visible"
+        android:src="@drawable/tr_map"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.2" />
+
+    <ImageView
+        android:id="@+id/cities"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:rotation="0"
+        android:scaleX="1.8"
+        android:scaleY="1.8"
         android:visibility="invisible"
-        app:layout_constraintBottom_toBottomOf="@+id/powerButton"
-        app:layout_constraintEnd_toEndOf="@+id/powerButton"
-        app:layout_constraintHorizontal_bias="0.4"
-        app:layout_constraintStart_toStartOf="@+id/powerButton"
-        app:layout_constraintTop_toTopOf="@+id/powerButton"
-        app:layout_constraintVertical_bias="0.59000003"
-        app:srcCompat="@drawable/net_globes" />
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.2"
+        app:srcCompat="@drawable/cities_white" />
 
-    <ImageView
-        android:id="@+id/inner_arc"
-        android:layout_width="wrap_content"
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/stats_fragment_container"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:scaleX="1.1"
-        android:scaleY="1.1"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@+id/powerButton"
-        app:layout_constraintEnd_toEndOf="@+id/powerButton"
-        app:layout_constraintStart_toStartOf="@+id/powerButton"
-        app:layout_constraintTop_toTopOf="@+id/powerButton"
-        app:srcCompat="@drawable/ic_inner_arc" />
-
-    <ImageView
-        android:id="@+id/outer_arc"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:scaleX="1.1"
-        android:scaleY="1.1"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@+id/powerButton"
-        app:layout_constraintEnd_toEndOf="@+id/powerButton"
-        app:layout_constraintStart_toStartOf="@+id/powerButton"
-        app:layout_constraintTop_toTopOf="@+id/powerButton"
-        app:srcCompat="@drawable/ic_outer_arc" />
-
-    <ImageView
-        android:id="@+id/globe"
-        android:layout_width="200dp"
-        android:layout_height="200dp"
-        app:srcCompat="@drawable/ic_earth_globe"
-        app:layout_constraintBottom_toBottomOf="@+id/powerButton"
-        app:layout_constraintEnd_toEndOf="@+id/powerButton"
-        app:layout_constraintStart_toStartOf="@+id/powerButton"
-        app:layout_constraintTop_toTopOf="@+id/powerButton" />
-
-    <ImageView
-        android:id="@+id/gray_circle"
-        android:layout_width="200dp"
-        android:layout_height="200dp"
-        app:srcCompat="@drawable/ic_gray_circle"
-        app:layout_constraintBottom_toBottomOf="@+id/powerButton"
-        app:layout_constraintEnd_toEndOf="@+id/powerButton"
-        app:layout_constraintStart_toStartOf="@+id/powerButton"
-        app:layout_constraintTop_toTopOf="@+id/powerButton" />
+        android:layout_marginTop="28dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/newnode_vpn_logo" />
 
     <ImageButton
         android:id="@+id/powerButton"
         style="@style/Widget.AppCompat.ImageButton"
         android:layout_width="200dp"
         android:layout_height="200dp"
+        android:layout_marginBottom="32dp"
         android:background="@null"
         android:contentDescription="@string/disconnected"
         android:onClick="connect"
         android:scaleType="fitCenter"
-        android:src="@drawable/ic_power_button"
+        android:src="@drawable/tr_power_button"
         android:visibility="visible"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/connection_status"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.28" />
+        app:layout_constraintStart_toStartOf="parent" />
 
     <TextView
         android:id="@+id/connection_status"
         style="@style/connection_status"
-        android:layout_marginTop="32dp"
+        android:fontFamily="@font/inter_bold"
         android:text="@string/disconnected"
+        app:layout_constraintBottom_toTopOf="@+id/tap_to_connect"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/powerButton" />
+        app:layout_constraintStart_toStartOf="parent" />
 
     <TextView
-        android:id="@+id/tapToConnect"
+        android:id="@+id/tap_to_connect"
         style="@style/tap_to_connect"
         android:layout_width="0dp"
+        android:layout_marginTop="-90dp"
         android:text="@string/tap_to_connect"
         app:layout_constraintEnd_toEndOf="@id/barrier2"
         app:layout_constraintStart_toStartOf="@id/barrier"
-        app:layout_constraintTop_toBottomOf="@+id/connection_status" />
-
-    <androidx.fragment.app.FragmentContainerView
-        android:id="@+id/stats_fragment_container"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="128dp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="1.0"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/connection_status" />
+        app:layout_constraintTop_toBottomOf="parent" />
 
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/info_fragment_container"

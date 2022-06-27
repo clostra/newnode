@@ -2,8 +2,8 @@
     <string name="app">NewNode VPN</string>
 
     <string name="connecting">Connecting…</string>
-    <string name="connected">CONNECTED</string>
-    <string name="disconnected">DISCONNECTED</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
     <string name="tap_to_connect">tap to connect to NewNode VPN</string>
     <string name="tap_to_disconnect">tap to disconnect</string>
     <string name="info_how_it_works">How NewNode Works</string>

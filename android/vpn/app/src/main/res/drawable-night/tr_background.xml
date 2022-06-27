@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<transition xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/nn_background_disconnected_dark" />
+    <item android:drawable="@color/nn_background_connected_dark" />
+</transition>
