@@ -4,12 +4,12 @@
     <string name="connecting">Connecting…</string>
     <string name="connected">Connected</string>
     <string name="disconnected">Disconnected</string>
-    <string name="tap_to_connect">tap to connect to NewNode VPN</string>
+    <string name="tap_to_connect">tap to connect to NewNode\u00A0VPN</string>
     <string name="tap_to_disconnect">tap to disconnect</string>
     <string name="info_how_it_works">How NewNode Works</string>
     <string name="stats_header">USAGE</string>
     <string name="stat_direct">Direct: %1$s</string>
-    <string name="stat_peer">Through Peers: %1$s</string>
+    <string name="stat_peer">Through peers: %1$s</string>
     <string name="info">NewNode VPN uses a peer to peer network to get around blocking and to establish a good internet connection when connectivity is sparse.
         \n\n
         NewNode VPN sends your traffic through a peer network that makes connections through user devices rather than relying on a central server. This, along with encrypting and obfuscating the traffic, makes NewNode very robust at content access.

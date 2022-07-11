@@ -25,7 +25,7 @@
         name="tap_to_connect">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textSize">15sp</item>
+        <item name="android:textSize">21sp</item>
         <item name="android:textColor">@color/nn_text_disconnected_light</item>
         <item name="android:gravity">center</item>
     </style>
@@ -54,7 +54,7 @@
     </style>
 
     <style name="stat_text">
-        <item name="android:textSize">20sp</item>
+        <item name="android:textSize">21sp</item>
         <item name="android:textColor">@color/nn_text_disconnected_light</item>
     </style>
 </resources>

@@ -31,7 +31,7 @@
         android:layout_width="0dp"
         android:layout_height="48dp"
         android:layout_marginTop="8dp"
-        android:layout_marginEnd="8dp"
+        android:layout_marginEnd="16dp"
         android:contentDescription="@string/app"
         android:src="@drawable/tr_newnode_logo"
         app:layout_constraintDimensionRatio="w,3:1"

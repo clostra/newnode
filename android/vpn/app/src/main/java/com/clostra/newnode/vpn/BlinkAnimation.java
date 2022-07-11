@@ -14,9 +14,9 @@ public class BlinkAnimation {
         this.view = view;
 
         fadeIn = AnimationUtils.loadAnimation(context, R.anim.fade_in);
-        fadeIn.setDuration(250);
+        fadeIn.setDuration(500);
         fadeOut = AnimationUtils.loadAnimation(context, R.anim.fade_out);
-        fadeOut.setDuration(250);
+        fadeOut.setDuration(500);
 
         fadeIn.setAnimationListener(new Animation.AnimationListener() {
             @Override

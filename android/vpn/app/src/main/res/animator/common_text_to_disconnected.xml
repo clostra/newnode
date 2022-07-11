@@ -3,7 +3,7 @@
     <objectAnimator
         android:propertyName="textColor"
         android:duration="1000"
-        android:valueFrom="@color/nn_text_connected"
+        android:valueFrom="@color/nn_common_text_connected"
         android:valueTo="@color/nn_text_disconnected_light"
         android:valueType="colorType"/>
 </set>

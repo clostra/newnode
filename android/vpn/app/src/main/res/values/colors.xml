@@ -12,9 +12,9 @@
     <color name="nn_vpn_orange">#FF7833</color>
 
     <color name="nn_background_connected_light">#1994FF</color>
-    <color name="nn_background_disconnected_light">#ffffff</color>
-    <color name="nn_background_connected_dark">#000000</color>
-    <color name="nn_background_disconnected_dark">#000000</color>
+    <color name="nn_background_disconnected_light">@color/nn_vpn_white</color>
+    <color name="nn_background_connected_dark">@color/nn_vpn_black</color>
+    <color name="nn_background_disconnected_dark">@color/nn_vpn_black</color>
 
     <color name="nn_text_connected_light">#D1EAFF</color>
     <color name="nn_text_disconnected_light">#A0A0A0</color>
@@ -22,8 +22,9 @@
     <color name="nn_text_disconnected_dark">#A0A0A0</color>
 
     <color name="nn_system_bar_background">@color/nn_vpn_white</color>
-    <color name="nn_info_header_text_color">@color/text_blue</color>
+    <color name="nn_info_header_text_color">@color/nn_vpn_orange</color>
     <color name="nn_info_common_text_color">@color/text_dark_gray</color>
-    <color name="nn_text_connected">@color/nn_text_connected_light</color>
+    <color name="nn_common_text_connected">@color/nn_text_connected_light</color>
+    <color name="nn_status_text_connected">@color/nn_vpn_white</color>
 
 </resources>

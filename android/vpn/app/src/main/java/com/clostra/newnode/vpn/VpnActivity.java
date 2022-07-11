@@ -59,7 +59,9 @@ public class VpnActivity extends AppCompatActivity {
         TransitionDrawable background = (TransitionDrawable) findViewById(R.id.main_layout).getBackground();
         TransitionDrawable logo = (TransitionDrawable) ((ImageView) findViewById(R.id.newnode_vpn_logo)).getDrawable();
         TransitionDrawable map = (TransitionDrawable) ((ImageView) findViewById(R.id.map)).getDrawable();
+        map.setCrossFadeEnabled(true);
         TransitionDrawable power = (TransitionDrawable) ((ImageButton) findViewById(R.id.powerButton)).getDrawable();
+        power.setCrossFadeEnabled(true);
         TransitionDrawable info = (TransitionDrawable) ((ImageButton) findViewById(R.id.infoButton)).getDrawable();
         FadeAnimation citiesAnimation = new FadeAnimation(getApplicationContext(), findViewById(R.id.cities));
 
