@@ -95,9 +95,6 @@ public class VpnActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
 
-//        SharedPreferences prefs = getSharedPreferences("vpn", MODE_PRIVATE);
-//        uiStatus = prefs.getBoolean("enabled", false);
-
         initSystemBars();
         statusTextAnimationGroup.addTarget(findViewById(R.id.connection_status));
         commonTextAnimationGroup.addTarget(findViewById(R.id.tap_to_connect));
