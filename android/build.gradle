@@ -34,7 +34,7 @@ android {
 
     defaultConfig {
         minSdkVersion 16
-        targetSdkVersion 31
+        targetSdkVersion 32
         new File('../constants.h').eachLine { line ->
             def matcher = line =~ /VERSION "(.*)"/
             if (matcher) {
