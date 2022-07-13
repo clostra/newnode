@@ -8,9 +8,11 @@
 
     <application
         android:allowBackup="false"
+        android:fullBackupContent="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+        android:dataExtractionRules="@xml/data_extraction_rules">
 
         <activity
             android:name=".VpnActivity"
