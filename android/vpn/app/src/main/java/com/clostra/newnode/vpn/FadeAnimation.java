@@ -44,10 +44,20 @@ public class FadeAnimation {
     }
 
     public void fadeIn() {
-        view.startAnimation(fadeIn);
+        fadeIn(0);
     }
 
     public void fadeOut() {
+        fadeOut(0);
+    }
+
+    public void fadeIn(int delay) {
+        fadeIn.setStartOffset(delay);
+        view.startAnimation(fadeIn);
+    }
+
+    public void fadeOut(int delay) {
+        fadeOut.setStartOffset(delay);
         view.startAnimation(fadeOut);
     }
 }
