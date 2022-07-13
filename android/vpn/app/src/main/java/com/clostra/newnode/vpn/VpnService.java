@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.net.ProxyInfo;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Message;
 import android.os.ParcelFileDescriptor;
@@ -74,7 +75,11 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
     private void connect() {
         NewNode.init();
 
-        mConfigureIntent = PendingIntent.getActivity(this, 0, new Intent(this, VpnActivity.class), PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+        mConfigureIntent = PendingIntent.getActivity(this, 0, new Intent(this, VpnActivity.class), flags);
 
         Builder builder = new Builder();
         builder.addAddress("10.7.0.1", 32);
@@ -111,16 +116,19 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
     }
 
     private void updateForegroundNotification(final int message) {
-        final String NOTIFICATION_CHANNEL_ID = "NewNode VPN";
-        NotificationManager mNotificationManager = (NotificationManager) getSystemService(
-                NOTIFICATION_SERVICE);
-        mNotificationManager.createNotificationChannel(new NotificationChannel(
-                NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_ID,
-                NotificationManager.IMPORTANCE_DEFAULT));
-        startForeground(1, new Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
+        Notification.Builder builder = new Notification.Builder(this)
                 .setSmallIcon(R.drawable.ic_vpn)
                 .setContentText(getString(message))
-                .setContentIntent(mConfigureIntent)
-                .build());
+                .setContentIntent(mConfigureIntent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            final String NOTIFICATION_CHANNEL_ID = "NewNode VPN";
+            NotificationManager mNotificationManager = (NotificationManager) getSystemService(
+                    NOTIFICATION_SERVICE);
+            mNotificationManager.createNotificationChannel(new NotificationChannel(
+                    NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_ID,
+                    NotificationManager.IMPORTANCE_DEFAULT));
+            builder.setChannelId(NOTIFICATION_CHANNEL_ID);
+        }
+        startForeground(1, builder.build());
     }
 }
