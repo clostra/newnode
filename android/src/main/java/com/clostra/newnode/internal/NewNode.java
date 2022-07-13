@@ -262,7 +262,9 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
             nearbyHelper.sendPacket(packet, endpoint);
         }
         if (bluetooth != null) {
-            bluetooth.sendPacket(packet, endpoint);
+            if (Build.VERSION.SDK_INT >= 29) {
+                bluetooth.sendPacket(packet, endpoint);
+            }
         }
     }
 
@@ -568,8 +570,10 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
             nearbyHelper.stopAdvertising();
         }
         if (bluetooth != null) {
-            bluetooth.stopAdvertising();
-            bluetooth.stopScan();
+            if (Build.VERSION.SDK_INT >= 29) {
+                bluetooth.stopAdvertising();
+                bluetooth.stopScan();
+            }
         }
     }
 
@@ -582,7 +586,9 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
             nearbyHelper.startAdvertising();
         }
         if (bluetooth != null) {
-            bluetooth.bluetoothOn();
+            if (Build.VERSION.SDK_INT >= 29) {
+                bluetooth.bluetoothOn();
+            }
         }
     }
 
