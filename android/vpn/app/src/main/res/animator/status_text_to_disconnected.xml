@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<set xmlns:android="http://schemas.android.com/apk/res/android">
+    <objectAnimator
+        android:propertyName="textColor"
+        android:duration="1000"
+        android:valueFrom="@color/nn_status_text_connected"
+        android:valueTo="@color/nn_vpn_orange"
+        android:valueType="colorType"/>
+</set>

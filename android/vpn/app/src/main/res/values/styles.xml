@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <resources>
+
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight" />
+
     <style name="item">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
@@ -12,8 +15,9 @@
         name="connection_status">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textSize">20dp</item>
-        <item name="android:textColor">@color/white</item>
+        <item name="android:textSize">40sp</item>
+        <item name="android:fontWeight">700</item>
+        <item name="android:textColor">@color/nn_vpn_orange</item>
         <item name="android:gravity">center</item>
     </style>
 
@@ -21,29 +25,36 @@
         name="tap_to_connect">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textSize">15dp</item>
-        <item name="android:textColor">@color/white</item>
+        <item name="android:textSize">21sp</item>
+        <item name="android:textColor">@color/nn_text_disconnected_light</item>
         <item name="android:gravity">center</item>
+    </style>
+
+    <style
+        name="info_fragment">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:background">@color/nn_system_bar_background</item>
     </style>
 
     <style
         name="info_header">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textSize">26dp</item>
-        <item name="android:textColor">@color/text_blue</item>
+        <item name="android:textSize">26sp</item>
+        <item name="android:textColor">@color/nn_info_header_text_color</item>
         <item name="android:gravity">center</item>
     </style>
 
     <style name="info_text" parent="info_header">
-        <item name="android:textSize">17dp</item>
-        <item name="android:textColor">@color/text_dark_gray</item>
+        <item name="android:textSize">17sp</item>
+        <item name="android:textColor">@color/nn_info_common_text_color</item>
         <item name="android:paddingTop">8dp</item>
         <item name="android:paddingBottom">8dp</item>
     </style>
 
     <style name="stat_text">
-        <item name="android:textSize">20dp</item>
-        <item name="android:textColor">@color/white</item>
+        <item name="android:textSize">21sp</item>
+        <item name="android:textColor">@color/nn_text_disconnected_light</item>
     </style>
 </resources>

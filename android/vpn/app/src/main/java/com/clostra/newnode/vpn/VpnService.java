@@ -5,13 +5,11 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.net.ProxyInfo;
 import android.os.Handler;
 import android.os.Message;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
-import android.widget.Toast;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
@@ -48,7 +46,7 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.d(TAG, "onStartCommand: " + intent != null ? intent.getAction() : "null");
+        Log.d(TAG, "onStartCommand: " + (intent != null ? intent.getAction() : "null"));
         if (intent != null && ACTION_DISCONNECT.equals(intent.getAction())) {
             disconnect();
             return START_NOT_STICKY;
