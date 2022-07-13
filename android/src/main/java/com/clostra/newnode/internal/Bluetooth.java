@@ -79,7 +79,11 @@ public class Bluetooth {
                 return;
             }
             Log.d(TAG, "found NewNode service: " + device + " connecting...");
-            device.connectGatt(NewNode.app(), false, gattCallback);
+            try {
+                device.connectGatt(NewNode.app(), false, gattCallback);
+            } catch (SecurityException e) {
+                Log.e(TAG, "scanCallback", e);
+            }
         }
 
         @Override
@@ -143,7 +147,11 @@ public class Bluetooth {
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             Log.i(TAG, "onConnectionStateChange gatt:" + gatt.getDevice() + " status:" + status + " newState:" + newState);
-            gatt.discoverServices();
+            try {
+                gatt.discoverServices();
+            } catch (SecurityException e) {
+                Log.e(TAG, "onConnectionStateChange", e);
+            }
         }
 
         @Override
@@ -170,7 +178,7 @@ public class Bluetooth {
             try {
                 BluetoothSocket socket = gatt.getDevice().createInsecureL2capChannel(psm);
                 socket.connect();
-            } catch (IOException e) {
+            } catch (IOException|SecurityException e) {
                 Log.e(TAG, "connect", e);
             }
         }
@@ -181,7 +189,14 @@ public class Bluetooth {
     }
 
     public void tryStartServer() throws IOException {
-        BluetoothServerSocket serverSocket = bluetoothAdapter().listenUsingInsecureL2capChannel();
+        BluetoothServerSocket serverSocket2 = null;
+        try {
+            serverSocket2 = bluetoothAdapter().listenUsingInsecureL2capChannel();
+        } catch (SecurityException e) {
+            Log.e(TAG, "tryStartServer", e);
+            return;
+        }
+        final BluetoothServerSocket serverSocket = serverSocket2;
         Log.w(TAG, "serverSocket " + serverSocket);
         new Thread(){public void run() {
             for (;;) {
@@ -232,8 +247,12 @@ public class Bluetooth {
         scanResponseBuilder.addServiceUuid(new ParcelUuid(serviceUUID));
 
         BluetoothLeAdvertiser advertiser = bluetoothAdapter().getBluetoothLeAdvertiser();
-        advertiser.startAdvertising(settingsBuilder.build(), advertiseDataBuilder.build(),
-                                    scanResponseBuilder.build(), advertiseCallback);
+        try {
+            advertiser.startAdvertising(settingsBuilder.build(), advertiseDataBuilder.build(),
+                                        scanResponseBuilder.build(), advertiseCallback);
+        } catch (SecurityException e) {
+            Log.e(TAG, "startAdvertising", e);
+        }
 
         BluetoothGattCharacteristic l2cap = new BluetoothGattCharacteristic(UUID.fromString(CBUUIDL2CAPPSMCharacteristicString),
                                                                             BluetoothGattCharacteristic.PROPERTY_READ,
@@ -242,22 +261,26 @@ public class Bluetooth {
         BluetoothGattService service = new BluetoothGattService(serviceUUID, BluetoothGattService.SERVICE_TYPE_PRIMARY);
         service.addCharacteristic(l2cap);
         BluetoothManager manager = (BluetoothManager) NewNode.app().getSystemService(Context.BLUETOOTH_SERVICE);
-        gattServer = manager.openGattServer(NewNode.app(), new BluetoothGattServerCallback() {
-            @Override
-            public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
-                Log.i(TAG, "onConnectionStateChange device:" + device + " status:" + status + " newState:" + newState);
-                if (peers.size() == 0) {
-                    startScan();
+        try {
+            gattServer = manager.openGattServer(NewNode.app(), new BluetoothGattServerCallback() {
+                @Override
+                public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
+                    Log.i(TAG, "onConnectionStateChange device:" + device + " status:" + status + " newState:" + newState);
+                    if (peers.size() == 0) {
+                        startScan();
+                    }
                 }
-            }
 
-            @Override
-            public void onCharacteristicReadRequest(BluetoothDevice device, int requestId, int offset, BluetoothGattCharacteristic characteristic) {
-                Log.i(TAG, "onCharacteristicReadRequest");
-                gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, characteristic.getValue());
-            }
-        });
-        gattServer.addService(service);
+                @Override
+                public void onCharacteristicReadRequest(BluetoothDevice device, int requestId, int offset, BluetoothGattCharacteristic characteristic) {
+                    Log.i(TAG, "onCharacteristicReadRequest");
+                    gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, characteristic.getValue());
+                }
+            });
+            gattServer.addService(service);
+        } catch (SecurityException e) {
+            Log.e(TAG, "openGattServer", e);
+        }
     }
 
     public void startServer() {
@@ -297,7 +320,7 @@ public class Bluetooth {
 
         try {
             bluetoothAdapter().getBluetoothLeScanner().startScan(filters, settingsBuilder.build(), scanCallback);
-        } catch (Exception e) {
+        } catch (SecurityException e) {
             Log.e(TAG, "startScan", e);
         }
     }
@@ -307,7 +330,7 @@ public class Bluetooth {
         if (bluetoothAdapter().getBluetoothLeAdvertiser() != null) {
             try {
                 bluetoothAdapter().getBluetoothLeAdvertiser().stopAdvertising(advertiseCallback);
-            } catch (Exception e) {
+            } catch (SecurityException e) {
                 Log.e(TAG, "stopAdvertising", e);
             }
         }
@@ -318,7 +341,7 @@ public class Bluetooth {
         if (bluetoothAdapter().getBluetoothLeScanner() != null) {
             try {
                 bluetoothAdapter().getBluetoothLeScanner().stopScan(scanCallback);
-            } catch (Exception e) {
+            } catch (SecurityException e) {
                 Log.e(TAG, "stopScan", e);
             }
         }
