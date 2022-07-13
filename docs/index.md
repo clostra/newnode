@@ -1,2 +1,2 @@
 # NewNode decentralized Content Distribution Network
-* [Spec](./newnode-spec)
+* [Spec](./newnode-spec.md)
