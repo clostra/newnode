@@ -16,11 +16,14 @@ class ViewController: UIViewController {
     
     @IBOutlet var gradient: GradientView!
     @IBOutlet weak var powerButton: UIButton!
+    @IBOutlet weak var infoButton: UIButton!
     @IBOutlet weak var spinner: SpinnerView!
-    @IBOutlet weak var netGlobes: UIImageView!
-    @IBOutlet weak var label: UILabel!
-    @IBOutlet weak var hint: UILabel!
-    @IBOutlet var statPeriods: [UIButton]!
+    @IBOutlet weak var earthMap: UIImageView!
+    @IBOutlet weak var cities: UIImageView!
+    @IBOutlet weak var statusLabel: UILabel!
+    @IBOutlet weak var hintLabel: UILabel!
+    @IBOutlet weak var usageLabel: UILabel!
+    @IBOutlet weak var logo: UIImageView!
     @IBOutlet var statTexts: [UILabel]!
     let monitor = NWPathMonitor()
     let wormhole = MMWormhole(applicationGroupIdentifier: "group.com.newnode.vpn", optionalDirectory: nil)
@@ -34,6 +37,15 @@ class ViewController: UIViewController {
         }
     }
     
+    var isDarkMode: Bool {
+        if #available(iOS 13.0, *) {
+            return self.traitCollection.userInterfaceStyle == .dark
+        }
+        else {
+            return false
+        }
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -60,19 +72,46 @@ class ViewController: UIViewController {
 
     func updateLayout(animated: Bool) {
         let on = toggleState
-        let backgroundImage = on ? UIImage(named: "earth_globe") : UIImage(named: "gray_circle")
-        powerButton.setBackgroundImage(backgroundImage, for: .normal)
+        spinner.alpha = 0.3
+        let buttonImage = on ? UIImage(named: "power_button_on") : UIImage(named: "power_button_off")
+        self.powerButton.setImage(buttonImage, for: .normal)
+        let buttonPressedImage = on ? UIImage(named: "power_button_on_pressed") : UIImage(named: "power_button_off_pressed")
+        self.powerButton.setImage(buttonPressedImage, for: .highlighted)
         
         gradient.startColor = on ? UIColor(named:"gradient_on1")! : UIColor(named:"gradient_off1")!
         gradient.endColor = on ? UIColor(named:"gradient_on2")! : UIColor(named:"gradient_off2")!
         
-        hint.text = NSLocalizedString(on ? "hint_connected" : "hint_disconnected", comment: "")
+        hintLabel.text = NSLocalizedString(on ? "hint_connected" : "hint_disconnected", comment: "")
+        
+        let secondary_text_color = on ? UIColor(named:"usage_text_on")! : UIColor(named:"usage_text_off")!
+        hintLabel.textColor = secondary_text_color
+        usageLabel.textColor = secondary_text_color
+        statTexts[0].textColor = secondary_text_color
+        statTexts[1].textColor = secondary_text_color
+        
+        statusLabel.textColor = on ? UIColor(named:"status_text_on")! : UIColor(named:"status_text_off")!
+        
+        logo.image = on ? UIImage(named: "newnode_logo_on") : UIImage(named: "newnode_logo_off")
+        
+        let infoImage = on ? UIImage(named: "info_on") : UIImage(named: "info_off")
+        infoButton.setImage(infoImage, for: .normal)
+        
+        if isDarkMode {
+            earthMap.image =  UIImage(named: "earth_map_dark")
+        }
+        else {
+            earthMap.image = on ? UIImage(named: "earth_map_blue") : UIImage(named: "earth_map_gray")
+        }
         
         if animated {
-            netGlobes.alpha = on ? 0 : 1
-            UIView.animate(withDuration: 0.5) {
-                self.netGlobes.alpha = on ? 1 : 0
+            cities.alpha = on ? 0 : 1
+            UIView.animate(withDuration: 1.8) {
+                self.cities.alpha = on ? 1 : 0
             }
+            
+        }
+        else {
+            cities.alpha = on ? 1 : 0
         }
     }
 
@@ -184,7 +223,7 @@ class ViewController: UIViewController {
             }
             
             self.updateLayout(animated: false)
-            self.label.text = statusAsText(status)
+            self.statusLabel.text = statusAsText(status)
             
             if isTransitionalStatus(status) {
                 self.spinner.startAnimating()

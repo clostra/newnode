@@ -65,7 +65,7 @@ typedef struct {
     in6_addr ip;
     port_t port;
 } PACKED packed_ipv6;
-static_assert(sizeof(packed_ipv4) == 6, "packed_ipv6 should be 18 bytes");
+static_assert(sizeof(packed_ipv6) == 18, "packed_ipv6 should be 18 bytes");
 
 typedef struct {
     sockaddr_storage addr;
@@ -3375,8 +3375,6 @@ void connect_request(connect_req *c, const char *host, port_t port)
 
             update_tryfirst_stats(n, tfs, req.flags, req_time, result, c->host);
 
-            debug("c:%p %s (%.2fms) %s direct connection appears likely to succeed\n",
-                  c, __func__, rdelta(c), c->tryfirst_url);
             assert(c->direct);
             if (!c->direct_connect_responded) {
                 debug("c:%p (%.2fms) %s try first ok; SYN-ACK not yet received from %s; not spliced yet\n",
@@ -3645,17 +3643,17 @@ void load_peers(network *n)
     load_peer_file("peers.dat", &all_peers);
 }
 
-void connect_socks_req_event_cb(bufferevent *bev, short events, void *ctx)
+void connect_socks_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = ctx;
     debug("%s bev:%p events:0x%x %s\n", __func__, bev, events, bev_events_to_str(events));
-    connect_cleanup(c);
-}
-
-void socks_event_cb(bufferevent *bev, short events, void *ctx)
-{
-    debug("%s bev:%p events:0x%x %s\n", __func__, bev, events, bev_events_to_str(events));
     bufferevent_free(bev);
+    c->server_bev = NULL;
+    c->dont_free = true;
+    connect_peer_cancel(c);
+    connect_direct_cancel(c);
+    c->dont_free = false;
+    connect_cleanup(c);
 }
 
 void connect_socks_request(network *n, bufferevent *bev, const char *host, port_t port)
@@ -3663,35 +3661,14 @@ void connect_socks_request(network *n, bufferevent *bev, const char *host, port_
     connect_req *c = alloc(connect_req);
     c->n = n;
     c->server_bev = bev;
+    bufferevent_setcb(c->server_bev, NULL, NULL, connect_socks_event_cb, c);
     connect_request(c, host, port);
 }
 
-void socks_read_req_cb(bufferevent *bev, void *ctx);
-
-void socks_read_auth_cb(bufferevent *bev, void *ctx)
+void socks_event_cb(bufferevent *bev, short events, void *ctx)
 {
-    evbuffer *input = bufferevent_get_input(bev);
-    uint8_t *p = evbuffer_pullup(input, 2);
-    if (!p) {
-        return;
-    }
-    if (p[0] != 0x05) {
-        bufferevent_free(bev);
-        return;
-    }
-    p = evbuffer_pullup(input, 2 + p[1]);
-    if (!p) {
-        return;
-    }
-    if (!p[1] || !memchr(&p[2], 0x00, p[1])) {
-        bufferevent_free(bev);
-        return;
-    }
-    evbuffer_drain(input, 2 + p[1]);
-    uint8_t r[] = {0x05, 0x00};
-    bufferevent_write(bev, r, sizeof(r));
-
-    bufferevent_setcb(bev, socks_read_req_cb, NULL, socks_event_cb, ctx);
+    debug("%s bev:%p events:0x%x %s\n", __func__, bev, events, bev_events_to_str(events));
+    bufferevent_free(bev);
 }
 
 void socks_read_req_cb(bufferevent *bev, void *ctx)
@@ -3790,6 +3767,32 @@ void socks_read_req_cb(bufferevent *bev, void *ctx)
         break;
     }
     }
+}
+
+void socks_read_auth_cb(bufferevent *bev, void *ctx)
+{
+    evbuffer *input = bufferevent_get_input(bev);
+    uint8_t *p = evbuffer_pullup(input, 2);
+    if (!p) {
+        return;
+    }
+    if (p[0] != 0x05) {
+        bufferevent_free(bev);
+        return;
+    }
+    p = evbuffer_pullup(input, 2 + p[1]);
+    if (!p) {
+        return;
+    }
+    if (!p[1] || !memchr(&p[2], 0x00, p[1])) {
+        bufferevent_free(bev);
+        return;
+    }
+    evbuffer_drain(input, 2 + p[1]);
+    uint8_t r[] = {0x05, 0x00};
+    bufferevent_write(bev, r, sizeof(r));
+
+    bufferevent_setcb(bev, socks_read_req_cb, NULL, socks_event_cb, ctx);
 }
 
 void socks_accept_cb(evutil_socket_t nfd, sockaddr *peer_sa, int peer_socklen, void *arg)
