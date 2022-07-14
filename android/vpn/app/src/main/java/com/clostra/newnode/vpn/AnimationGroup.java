@@ -34,10 +34,14 @@ public class AnimationGroup {
     }
 
     public void forward() {
-        forwardAnimators.forEach(AnimatorSet::start);
+        for (AnimatorSet animatorSet : forwardAnimators) {
+            animatorSet.start();
+        }
     }
 
     public void backward() {
-        backwardAnimators.forEach(AnimatorSet::start);
+        for (AnimatorSet animatorSet : backwardAnimators) {
+            animatorSet.start();
+        }
     }
 }

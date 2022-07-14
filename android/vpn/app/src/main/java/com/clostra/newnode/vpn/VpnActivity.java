@@ -5,18 +5,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.content.res.Configuration;
 import android.graphics.drawable.TransitionDrawable;
 import android.os.Bundle;
 import android.view.View;
-import android.view.Window;
-import android.view.WindowManager;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentTransaction;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
@@ -95,7 +91,6 @@ public class VpnActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
 
-        initSystemBars();
         statusTextAnimationGroup.addTarget(findViewById(R.id.connection_status));
         commonTextAnimationGroup.addTarget(findViewById(R.id.tap_to_connect));
 
@@ -169,29 +164,5 @@ public class VpnActivity extends AppCompatActivity {
 
     private Intent getServiceIntent() {
         return new Intent(this, VpnService.class);
-    }
-
-    private void initSystemBars() {
-        Window window = this.getWindow();
-
-        window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-
-        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-
-        window.setStatusBarColor(ContextCompat.getColor(this, R.color.nn_system_bar_background));
-        window.setNavigationBarColor(ContextCompat.getColor(this, R.color.nn_system_bar_background));
-        View decor = window.getDecorView();
-
-        int nightModeFlags = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
-
-        switch (nightModeFlags) {
-            case Configuration.UI_MODE_NIGHT_YES:
-                decor.setSystemUiVisibility(0);
-                break;
-
-            case Configuration.UI_MODE_NIGHT_NO:
-                decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
-                break;
-        }
     }
 }
