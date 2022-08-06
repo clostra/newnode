@@ -12,12 +12,12 @@
         NewNode sends your traffic through a peer network that makes connections through user devices rather than relying on a central server. This, along with encrypting and obfuscating the traffic, makes NewNode very robust at content access.";
 
 // Status
-"connected" = "Connected";
-"disconnected" = "Disconnected";
-"invalid" = "Not configured";
-"connecting" = "Connecting...";
-"reasserting" = "Reconnecting...";
-"disconnecting" = "Disconnecting...";
+"connected" = "CONNECTED";
+"disconnected" = "DISCONNECTED";
+"invalid" = "NOT CONFIGURED";
+"connecting" = "CONNECTING...";
+"reasserting" = "RECONNECTING...";
+"disconnecting" = "DISCONNECTING...";
 
 "hint_connected" = "tap to disconnect";
 "hint_disconnected" = "tap to connect\nto NewNode VPN";
