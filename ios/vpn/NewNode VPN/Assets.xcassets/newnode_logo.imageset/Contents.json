@@ -1,7 +1,6 @@
 {
   "images" : [
     {
-      "filename" : "launch_image.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -10,6 +9,7 @@
       "scale" : "2x"
     },
     {
+      "filename" : "newnode_logo.png",
       "idiom" : "universal",
       "scale" : "3x"
     }
