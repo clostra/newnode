@@ -65,7 +65,7 @@ typedef struct {
     in6_addr ip;
     port_t port;
 } PACKED packed_ipv6;
-static_assert(sizeof(packed_ipv4) == 6, "packed_ipv6 should be 18 bytes");
+static_assert(sizeof(packed_ipv6) == 18, "packed_ipv6 should be 18 bytes");
 
 typedef struct {
     sockaddr_storage addr;

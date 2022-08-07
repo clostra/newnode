@@ -5,17 +5,14 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.net.ProxyInfo;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Message;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
-import android.widget.Toast;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
-
-import java.io.IOException;
 
 import com.clostra.newnode.NewNode;
 
@@ -29,8 +26,9 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
 
     private Handler mHandler;
     private PendingIntent mConfigureIntent;
-    private ParcelFileDescriptor fd;
+    private Thread mTun2SocksThread;
 
+    @SuppressWarnings("unused")
     static public boolean vpnProtect(int socket) {
         Log.d(TAG, "vpnProtect:" + socket);
         return vpnService.protect(socket);
@@ -48,7 +46,7 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.d(TAG, "onStartCommand: " + intent != null ? intent.getAction() : "null");
+        Log.d(TAG, "onStartCommand: " + (intent != null ? intent.getAction() : "null"));
         if (intent != null && ACTION_DISCONNECT.equals(intent.getAction())) {
             disconnect();
             return START_NOT_STICKY;
@@ -76,53 +74,94 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
     private void connect() {
         NewNode.init();
 
-        mConfigureIntent = PendingIntent.getActivity(this, 0, new Intent(this, VpnActivity.class), PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+        mConfigureIntent = PendingIntent.getActivity(this, 0, new Intent(this, VpnActivity.class), flags);
 
         Builder builder = new Builder();
         builder.addAddress("10.7.0.1", 32);
         builder.addAddress("2001:db8::1", 64);
-        // XXX: TODO: set default routes once we have packet capture
-        //builder.addRoute("0.0.0.0", 0);
-        //builder.addRoute("::", 0);
+        builder.addRoute("0.0.0.0", 0);
+        builder.addRoute("::", 0);
         builder.addDnsServer("8.8.8.8");
         builder.addDnsServer("1.1.1.1");
         builder.addDnsServer("2001:4860:4860::8888");
         builder.addDnsServer("2606:4700:4700::1111");
         builder.setSession("NewNode");
-        String proxyHost = System.getProperty("proxyHost");
-        int proxyPort = Integer.parseInt(System.getProperty("proxyPort"));
-        Log.d(TAG, "proxy: " + proxyHost + ":" + proxyPort);
-        builder.setHttpProxy(ProxyInfo.buildDirectProxy(proxyHost, proxyPort));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            String proxyHost = System.getProperty("proxyHost");
+            int proxyPort = Integer.parseInt(System.getProperty("proxyPort"));
+            Log.d(TAG, "proxy: " + proxyHost + ":" + proxyPort);
+            builder.setHttpProxy(ProxyInfo.buildDirectProxy(proxyHost, proxyPort));
+        }
         Log.i(TAG, "builder:" + builder);
-        fd = builder.establish();
+        ParcelFileDescriptor fd = builder.establish();
 
         // Become a foreground service. Background services can be VPN services too, but they can
         // be killed by background check before getting a chance to receive onRevoke().
         mHandler.sendEmptyMessage(R.string.connected);
+
+        mTun2SocksThread = new Thread(() ->
+           runTun2Socks(
+                fd.detachFd(),
+                1500,
+                "10.7.0.1",
+                "255.255.255.255",
+                System.getProperty("proxyHost") + ":" + System.getProperty("proxyPort"),
+                System.getProperty("proxyHost") + ":" + "7300",
+                1));
+        mTun2SocksThread.start();
     }
 
     private void disconnect() {
+        if (mTun2SocksThread != null) {
+            try {
+                terminateTun2Socks();
+                mTun2SocksThread.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            mTun2SocksThread = null;
+        }
         mHandler.sendEmptyMessage(R.string.disconnected);
         stopForeground(true);
-        if (fd != null) {
-            try {
-                fd.close();
-            } catch(IOException e) {}
-            fd = null;
-        }
     }
 
     private void updateForegroundNotification(final int message) {
-        final String NOTIFICATION_CHANNEL_ID = "NewNode VPN";
-        NotificationManager mNotificationManager = (NotificationManager) getSystemService(
-                NOTIFICATION_SERVICE);
-        mNotificationManager.createNotificationChannel(new NotificationChannel(
-                NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_ID,
-                NotificationManager.IMPORTANCE_DEFAULT));
-        startForeground(1, new Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
+        Notification.Builder builder = new Notification.Builder(this)
                 .setSmallIcon(R.drawable.ic_vpn)
                 .setContentText(getString(message))
-                .setContentIntent(mConfigureIntent)
-                .build());
+                .setContentIntent(mConfigureIntent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            final String NOTIFICATION_CHANNEL_ID = "NewNode VPN";
+            NotificationManager mNotificationManager = (NotificationManager) getSystemService(
+                    NOTIFICATION_SERVICE);
+            mNotificationManager.createNotificationChannel(new NotificationChannel(
+                    NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_ID,
+                    NotificationManager.IMPORTANCE_DEFAULT));
+            builder.setChannelId(NOTIFICATION_CHANNEL_ID);
+        }
+        startForeground(1, builder.build());
+    }
+
+    public native static int runTun2Socks(
+            int vpnInterfaceFileDescriptor,
+            int vpnInterfaceMTU,
+            String vpnIpAddress,
+            String vpnNetMask,
+            String socksServerAddress,
+            String udpgwServerAddress,
+            int udpgwTransparentDNS);
+
+    public native static int terminateTun2Socks();
+
+    public static void logTun2Socks(String level, String channel, String msg) {
+        //Log.d(TAG + "_" + channel, msg);
+    }
+
+    static {
+        System.loadLibrary("tun2socks");
     }
 }

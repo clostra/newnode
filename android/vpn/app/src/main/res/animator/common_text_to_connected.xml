@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<set xmlns:android="http://schemas.android.com/apk/res/android">
+    <objectAnimator
+        android:propertyName="textColor"
+        android:duration="1000"
+        android:valueFrom="@color/nn_text_disconnected_light"
+        android:valueTo="@color/nn_common_text_connected"
+        android:valueType="colorType"/>
+</set>

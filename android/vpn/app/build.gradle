@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 31
+    compileSdkVersion 32
 
     new File(System.getenv('NDK') + '/source.properties').eachLine { line ->
         def matcher = line =~ /Pkg.Revision = (.*)/
@@ -24,8 +24,8 @@ android {
 
     defaultConfig {
         applicationId "com.clostra.newnode.vpn"
-        minSdkVersion 29
-        targetSdkVersion 31
+        minSdkVersion 16
+        targetSdkVersion 32
 
         new File('../../constants.h').eachLine { line ->
             def matcher = line =~ /VERSION "(.*)"/
@@ -37,6 +37,14 @@ android {
         versionCode versionName.replace(".", "").toInteger()
     }
 
+    /*
+    externalNativeBuild {
+        ndkBuild {
+            path "jni/badvpn/Android.mk"
+        }
+    }
+    */
+
     buildTypes {
         release {
             minifyEnabled false
@@ -47,16 +55,16 @@ android {
 }
 
 dependencies {
-    implementation 'androidx.appcompat:appcompat:1.4.1'
-    implementation 'androidx.constraintlayout:constraintlayout:2.0.4'
+    implementation 'androidx.appcompat:appcompat:1.4.2'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 
     // include AAR directly (must include dependencies)
     releaseImplementation files('../../build/outputs/aar/newnode-release.aar')
     debugImplementation files('../../build/outputs/aar/newnode-debug.aar')
     implementation 'com.bugsnag:bugsnag-android:4.7.0'
-    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.0.0'
-    implementation 'androidx.appcompat:appcompat:1.4.1'
-    implementation 'com.google.android.gms:play-services-nearby:18.+'
+    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
+    implementation 'androidx.appcompat:appcompat:1.4.2'
+    implementation 'com.google.android.gms:play-services-nearby:18.2.0'
 
     // use mavenCentral
     //implementation 'com.clostra.newnode:newnode:+'
