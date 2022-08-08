@@ -123,6 +123,16 @@ LDFLAGS="-arch $ARCH"
 TRIPLE=x86_64-apple-darwin
 build_apple
 
+LIBSODIUM_CFLAGS=-I$LIBSODIUM_XCF/ios-arm64_i386_x86_64-simulator/Headers
+LIBSODIUM=$LIBSODIUM_XCF/ios-arm64_i386_x86_64-simulator/libsodium.a
+BASEDIR="${XCODEDIR}/Platforms/iPhoneSimulator.platform/Developer"
+SDK="${BASEDIR}/SDKs/iPhoneSimulator.sdk"
+IOS_SIMULATOR_VERSION_MIN=11
+ARCH=arm64
+CFLAGS="-arch $ARCH -isysroot ${SDK} -mios-simulator-version-min=${IOS_SIMULATOR_VERSION_MIN}"
+LDFLAGS="-arch $ARCH"
+TRIPLE=arm64-apple-darwin
+build_apple
 
 LIBSODIUM_CFLAGS=-I$LIBSODIUM_XCF/ios-arm64_armv7_armv7s/Headers
 LIBSODIUM=$LIBSODIUM_XCF/ios-arm64_armv7_armv7s/libsodium.a
@@ -165,6 +175,10 @@ strip -x $FRAMEWORK/NewNode
 du -ch $FRAMEWORK
 du -ch $FRAMEWORK.dSYM
 
+rm -rf simulator-apple-darwin || true
+mkdir -p simulator-apple-darwin
+lipo -create -output simulator-apple-darwin/libnewnode.a x86_64-apple-darwin/libnewnode.a arm64-apple-darwin/libnewnode.a
+
 headers=$(mktemp -d)
 cp ios/Framework/NewNode-iOS.h $headers/NewNode.h
 echo 'module NewNode {
@@ -174,7 +188,7 @@ echo 'module NewNode {
 XCFRAMEWORK="NewNode.xcframework"
 rm -rf $XCFRAMEWORK || true
 XCFRAMEWORK_ARGS=""
-for triple in x86_64-apple-darwin arm-apple-darwin x86_64-apple-ios; do
+for triple in simulator-apple-darwin arm-apple-darwin x86_64-apple-ios; do
   XCFRAMEWORK_ARGS+=" -library $triple/libnewnode.a"
   XCFRAMEWORK_ARGS+=" -headers $headers"
 done
