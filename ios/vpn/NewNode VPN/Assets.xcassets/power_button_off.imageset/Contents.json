@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "launch_image_light.png",
+      "filename" : "power_off_light.svg",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -12,7 +12,7 @@
           "value" : "dark"
         }
       ],
-      "filename" : "launch_image_dark.png",
+      "filename" : "power_off_dark.svg",
       "idiom" : "universal",
       "scale" : "1x"
     },
