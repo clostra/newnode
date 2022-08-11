@@ -1,6 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
+case "$(which nproc)" in
+    "") 
+        nproc() {
+            getconf _NPROCESSORS_ONLN
+        } 
+    ;;
+esac
 
 export CC=clang
 export CXX=clang++
