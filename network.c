@@ -244,13 +244,13 @@ void network_recreate_sockets(network *n)
 bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
 {
     ddebug("udp_received(%zu, %s)\n", len, sockaddr_str(sa));
-    if (utp_process_udp(n->utp, buf, len, sa, salen)) {
-        return true;
-    }
     if (network_process_udp_cb != NULL) {
         if (network_process_udp_cb(n, buf, len, sa, salen)) {
             return true;
         }
+    }
+    if (utp_process_udp(n->utp, buf, len, sa, salen)) {
+        return true;
     }
     // dht last because dht_process_udp doesn't really tell us if it was a valid dht packet
     time_t tosleep;
