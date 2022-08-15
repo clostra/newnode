@@ -603,14 +603,22 @@ int bufferevent_getpeername(const bufferevent *bev, sockaddr *address, socklen_t
         return utp_getpeername(utp, address, address_len);
     }
     evutil_socket_t fd = bufferevent_getfd((bufferevent*)bev);
-    return getpeername(fd, address, address_len);
+    int e = getpeername(fd, address, address_len);
+    if (e) {
+        log_errno("getpeername");
+    }
+    return e;
 }
 
 bool bufferevent_is_localhost(const bufferevent *bev)
 {
     sockaddr_storage ss;
     socklen_t len = sizeof(ss);
-    bufferevent_getpeername(bev, (sockaddr*)&ss, &len);
+    int e = bufferevent_getpeername(bev, (sockaddr*)&ss, &len);
+    if (e) {
+        // we don't know anymore, but if it's TCP we assume it's localhost
+        return !BEV_IS_UTP(bev);
+    }
     return sockaddr_is_localhost((sockaddr*)&ss, len);
 }
 
