@@ -290,19 +290,6 @@ bool via_contains(const char *via, char v)
     return !!strstr(via, vtag);
 }
 
-bool bufferevent_is_utp(bufferevent *bev)
-{
-    if (BEV_IS_UTP(bev)) {
-        return true;
-    }
-    evutil_socket_t fd = bufferevent_getfd(bev);
-    sockaddr_storage ss;
-    socklen_t len = sizeof(ss);
-    getpeername(fd, (sockaddr *)&ss, &len);
-    // AF_LOCAL is from socketpair(), which means utp_bufferevent
-    return ss.ss_family == AF_LOCAL;
-}
-
 void peer_disconnect(peer_connection *pc)
 {
     debug("disconnecting pc:%p\n", pc);
@@ -870,7 +857,7 @@ bool evcon_is_localhost(evhttp_connection *evcon)
 
 bool evcon_is_utp(evhttp_connection *evcon)
 {
-    return bufferevent_is_utp(evhttp_connection_get_bufferevent(evcon));
+    return BEV_IS_UTP(evhttp_connection_get_bufferevent(evcon));
 }
 
 void copy_response_headers(evhttp_request *from, evhttp_request *to)
@@ -1970,7 +1957,7 @@ void bufferevent_count_bytes(network *n, const char *authority, bool from_localh
 {
     debug("%s from:%s to:%s %s\n", __func__,
           from_localhost ? "browser" : "peer",
-          bufferevent_is_utp(to) ? "peer" : "direct",
+          BEV_IS_UTP(to) ? "peer" : "direct",
           authority);
 
     // a little hack instead of making a struct for the uint64_t and network*
@@ -1991,7 +1978,7 @@ void bufferevent_count_bytes(network *n, const char *authority, bool from_localh
     evbuffer_remove_all_cb(bufferevent_get_input(to), byte_count_cb);
     evbuffer_remove_all_cb(bufferevent_get_output(to), byte_count_cb);
 
-    if (!from_localhost && bufferevent_is_utp(to)) {
+    if (!from_localhost && BEV_IS_UTP(to)) {
         if (from) {
             evbuffer_add_cb(bufferevent_get_input(from), byte_count_cb, &byte_count->from_p2p);
             evbuffer_add_cb(bufferevent_get_output(from), byte_count_cb, &byte_count->to_p2p);
@@ -2004,7 +1991,7 @@ void bufferevent_count_bytes(network *n, const char *authority, bool from_localh
         evbuffer_add_cb(bufferevent_get_input(from), byte_count_cb, &byte_count->from_browser);
         evbuffer_add_cb(bufferevent_get_output(from), byte_count_cb, &byte_count->to_browser);
     }
-    if (bufferevent_is_utp(to)) {
+    if (BEV_IS_UTP(to)) {
         evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &byte_count->from_peer);
         evbuffer_add_cb(bufferevent_get_output(to), byte_count_cb, &byte_count->to_peer);
         evbuffer_add_cb(bufferevent_get_input(to), byte_count_cb, &g_all_peer);
@@ -2388,7 +2375,7 @@ void submit_request(network *n, evhttp_request *server_req)
 
     p->dont_free = true;
 
-    if (!NO_DIRECT && evcon_is_localhost(server_req->evcon)) {
+    if (!NO_DIRECT && p->localhost) {
         direct_submit_request(p);
     }
 
@@ -2568,6 +2555,7 @@ typedef struct {
 #define CONNECT_ATTEMPTS 10
 
     bool dont_free:1;
+    bool localhost:1;
 
     // start of TF additions
     bool direct_connect_responded:1;
@@ -2748,7 +2736,7 @@ void connect_other_read_cb(bufferevent *bev, void *ctx)
     if (strcaseeq(c->host, "stats.newnode.com")) {
         //debug("c:%p (%.2fms) not counting bytes for %s\n", c, rdelta(c), c->host);
     } else {
-        bufferevent_count_bytes(c->n, c->host, bufferevent_is_localhost(server), server, bev);
+        bufferevent_count_bytes(c->n, c->host, c->localhost, server, bev);
     }
     c->dont_free = false;
     connect_cleanup(c);
@@ -2884,7 +2872,7 @@ void connect_peer_done_cb(evhttp_request *req, void *arg)
 
             if (c->server_req) {
                 if (connect_exhausted(c)) {
-                    if (!evcon_is_localhost(c->server_req->evcon)) {
+                    if (!c->localhost) {
                         copy_header(req, c->server_req, "Content-Location");
                         copy_header(req, c->server_req, "X-MSign");
                     }
@@ -2998,6 +2986,8 @@ void connect_direct_completed(connect_req *c, bufferevent *bev)
 void connect_direct_event_cb(bufferevent *bev, short events, void *ctx)
 {
     connect_req *c = (connect_req *)ctx;
+    // store errno early
+    int err = bufferevent_get_error(bev);
     debug("c:%p %s (%.2fms) bev:%p req:%s events:0x%x %s\n", c, __func__, rdelta(c), bev,
         c->server_req ? evhttp_request_get_uri(c->server_req) : "(null)", events, bev_events_to_str(events));
 
@@ -3006,8 +2996,7 @@ void connect_direct_event_cb(bufferevent *bev, short events, void *ctx)
     if (events & BEV_EVENT_TIMEOUT) {
         connect_direct_error(c, SOCKS5_REPLY_TIMEDOUT, 504, "Gateway Timeout");
     } else if (events & (BEV_EVENT_EOF|BEV_EVENT_ERROR)) {
-        int err = bufferevent_get_error(bev);
-        debug("c:%p (%.2fms) bev:%p error:%d %s\n", c, rdelta(c), bev, err, strerror(err));
+        debug("c:%p %s (%.2fms) bev:%p error:%d %s\n", c, __func__, rdelta(c), bev, err, strerror(err));
         switch (err) {
         case ENETUNREACH: connect_direct_error(c, SOCKS5_REPLY_NETUNREACH, 523, "Net Is Unreachable"); break;
         case EHOSTUNREACH: connect_direct_error(c, SOCKS5_REPLY_HOSTUNREACH, 523, "Origin Is Unreachable"); break;
@@ -3415,6 +3404,7 @@ void http_connect_request(network *n, evhttp_request *req)
     connect_req *c = alloc(connect_req);
     c->n = n;
     c->server_req = req;
+    c->localhost = evcon_is_localhost(c->server_req->evcon);
 
     char buf[2048];
     snprintf(buf, sizeof(buf), "https://%s", evhttp_request_get_uri(req));
@@ -3661,6 +3651,7 @@ void connect_socks_request(network *n, bufferevent *bev, const char *host, port_
     connect_req *c = alloc(connect_req);
     c->n = n;
     c->server_bev = bev;
+    c->localhost = bufferevent_is_localhost(c->server_bev);
     bufferevent_setcb(c->server_bev, NULL, NULL, connect_socks_event_cb, c);
     connect_request(c, host, port);
 }
