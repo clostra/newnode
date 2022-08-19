@@ -51,7 +51,13 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
             disconnect();
             return START_NOT_STICKY;
         } else {
-            connect();
+            try {
+                connect();
+            } catch (IllegalStateException e) {
+                Log.e(TAG, "connect", e);
+                disconnect();
+                return START_NOT_STICKY;
+            }
             return START_STICKY;
         }
     }
