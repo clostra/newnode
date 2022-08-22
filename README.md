@@ -2,7 +2,6 @@
 
 ## Integration status
 
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/fbeb689ec190470a90645fb016cbcfb7)](https://www.codacy.com/app/shalunov/newnode)
 [![GitHub release](https://img.shields.io/github/release/clostra/newnode.svg)](https://github.com/clostra/newnode/releases/)
 [![Carthage compatible](https://img.shields.io/badge/Carthage-compatible-4BC51D.svg?style=flat)](https://github.com/Carthage/Carthage)
 
