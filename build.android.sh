@@ -17,7 +17,10 @@ function build_android {
 
     cd libsodium
     export ANDROID_NDK_HOME=$NDK
-    test -f libsodium-android-$SODIUM_CPU_ARCH/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
+    if [ -f libsodium-android-$SODIUM_CPU_ARCH/lib/libsodium.a ]; then
+        ./autogen.sh
+        ./dist-build/android-$SODIUM_SCRIPT.sh
+    fi
     cd ..
     LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-android-$SODIUM_CPU_ARCH/include
     LIBSODIUM=libsodium/libsodium-android-$SODIUM_CPU_ARCH/lib/libsodium.a
