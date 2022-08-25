@@ -434,7 +434,7 @@ peer* get_peer(peer_array *pa, const sockaddr *a)
 
 peer* add_peer(peer_array **pa, const sockaddr *a, create_fn c)
 {
-    return (peer*)hash_get_or_insert(*pa, sockaddr_str(a), ^void* {
+    return hash_get_or_insert(*pa, sockaddr_str(a), ^void* {
         dht_ping_node((const sockaddr *)a, sockaddr_get_length(a));
         return c();
     });
