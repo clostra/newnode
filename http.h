@@ -25,6 +25,8 @@ typedef enum evhttp_request_error evhttp_request_error;
 DEFINE_TRIVIAL_CLEANUP_FUNC(evhttp_uri*, evhttp_uri_free)
 #define evhttp_uri_auto_free __attribute__((__cleanup__(evhttp_uri_freep)))
 
+bool http_setup(network *n);
+
 void join_url_swarm(network *n, const char *url);
 void fetch_url_swarm(network *n, const char *url);
 

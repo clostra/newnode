@@ -765,6 +765,14 @@ int main(int argc, char *argv[])
 
     port_t port = atoi(port_s);
     network *n = network_setup(address, port);
+    if (!n) {
+        return 4;
+    }
+
+    if (!http_setup(n)) {
+        network_free(n);
+        return 5;
+    }
 
     network_set_sockaddr_callback(n, ^(const sockaddr *addr, socklen_t addrlen){
         add_sockaddr(n, addr, addrlen);

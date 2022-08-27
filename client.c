@@ -4012,6 +4012,11 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         return n;
     }
 
+    if (!http_setup(n)) {
+        network_free(n);
+        return NULL;
+    }
+
     port_pref = n->port;
     f = fopen("port.dat", "wb");
     if (f) {

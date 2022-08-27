@@ -40,7 +40,7 @@
 uint64 utp_on_firewall(utp_callback_arguments *a)
 {
     network *n = (network*)utp_context_get_userdata(a->context);
-    if (evhttp_get_connection_count(n->http) > 100000) {
+    if (n->http && evhttp_get_connection_count(n->http) > 100000) {
         return 1;
     }
     return 0;
@@ -124,29 +124,6 @@ uint64 utp_callback_log(utp_callback_arguments *a)
 {
     fprintf(stderr, "log: %s\n", a->buf);
     return 0;
-}
-
-uint64 utp_on_accept(utp_callback_arguments *a)
-{
-    network *n = (network*)utp_context_get_userdata(a->context);
-    sockaddr_storage addr;
-    socklen_t addrlen = sizeof(addr);
-    if (utp_getpeername(a->socket, (sockaddr *)&addr, &addrlen) == -1) {
-        debug("utp_getpeername failed\n");
-    }
-    //debug("%s %p %s\n", __func__, a->socket, sockaddr_str((const sockaddr*)&addr));
-    // XXX: hack around evhttp_get_request() only taking fds
-    // https://github.com/libevent/libevent/issues/1268
-    assert(!n->accepting_utp);
-    n->accepting_utp = a->socket;
-    evhttp_connection *evcon = evhttp_get_request(n->http, EVUTIL_INVALID_SOCKET, (sockaddr *)&addr, addrlen);
-    if (!evcon) {
-        debug("%s evhttp_get_request failed\n", __func__);
-        assert(evcon);
-        return 0;
-    }
-    assert(!n->accepting_utp);
-    return 1;
 }
 
 void dht_schedule(network *n, time_t tosleep)
@@ -435,17 +412,6 @@ void evdns_log_cb(int severity, const char *msg)
     if (o_debug >= EVENT_LOG_ERR - severity) {
         debug("[evdns] %d %s\n", severity, msg);
     }
-}
-
-bufferevent* create_bev(event_base *base, void *userdata)
-{
-    network *n = (network*)userdata;
-    if (n->accepting_utp) {
-        utp_socket *s = n->accepting_utp;
-        n->accepting_utp = NULL;
-        return bufferevent_utp_new(base, n->utp, s, BEV_OPT_CLOSE_ON_FREE);
-    }
-    return bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 }
 
 uint64 utp_callback_get_random(utp_callback_arguments *args)
@@ -763,17 +729,6 @@ network* network_setup(char *address, port_t port)
     evdns_base_nameserver_ip_add(n->evdns, "8.8.8.8");
     evdns_base_nameserver_ip_add(n->evdns, "8.8.4.4");
 
-    n->http = evhttp_new(n->evbase);
-    if (!n->http) {
-        fprintf(stderr, "evhttp_new failed\n");
-        network_free(n);
-        return NULL;
-    }
-    // don't add any content type automatically
-    evhttp_set_default_content_type(n->http, NULL);
-    evhttp_set_bevcb(n->http, create_bev, n);
-    evhttp_set_timeout(n->http, 50);
-
     if (evthread_make_base_notifiable(n->evbase)) {
         fprintf(stderr, "evthread_make_base_notifiable failed\n");
         network_free(n);
@@ -800,7 +755,6 @@ network* network_setup(char *address, port_t port)
     utp_set_callback(n->utp, UTP_LOG, &utp_callback_log);
     utp_set_callback(n->utp, UTP_SENDTO, &utp_callback_sendto);
     utp_set_callback(n->utp, UTP_ON_FIREWALL, &utp_on_firewall);
-    utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
     utp_set_callback(n->utp, UTP_ON_ERROR, &utp_on_error);
     utp_set_callback(n->utp, UTP_ON_STATE_CHANGE, &utp_on_state_change);
     utp_set_callback(n->utp, UTP_ON_READ, &utp_on_read);
