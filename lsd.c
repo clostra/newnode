@@ -149,7 +149,9 @@ void route_read_cb(evutil_socket_t fd, short events, void *arg)
         route_timer = NULL;
         lsd_setup(n);
     });
-    network_ifchange(n);
+    if (network_ifchange != NULL) {
+        network_ifchange(n);
+    }
 }
 
 void lsd_setup(network *n)
