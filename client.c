@@ -535,10 +535,8 @@ void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
     add_address(n, &all_peers, addr, addrlen);
 }
 
-void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
+void dht_event(network *n, int event, const unsigned char *info_hash, const void *data, size_t data_len)
 {
-    network *n = (network*)closure;
-
     peer_array **peer_list = NULL;
 
     if (memeq(info_hash, encrypted_injector_swarm_m1, sizeof(encrypted_injector_swarm_m1)) ||
@@ -4048,6 +4046,10 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         network_free(n);
         return NULL;
     }
+
+    dht_set_event_cb(n->dht, ^(int event, const unsigned char *info_hash, const void *data, size_t data_len) {
+        dht_event(n, event, info_hash, data, data_len);
+    });
 
     network_async(n, ^{
         load_peers(n);
