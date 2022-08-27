@@ -16,8 +16,6 @@
 
 TS(network);
 
-#include "dht.h"
-
 
 #ifndef MIN
 #define MIN(a, b) (((a)<(b))?(a):(b))
@@ -120,6 +118,7 @@ DEFINE_TRIVIAL_CLEANUP_FUNC(evbuffer*, evbuffer_free)
 #define evbuffer_auto_free __attribute__((__cleanup__(evbuffer_freep)))
 
 
+#include "dht.h"
 #include "timer.h"
 
 
