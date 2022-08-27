@@ -54,7 +54,7 @@ function build_android {
     cd blocksruntime
     if [ ! -f $TRIPLE/libBlocksRuntime.a ]; then
         ./buildlib
-        mkdir $TRIPLE
+        mkdir -p $TRIPLE
         mv libBlocksRuntime.a $TRIPLE
     fi
     cd ..
@@ -64,7 +64,7 @@ function build_android {
 
     cd libunwind-ndk
     if [ ! -f $TRIPLE/libunwind.a ]; then
-        mkdir $TRIPLE
+        mkdir -p $TRIPLE
         cd $TRIPLE
         cmake -Wno-dev -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
             -DANDROID_NDK=$NDK -DANDROID_ABI=$ABI -DANDROID_PLATFORM=android-$NDK_API ../cmake

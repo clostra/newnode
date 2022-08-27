@@ -48,7 +48,7 @@ if ! echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -f
     cd blocksruntime
     if [ ! -f native/libBlocksRuntime.a ]; then
         ./buildlib
-        mkdir native
+        mkdir -p native
         mv libBlocksRuntime.a native
     fi
     cd ..

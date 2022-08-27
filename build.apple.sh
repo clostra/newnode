@@ -22,7 +22,7 @@ function build_apple {
     if [ ! -f $TRIPLE/libutp.a ]; then
         make clean
         OPT=-O2 CPPFLAGS=$CFLAGS make -j`nproc` libutp.a
-        mkdir $TRIPLE
+        mkdir -p $TRIPLE
         mv libutp.a $TRIPLE
     fi
     cd ..
@@ -43,7 +43,7 @@ function build_apple {
 
     cd parson
     if [ ! -f $TRIPLE/libparson.a ]; then
-        test -d $TRIPLE || mkdir $TRIPLE
+        mkdir -p $TRIPLE
         clang $CFLAGS -c parson.c -o parson.o && ar -r $TRIPLE/libparson.a parson.o
     fi
     PARSON="parson/$TRIPLE/libparson.a"
