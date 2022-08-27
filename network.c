@@ -94,7 +94,7 @@ ssize_t udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, s
         salen = sizeof(sin6);
     }
 
-    if (sa->sa_family == AF_INET6) {
+    if (sa->sa_family == AF_INET6 && d2d_sendto != NULL) {
         const sockaddr_in6 *s6 = (const sockaddr_in6 *)sa;
         ssize_t r = d2d_sendto(buf, len, s6);
         if (r > 0) {

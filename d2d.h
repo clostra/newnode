@@ -8,7 +8,7 @@ typedef struct {
     port_t port;
 } PACKED endpoint;
 
-ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6);
+ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6) __attribute__((weak));
 sockaddr_in6 endpoint_to_addr(const endpoint *endpoint);
 endpoint addr_to_endpoint(const sockaddr_in6 *sin6);
 
