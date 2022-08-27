@@ -58,7 +58,7 @@ function build_apple {
         FLAGS="$FLAGS -DDEBUG=1"
     fi
 
-    CFLAGS="$FLAGS -std=gnu11 -Iparson"
+    CFLAGS="$FLAGS -std=gnu17 -Iparson"
 
     rm -rf $TRIPLE || true
     rm *.o || true

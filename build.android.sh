@@ -79,7 +79,7 @@ function build_android {
     CFLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
       $CFLAGS \
-      -std=gnu11 -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -DANDROID"
+      -std=gnu17 -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -DANDROID"
     #-fvisibility=hidden -fvisibility-inlines-hidden -flto \
     if [ ! -z ${DEBUG+x} ]; then
         CFLAGS="$CFLAGS -O0 -DDEBUG=1"
