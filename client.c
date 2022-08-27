@@ -4047,6 +4047,10 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         return NULL;
     }
 
+    lsd_set_sockaddr_callback(^(const sockaddr *addr, socklen_t addrlen){
+        add_sockaddr(n, addr, addrlen);
+    });
+
     dht_set_event_cb(n->dht, ^(int event, const unsigned char *info_hash, const void *data, size_t data_len) {
         dht_event(n, event, info_hash, data, data_len);
     });

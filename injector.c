@@ -19,6 +19,7 @@
 #include "dht/dht.h"
 
 #include "log.h"
+#include "lsd.h"
 #include "sha1.h"
 #include "utp.h"
 #include "base64.h"
@@ -756,6 +757,10 @@ int main(int argc, char *argv[])
 
     port_t port = atoi(port_s);
     network *n = network_setup(address, port);
+
+    lsd_set_sockaddr_callback(^(const sockaddr *addr, socklen_t addrlen){
+        add_sockaddr(n, addr, addrlen);
+    });
 
     dht_set_event_cb(n->dht, ^(int event, const unsigned char *info_hash, const void *data, size_t data_len) {
         dht_event(n, event, info_hash, data, data_len);
