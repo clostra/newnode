@@ -4056,7 +4056,7 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         return NULL;
     }
 
-    network_set_sockaddr_callback(n, ^(const sockaddr *addr, socklen_t addrlen){
+    network_set_sockaddr_callback(n, ^(const sockaddr *addr, socklen_t addrlen) {
         add_sockaddr(n, addr, addrlen);
     });
 

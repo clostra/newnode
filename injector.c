@@ -774,7 +774,7 @@ int main(int argc, char *argv[])
         return 5;
     }
 
-    network_set_sockaddr_callback(n, ^(const sockaddr *addr, socklen_t addrlen){
+    network_set_sockaddr_callback(n, ^(const sockaddr *addr, socklen_t addrlen) {
         add_sockaddr(n, addr, addrlen);
     });
 
