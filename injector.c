@@ -65,7 +65,7 @@ void dht_event(void *closure, int event, const unsigned char *info_hash, const v
     debug("\n");
 }
 
-void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
+static void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
 {
     dht_ping_node(addr, addrlen);
 }
@@ -609,6 +609,14 @@ void http_request_cb(evhttp_request *req, void *arg)
     debug("con:%p %s:%u request received %s %s\n", req->evcon, e_host, e_port,
         evhttp_method(req->type), evhttp_request_get_uri(req));
 
+    addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_UDP};
+    addrinfo *res;
+    char port_s[6];
+    snprintf(port_s, sizeof(port_s), "%u", e_port);
+    getaddrinfo(e_host, port_s, &hints, &res);
+    add_sockaddr(n, res->ai_addr, res->ai_addrlen);
+    freeaddrinfo(res);
+
     if (req->type == EVHTTP_REQ_CONNECT) {
         connect_request(n, req);
         return;
@@ -758,7 +766,7 @@ int main(int argc, char *argv[])
     port_t port = atoi(port_s);
     network *n = network_setup(address, port);
 
-    lsd_set_sockaddr_callback(^(const sockaddr *addr, socklen_t addrlen){
+    network_set_sockaddr_callback(n, ^(const sockaddr *addr, socklen_t addrlen){
         add_sockaddr(n, addr, addrlen);
     });
 

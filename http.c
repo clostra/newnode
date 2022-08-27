@@ -218,27 +218,3 @@ void return_connection(evhttp_connection *evcon)
     }
     evhttp_connection_free(evcon);
 }
-
-uint64 utp_on_accept(utp_callback_arguments *a)
-{
-    network *n = (network*)utp_context_get_userdata(a->context);
-    sockaddr_storage addr;
-    socklen_t addrlen = sizeof(addr);
-    if (utp_getpeername(a->socket, (sockaddr *)&addr, &addrlen) == -1) {
-        debug("utp_getpeername failed\n");
-    }
-    //debug("%s %p %s\n", __func__, a->socket, sockaddr_str((const sockaddr*)&addr));
-    add_sockaddr(n, (sockaddr *)&addr, addrlen);
-    // XXX: hack around evhttp_get_request() only taking fds
-    // https://github.com/libevent/libevent/issues/1268
-    assert(!n->accepting_utp);
-    n->accepting_utp = a->socket;
-    evhttp_connection *evcon = evhttp_get_request(n->http, EVUTIL_INVALID_SOCKET, (sockaddr *)&addr, addrlen);
-    if (!evcon) {
-        debug("%s evhttp_get_request failed\n", __func__);
-        assert(evcon);
-        return 0;
-    }
-    assert(!n->accepting_utp);
-    return 1;
-}

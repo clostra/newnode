@@ -126,6 +126,29 @@ uint64 utp_callback_log(utp_callback_arguments *a)
     return 0;
 }
 
+uint64 utp_on_accept(utp_callback_arguments *a)
+{
+    network *n = (network*)utp_context_get_userdata(a->context);
+    sockaddr_storage addr;
+    socklen_t addrlen = sizeof(addr);
+    if (utp_getpeername(a->socket, (sockaddr *)&addr, &addrlen) == -1) {
+        debug("utp_getpeername failed\n");
+    }
+    //debug("%s %p %s\n", __func__, a->socket, sockaddr_str((const sockaddr*)&addr));
+    // XXX: hack around evhttp_get_request() only taking fds
+    // https://github.com/libevent/libevent/issues/1268
+    assert(!n->accepting_utp);
+    n->accepting_utp = a->socket;
+    evhttp_connection *evcon = evhttp_get_request(n->http, EVUTIL_INVALID_SOCKET, (sockaddr *)&addr, addrlen);
+    if (!evcon) {
+        debug("%s evhttp_get_request failed\n", __func__);
+        assert(evcon);
+        return 0;
+    }
+    assert(!n->accepting_utp);
+    return 1;
+}
+
 void dht_schedule(network *n, time_t tosleep)
 {
     timer_cancel(n->dht_timer);
@@ -656,6 +679,12 @@ void network_set_log_level(int level)
     if (o_debug) {
         event_enable_debug_logging(o_debug ? EVENT_DBG_ALL : EVENT_DBG_NONE);
     }
+}
+
+void network_set_sockaddr_callback(network *n, sockaddr_callback cb)
+{
+    Block_release(n->sockaddr_cb);
+    n->sockaddr_cb = Block_copy(cb);
 }
 
 void network_free(network *n)

@@ -530,8 +530,9 @@ void add_v6_addresses(network *n, peer_array **pa, const uint8_t *addrs, size_t 
     }
 }
 
-void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
+static void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
 {
+    dht_ping_node(addr, addrlen);
     add_address(n, &all_peers, addr, addrlen);
 }
 
@@ -3439,6 +3440,9 @@ static void http_request_cb(evhttp_request *req, void *arg)
     snprintf(port_s, sizeof(port_s), "%u", e_port);
     getaddrinfo(e_host, port_s, &hints, &res);
     peer *peer = get_peer(all_peers, res->ai_addr);
+    if (evcon_is_utp(req->evcon)) {
+        add_sockaddr(n, res->ai_addr, res->ai_addrlen);
+    }
     freeaddrinfo(res);
 
     const char *via = evhttp_find_header(req->input_headers, "Via");
@@ -4047,7 +4051,7 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         return NULL;
     }
 
-    lsd_set_sockaddr_callback(^(const sockaddr *addr, socklen_t addrlen){
+    network_set_sockaddr_callback(n, ^(const sockaddr *addr, socklen_t addrlen){
         add_sockaddr(n, addr, addrlen);
     });
 

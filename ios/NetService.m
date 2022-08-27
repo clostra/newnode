@@ -84,9 +84,9 @@
     network *n = _n;
     network_async(n, ^{
         for (NSData *addr in service.addresses) {
-            // in client.c
-            void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen);
-            add_sockaddr(n, (const sockaddr *)addr.bytes, (socklen_t)addr.length);
+            if (n->sockaddr_cb) {
+                n->sockaddr_cb((const sockaddr *)addr.bytes, (socklen_t)addr.length);
+            }
         }
     });
 }

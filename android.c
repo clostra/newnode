@@ -473,9 +473,9 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_addEndpoint(JNI
 {
     const sockaddr_in6 sin6 = jbyteArray_to_addr(env, endpoint);
     network_async(g_n, ^{
-        // in client.c
-        void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen);
-        add_sockaddr(g_n, (const sockaddr *)&sin6, sizeof(sin6));
+        if (g_n->sockaddr_cb) {
+            g_n->sockaddr_cb((const sockaddr *)&sin6, sizeof(sin6));
+        }
     });
 }
 

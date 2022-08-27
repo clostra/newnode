@@ -45,9 +45,4 @@ evbuffer* build_request_buffer(int response_code, evkeyvalq *hdrs);
 evhttp_connection *make_connection(network *n, const evhttp_uri *uri);
 void return_connection(evhttp_connection *evcon);
 
-uint64 utp_on_accept(utp_callback_arguments *a);
-
-// defined by caller
-void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen);
-
 #endif // __HTTP_H__

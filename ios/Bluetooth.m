@@ -5,8 +5,6 @@
 #include "d2d.h"
 
 
-void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen);
-
 @class Bluetooth;
 
 @interface Peer : NSObject <NSStreamDelegate>
@@ -106,7 +104,9 @@ static Bluetooth *gBluetooth = nil;
     const sockaddr_in6 sin6 = endpoint_to_addr(&e);
     network *n = _n;
     network_async(n, ^{
-        add_sockaddr(n, (const sockaddr *)&sin6, sizeof(sin6));
+        if (n->sockaddr_cb) {
+            n->sockaddr_cb((const sockaddr *)&sin6, sizeof(sin6));
+        }
     });
 
     channel.inputStream.delegate = peer;

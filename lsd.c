@@ -23,7 +23,6 @@ static int route_fd = -1;
 static event lsd_event;
 static event route_event;
 static timer *route_timer;
-static lsd_sockaddr_callback lsd_sockaddr_cb;
 
 
 #ifndef __APPLE__
@@ -134,7 +133,9 @@ void lsd_read_cb(evutil_socket_t fd, short events, void *arg)
             getnameinfo((sockaddr *)&addr, addrlen, host, sizeof(host), serv, sizeof(serv), NI_NUMERICHOST|NI_NUMERICSERV);
             debug("lsd peer %s:%s\n", host, serv);
         }
-        lsd_sockaddr_cb((sockaddr *)&addr, addrlen);
+        if (n->sockaddr_cb) {
+            n->sockaddr_cb((sockaddr *)&addr, addrlen);
+        }
     }
 }
 
@@ -148,14 +149,7 @@ void route_read_cb(evutil_socket_t fd, short events, void *arg)
         route_timer = NULL;
         lsd_setup(n);
     });
-    extern void network_ifchange(network *n);
     network_ifchange(n);
-}
-
-void lsd_set_sockaddr_callback(lsd_sockaddr_callback cb)
-{
-    Block_release(lsd_sockaddr_cb);
-    lsd_sockaddr_cb = Block_copy(cb);
 }
 
 void lsd_setup(network *n)
