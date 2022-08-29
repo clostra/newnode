@@ -92,22 +92,29 @@ void dns_prefetch_store_result(network *n, evutil_addrinfo *ai, const char *host
 {
     debug("%s host:%s\n", __func__, host);
 
-    if (!ttl) {
-        // don't have a ttl from DNS query.  add to evdns cache with
-        // a minimum ttl (like 60 seconds), but don't overwrite
-        // a cache entry that already exists.
-        ttl = 60;
-        evutil_addrinfo *res;
-        evutil_addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_TCP};
-        if (evdns_cache_lookup(n->evdns, host, &hints, 0, &res) == 0) {
-            debug("%s NOT adding (host:%s=>%s) to evdns cache - already present in cache\n",
-                  __func__, host, make_ip_addr_list(ai));
-            evutil_freeaddrinfo(res);
-            return;
+    evutil_addrinfo *res = NULL;
+    evutil_addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_TCP};
+    evdns_cache_lookup(n->evdns, host, &hints, 0, &res);
+
+    // XXX: this will renew ttl for old entries, but it's better than throwing away answers
+    for (evutil_addrinfo *p = res; p; p = p->ai_next) {
+        bool found = false;
+        for (evutil_addrinfo *q = ai; q; q = q->ai_next) {
+            if (evutil_sockaddr_cmp(p->ai_addr, q->ai_addr, 1) == 0) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            ai = evutil_addrinfo_append_(ai, evutil_dupe_addrinfo_(p));
         }
     }
 
-    // have a ttl obtained from DNS query, add to evdns cache
+    if (!ttl) {
+        // don't have a ttl from DNS query. pick one.
+        ttl = 60;
+    }
+
     debug("%s adding (host:%s=>%s) to evdns cache with ttl:%d)\n",
           __func__, host, make_ip_addr_list(ai), ttl);
     // max DNS TTL per RFC 2181 = 2^31 - 1
