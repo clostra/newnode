@@ -100,7 +100,7 @@ void dns_prefetch_store_result(network *n, evutil_addrinfo *ai, const char *host
     for (evutil_addrinfo *p = res; p; p = p->ai_next) {
         bool found = false;
         for (evutil_addrinfo *q = ai; q; q = q->ai_next) {
-            if (evutil_sockaddr_cmp(p->ai_addr, q->ai_addr, 1) == 0) {
+            if (sockaddr_eq(p->ai_addr, q->ai_addr)) {
                 found = true;
                 break;
             }
