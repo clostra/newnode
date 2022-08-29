@@ -32,7 +32,7 @@ void dns_prefetch_callback(DNSServiceRef sdRef, DNSServiceFlags flags, uint32_t 
 
     socklen_t addrlen = sockaddr_get_length(address);
     evutil_addrinfo nullhints = {
-        .ai_family = PF_UNSPEC,
+        .ai_family = address->sa_family,
         .ai_socktype = SOCK_STREAM,
         .ai_protocol = IPPROTO_TCP
     };
