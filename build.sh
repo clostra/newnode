@@ -1,13 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-case "$(which nproc)" in
-    "") 
-        nproc() {
-            getconf _NPROCESSORS_ONLN
-        } 
-    ;;
-esac
 
 export CC=clang
 export CXX=clang++
@@ -18,7 +11,7 @@ PARSON_CFLAGS="-Iparson"
 cd libevent
 if [ ! -d native ]; then
     ./autogen.sh
-    ./configure --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --prefix=$(pwd)/native
+    ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --prefix=$(pwd)/native
     make clean
     make -j`nproc`
     make install
@@ -55,7 +48,7 @@ if ! echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -f
     cd blocksruntime
     if [ ! -f native/libBlocksRuntime.a ]; then
         ./buildlib
-        mkdir native
+        mkdir -p native
         mv libBlocksRuntime.a native
     fi
     cd ..

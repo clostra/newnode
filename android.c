@@ -172,15 +172,16 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_storeDnsPrefetc
         jbyteArray jaddr = (jbyteArray)(*env)->GetObjectArrayElement(env, addresses, i);
         jbyte* addr = (*env)->GetByteArrayElements(env, jaddr, NULL); 
         socklen_t addrlen = (*env)->GetArrayLength(env, jaddr);
-        evutil_addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_TCP};
         switch (addrlen) {
         case sizeof(in_addr_t): {
+            evutil_addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_TCP};
             sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = *(in_addr_t*)addr};
             evutil_addrinfo *ai = evutil_new_addrinfo_((sockaddr*)&sin, sizeof(sin), &hints);
             rai = evutil_addrinfo_append_(rai, ai);
             break;
         }
         case sizeof(in6_addr): {
+            evutil_addrinfo hints = {.ai_family = AF_INET6, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_TCP};
             sockaddr_in6 sin6 = {.sin6_family = AF_INET6};
             memcpy(&sin6.sin6_addr, &addr, sizeof(sin6.sin6_addr));
             evutil_addrinfo *ai = evutil_new_addrinfo_((sockaddr*)&sin6, sizeof(sin6), &hints);
@@ -473,7 +474,9 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_addEndpoint(JNI
 {
     const sockaddr_in6 sin6 = jbyteArray_to_addr(env, endpoint);
     network_async(g_n, ^{
-        add_sockaddr(g_n, (const sockaddr *)&sin6, sizeof(sin6));
+        if (g_n->sockaddr_cb) {
+            g_n->sockaddr_cb((const sockaddr *)&sin6, sizeof(sin6));
+        }
     });
 }
 

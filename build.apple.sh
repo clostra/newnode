@@ -7,7 +7,7 @@ function build_apple {
     cd libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
-        ./configure --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --host=$TRIPLE --prefix=$(pwd)/$TRIPLE CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS"
+        ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --host=$TRIPLE --prefix=$(pwd)/$TRIPLE CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS"
         echo "#define HAVE_WORKING_KQUEUE 1" >> $(pwd)/config.h
         make clean
         make -j`nproc`
@@ -22,7 +22,7 @@ function build_apple {
     if [ ! -f $TRIPLE/libutp.a ]; then
         make clean
         OPT=-O2 CPPFLAGS=$CFLAGS make -j`nproc` libutp.a
-        mkdir $TRIPLE
+        mkdir -p $TRIPLE
         mv libutp.a $TRIPLE
     fi
     cd ..
@@ -43,7 +43,7 @@ function build_apple {
 
     cd parson
     if [ ! -f $TRIPLE/libparson.a ]; then
-        test -d $TRIPLE || mkdir $TRIPLE
+        mkdir -p $TRIPLE
         clang $CFLAGS -c parson.c -o parson.o && ar -r $TRIPLE/libparson.a parson.o
     fi
     PARSON="parson/$TRIPLE/libparson.a"
@@ -58,7 +58,7 @@ function build_apple {
         FLAGS="$FLAGS -DDEBUG=1"
     fi
 
-    CFLAGS="$FLAGS -std=gnu11 -Iparson"
+    CFLAGS="$FLAGS -std=gnu17 -Iparson"
 
     rm -rf $TRIPLE || true
     rm *.o || true

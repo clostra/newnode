@@ -51,7 +51,13 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
             disconnect();
             return START_NOT_STICKY;
         } else {
-            connect();
+            try {
+                connect();
+            } catch (IllegalStateException e) {
+                Log.e(TAG, "connect", e);
+                disconnect();
+                return START_NOT_STICKY;
+            }
             return START_STICKY;
         }
     }
@@ -103,19 +109,22 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
         // be killed by background check before getting a chance to receive onRevoke().
         mHandler.sendEmptyMessage(R.string.connected);
 
-        mTun2SocksThread = new Thread(() ->
-           runTun2Socks(
-                fd.detachFd(),
-                1500,
-                "10.7.0.1",
-                "255.255.255.255",
-                System.getProperty("proxyHost") + ":" + System.getProperty("proxyPort"),
-                System.getProperty("proxyHost") + ":" + "7300",
-                1));
-        mTun2SocksThread.start();
+        if (mTun2SocksThread == null) {
+            mTun2SocksThread = new Thread(() ->
+               runTun2Socks(
+                    fd.detachFd(),
+                    1500,
+                    "10.7.0.1",
+                    "255.255.255.255",
+                    System.getProperty("proxyHost") + ":" + System.getProperty("proxyPort"),
+                    System.getProperty("proxyHost") + ":" + "7300",
+                    1));
+            mTun2SocksThread.start();
+        }
     }
 
     private void disconnect() {
+        /*
         if (mTun2SocksThread != null) {
             try {
                 terminateTun2Socks();
@@ -125,6 +134,7 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
             }
             mTun2SocksThread = null;
         }
+        */
         mHandler.sendEmptyMessage(R.string.disconnected);
         stopForeground(true);
     }
@@ -157,8 +167,19 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
 
     public native static int terminateTun2Socks();
 
-    public static void logTun2Socks(String level, String channel, String msg) {
-        //Log.d(TAG + "_" + channel, msg);
+    public static void logTun2Socks(int level, String channel, String msg) {
+        switch (level) {
+        case 1:
+            Log.e(TAG + "_" + channel, msg); break;
+        case 2:
+            Log.w(TAG + "_" + channel, msg); break;
+        case 3:
+            Log.i(TAG + "_" + channel, msg); break;
+        case 4:
+            //Log.v(TAG + "_" + channel, msg); break;
+        case 5:
+            //Log.d(TAG + "_" + channel, msg); break;
+        }
     }
 
     static {

@@ -17,7 +17,10 @@ function build_android {
 
     cd libsodium
     export ANDROID_NDK_HOME=$NDK
-    test -f libsodium-android-$SODIUM_CPU_ARCH/lib/libsodium.a || ./dist-build/android-$SODIUM_SCRIPT.sh
+    if [ ! -f libsodium-android-$SODIUM_CPU_ARCH/lib/libsodium.a ]; then
+        ./autogen.sh
+        ./dist-build/android-$SODIUM_SCRIPT.sh
+    fi
     cd ..
     LIBSODIUM_CFLAGS=-Ilibsodium/libsodium-android-$SODIUM_CPU_ARCH/include
     LIBSODIUM=libsodium/libsodium-android-$SODIUM_CPU_ARCH/lib/libsodium.a
@@ -26,7 +29,7 @@ function build_android {
     cd libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
-        CFLAGS="$CFLAGS" ./configure --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --with-pic $LIBEVENT_CONFIG --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
+        CFLAGS="$CFLAGS" ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --with-pic $LIBEVENT_CONFIG --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
         make clean
         make -j`nproc`
         make install
@@ -51,7 +54,7 @@ function build_android {
     cd blocksruntime
     if [ ! -f $TRIPLE/libBlocksRuntime.a ]; then
         ./buildlib
-        mkdir $TRIPLE
+        mkdir -p $TRIPLE
         mv libBlocksRuntime.a $TRIPLE
     fi
     cd ..
@@ -61,7 +64,7 @@ function build_android {
 
     cd libunwind-ndk
     if [ ! -f $TRIPLE/libunwind.a ]; then
-        mkdir $TRIPLE
+        mkdir -p $TRIPLE
         cd $TRIPLE
         cmake -Wno-dev -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
             -DANDROID_NDK=$NDK -DANDROID_ABI=$ABI -DANDROID_PLATFORM=android-$NDK_API ../cmake
@@ -76,7 +79,7 @@ function build_android {
     CFLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
       $CFLAGS \
-      -std=gnu11 -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -DANDROID"
+      -std=gnu17 -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -DANDROID"
     #-fvisibility=hidden -fvisibility-inlines-hidden -flto \
     if [ ! -z ${DEBUG+x} ]; then
         CFLAGS="$CFLAGS -O0 -DDEBUG=1"

@@ -19,6 +19,7 @@
 #include "dht/dht.h"
 
 #include "log.h"
+#include "lsd.h"
 #include "sha1.h"
 #include "utp.h"
 #include "base64.h"
@@ -55,16 +56,16 @@ bool network_process_udp_cb(network *n, const uint8_t *buf, size_t len, const so
 void network_ifchange(network *n) {}
 ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6) { return -1; }
 
-void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
+void dht_event(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
 {
-    debug("dht_event_callback event:%d data_len:%zu ", event, data_len);
+    debug("%s event:%d data_len:%zu ", __func__, event, data_len);
     for (uint i = 0; i < 20; i++) {
         debug("%02X", info_hash[i]);
     }
     debug("\n");
 }
 
-void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
+static void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
 {
     dht_ping_node(addr, addrlen);
 }
@@ -608,6 +609,14 @@ void http_request_cb(evhttp_request *req, void *arg)
     debug("con:%p %s:%u request received %s %s\n", req->evcon, e_host, e_port,
         evhttp_method(req->type), evhttp_request_get_uri(req));
 
+    addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_UDP};
+    addrinfo *res;
+    char port_s[6];
+    snprintf(port_s, sizeof(port_s), "%u", e_port);
+    getaddrinfo(e_host, port_s, &hints, &res);
+    add_sockaddr(n, res->ai_addr, res->ai_addrlen);
+    freeaddrinfo(res);
+
     if (req->type == EVHTTP_REQ_CONNECT) {
         connect_request(n, req);
         return;
@@ -756,6 +765,22 @@ int main(int argc, char *argv[])
 
     port_t port = atoi(port_s);
     network *n = network_setup(address, port);
+    if (!n) {
+        return 4;
+    }
+
+    if (!http_setup(n)) {
+        network_free(n);
+        return 5;
+    }
+
+    network_set_sockaddr_callback(n, ^(const sockaddr *addr, socklen_t addrlen) {
+        add_sockaddr(n, addr, addrlen);
+    });
+
+    dht_set_event_cb(n->dht, ^(int event, const unsigned char *info_hash, const void *data, size_t data_len) {
+        dht_event(n, event, info_hash, data, data_len);
+    });
 
     timer_callback cb = ^{
 #define SHA1BA(a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t) (const uint8_t[]){0x##a,0x##b,0x##c,0x##d,0x##e,0x##f,0x##g,0x##h,0x##i,0x##j,0x##k,0x##l,0x##m,0x##n,0x##o,0x##p,0x##q,0x##r,0x##s,0x##t}

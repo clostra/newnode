@@ -16,8 +16,6 @@
 
 TS(network);
 
-#include "dht.h"
-
 
 #ifndef MIN
 #define MIN(a, b) (((a)<(b))?(a):(b))
@@ -120,8 +118,11 @@ DEFINE_TRIVIAL_CLEANUP_FUNC(evbuffer*, evbuffer_free)
 #define evbuffer_auto_free __attribute__((__cleanup__(evbuffer_freep)))
 
 
+#include "dht.h"
 #include "timer.h"
 
+
+typedef void (^sockaddr_callback)(const sockaddr *addr, socklen_t addrlen);
 
 struct network {
     event_base *evbase;
@@ -135,6 +136,7 @@ struct network {
     dht *dht;
     timer *dht_timer;
     evhttp *http;
+    sockaddr_callback sockaddr_cb;
     bool request_discovery_permission:1;
 };
 
@@ -164,6 +166,7 @@ void network_async(network *n, timer_callback cb);
 int network_loop(network *n);
 
 void network_set_log_level(int level);
+void network_set_sockaddr_callback(network *n, sockaddr_callback cb);
 void network_free(network *n);
 #define network_sendto(n, ...) udp_sendto(n->fd, __VA_ARGS__)
 void network_recreate_sockets_cb(network *n) __attribute__((weak));

@@ -40,7 +40,7 @@
 uint64 utp_on_firewall(utp_callback_arguments *a)
 {
     network *n = (network*)utp_context_get_userdata(a->context);
-    if (evhttp_get_connection_count(n->http) > 100000) {
+    if (n->http && evhttp_get_connection_count(n->http) > 100000) {
         return 1;
     }
     return 0;
@@ -94,7 +94,7 @@ ssize_t udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, s
         salen = sizeof(sin6);
     }
 
-    if (sa->sa_family == AF_INET6) {
+    if (sa->sa_family == AF_INET6 && d2d_sendto != NULL) {
         const sockaddr_in6 *s6 = (const sockaddr_in6 *)sa;
         ssize_t r = d2d_sendto(buf, len, s6);
         if (r > 0) {
@@ -414,17 +414,6 @@ void evdns_log_cb(int severity, const char *msg)
     }
 }
 
-bufferevent* create_bev(event_base *base, void *userdata)
-{
-    network *n = (network*)userdata;
-    if (n->accepting_utp) {
-        utp_socket *s = n->accepting_utp;
-        n->accepting_utp = NULL;
-        return bufferevent_utp_new(base, n->utp, s, BEV_OPT_CLOSE_ON_FREE);
-    }
-    return bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-}
-
 uint64 utp_callback_get_random(utp_callback_arguments *args)
 {
     uint64_t r;
@@ -658,6 +647,12 @@ void network_set_log_level(int level)
     }
 }
 
+void network_set_sockaddr_callback(network *n, sockaddr_callback cb)
+{
+    Block_release(n->sockaddr_cb);
+    n->sockaddr_cb = Block_copy(cb);
+}
+
 void network_free(network *n)
 {
     utp_destroy(n->utp);
@@ -734,17 +729,6 @@ network* network_setup(char *address, port_t port)
     evdns_base_nameserver_ip_add(n->evdns, "8.8.8.8");
     evdns_base_nameserver_ip_add(n->evdns, "8.8.4.4");
 
-    n->http = evhttp_new(n->evbase);
-    if (!n->http) {
-        fprintf(stderr, "evhttp_new failed\n");
-        network_free(n);
-        return NULL;
-    }
-    // don't add any content type automatically
-    evhttp_set_default_content_type(n->http, NULL);
-    evhttp_set_bevcb(n->http, create_bev, n);
-    evhttp_set_timeout(n->http, 50);
-
     if (evthread_make_base_notifiable(n->evbase)) {
         fprintf(stderr, "evthread_make_base_notifiable failed\n");
         network_free(n);
@@ -771,7 +755,6 @@ network* network_setup(char *address, port_t port)
     utp_set_callback(n->utp, UTP_LOG, &utp_callback_log);
     utp_set_callback(n->utp, UTP_SENDTO, &utp_callback_sendto);
     utp_set_callback(n->utp, UTP_ON_FIREWALL, &utp_on_firewall);
-    utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
     utp_set_callback(n->utp, UTP_ON_ERROR, &utp_on_error);
     utp_set_callback(n->utp, UTP_ON_STATE_CHANGE, &utp_on_state_change);
     utp_set_callback(n->utp, UTP_ON_READ, &utp_on_read);

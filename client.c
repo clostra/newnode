@@ -434,7 +434,7 @@ peer* get_peer(peer_array *pa, const sockaddr *a)
 
 peer* add_peer(peer_array **pa, const sockaddr *a, create_fn c)
 {
-    return (peer*)hash_get_or_insert(*pa, sockaddr_str(a), ^void* {
+    return hash_get_or_insert(*pa, sockaddr_str(a), ^void* {
         dht_ping_node((const sockaddr *)a, sockaddr_get_length(a));
         return c();
     });
@@ -530,15 +530,14 @@ void add_v6_addresses(network *n, peer_array **pa, const uint8_t *addrs, size_t 
     }
 }
 
-void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
+static void add_sockaddr(network *n, const sockaddr *addr, socklen_t addrlen)
 {
+    dht_ping_node(addr, addrlen);
     add_address(n, &all_peers, addr, addrlen);
 }
 
-void dht_event_callback(void *closure, int event, const unsigned char *info_hash, const void *data, size_t data_len)
+void dht_event(network *n, int event, const unsigned char *info_hash, const void *data, size_t data_len)
 {
-    network *n = (network*)closure;
-
     peer_array **peer_list = NULL;
 
     if (memeq(info_hash, encrypted_injector_swarm_m1, sizeof(encrypted_injector_swarm_m1)) ||
@@ -3441,6 +3440,9 @@ static void http_request_cb(evhttp_request *req, void *arg)
     snprintf(port_s, sizeof(port_s), "%u", e_port);
     getaddrinfo(e_host, port_s, &hints, &res);
     peer *peer = get_peer(all_peers, res->ai_addr);
+    if (evcon_is_utp(req->evcon)) {
+        add_sockaddr(n, res->ai_addr, res->ai_addrlen);
+    }
     freeaddrinfo(res);
 
     const char *via = evhttp_find_header(req->input_headers, "Via");
@@ -4010,6 +4012,11 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         return n;
     }
 
+    if (!http_setup(n)) {
+        network_free(n);
+        return NULL;
+    }
+
     port_pref = n->port;
     f = fopen("port.dat", "wb");
     if (f) {
@@ -4048,6 +4055,14 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         network_free(n);
         return NULL;
     }
+
+    network_set_sockaddr_callback(n, ^(const sockaddr *addr, socklen_t addrlen) {
+        add_sockaddr(n, addr, addrlen);
+    });
+
+    dht_set_event_cb(n->dht, ^(int event, const unsigned char *info_hash, const void *data, size_t data_len) {
+        dht_event(n, event, info_hash, data, data_len);
+    });
 
     network_async(n, ^{
         load_peers(n);

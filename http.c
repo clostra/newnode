@@ -20,6 +20,7 @@
 #include "constants.h"
 #include "hash_table.h"
 #include "http.h"
+#include "bufferevent_utp.h"
 
 
 evhttp_connection *connections[10];
@@ -228,7 +229,6 @@ uint64 utp_on_accept(utp_callback_arguments *a)
         debug("utp_getpeername failed\n");
     }
     //debug("%s %p %s\n", __func__, a->socket, sockaddr_str((const sockaddr*)&addr));
-    add_sockaddr(n, (sockaddr *)&addr, addrlen);
     // XXX: hack around evhttp_get_request() only taking fds
     // https://github.com/libevent/libevent/issues/1268
     assert(!n->accepting_utp);
@@ -241,4 +241,30 @@ uint64 utp_on_accept(utp_callback_arguments *a)
     }
     assert(!n->accepting_utp);
     return 1;
+}
+
+bufferevent* create_bev(event_base *base, void *userdata)
+{
+    network *n = (network*)userdata;
+    if (n->accepting_utp) {
+        utp_socket *s = n->accepting_utp;
+        n->accepting_utp = NULL;
+        return bufferevent_utp_new(base, n->utp, s, BEV_OPT_CLOSE_ON_FREE);
+    }
+    return bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+}
+
+bool http_setup(network *n)
+{
+    n->http = evhttp_new(n->evbase);
+    if (!n->http) {
+        fprintf(stderr, "evhttp_new failed\n");
+        return false;
+    }
+    // don't add any content type automatically
+    evhttp_set_default_content_type(n->http, NULL);
+    evhttp_set_bevcb(n->http, create_bev, n);
+    evhttp_set_timeout(n->http, 50);
+    utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
+    return true;
 }
