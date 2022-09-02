@@ -35,8 +35,7 @@ public class NearbyHelper {
 
     static final String SERVICE_ID = "com.clostra.newnode.internal.SERVICE_ID";
 
-    // XXX: maybe use P2P_CLUSTER. better connectivity, but slower
-    Strategy STRATEGY = Strategy.P2P_STAR;
+    Strategy STRATEGY = Strategy.P2P_CLUSTER;
 
     static NearbyHelper nearbyHelper;
     Application app;
@@ -105,7 +104,7 @@ public class NearbyHelper {
 
     void startAdvertising() {
         AdvertisingOptions.Builder advertisingOptions = new AdvertisingOptions.Builder();
-        advertisingOptions.setStrategy(Strategy.P2P_CLUSTER);
+        advertisingOptions.setStrategy(STRATEGY);
         advertisingOptions.setDisruptiveUpgrade(false);
         Nearby.getConnectionsClient(app).startAdvertising(serviceName, SERVICE_ID, connectionLifecycleCallback, advertisingOptions.build())
         .addOnSuccessListener(new OnSuccessListener<Void>() {
@@ -134,7 +133,7 @@ public class NearbyHelper {
 
     void startDiscovery() {
         DiscoveryOptions.Builder discoveryOptions = new DiscoveryOptions.Builder();
-        discoveryOptions.setStrategy(Strategy.P2P_CLUSTER);
+        discoveryOptions.setStrategy(STRATEGY);
         Nearby.getConnectionsClient(app).startDiscovery(SERVICE_ID, new EndpointDiscoveryCallback() {
             @Override
             public void onEndpointFound(String endpointId, DiscoveredEndpointInfo info) {
