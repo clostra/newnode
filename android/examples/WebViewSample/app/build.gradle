@@ -1,12 +1,12 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 32
+    compileSdkVersion 33
 
     defaultConfig {
         applicationId "com.example.webviewsample"
         minSdkVersion 19
-        targetSdkVersion 32
+        targetSdkVersion 33
         versionCode 1
         versionName "1.0"
     }
@@ -28,8 +28,8 @@ dependencies {
     debugImplementation files('../../../build/outputs/aar/newnode-debug.aar')
     implementation 'com.bugsnag:bugsnag-android:4.7.0'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
-    implementation 'androidx.appcompat:appcompat:1.4.2'
-    implementation 'com.google.android.gms:play-services-nearby:18.2.0'
+    implementation 'androidx.appcompat:appcompat:1.5.0'
+    implementation 'com.google.android.gms:play-services-nearby:18.3.0'
 
     // use mavenCentral
     //implementation 'com.clostra.newnode:newnode:+'

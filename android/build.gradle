@@ -4,7 +4,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:7.2.0'
+        classpath 'com.android.tools.build:gradle:7.2.2'
     }
 }
 
@@ -22,7 +22,7 @@ allprojects {
 apply plugin: 'com.android.library'
 
 android {
-    compileSdkVersion 32
+    compileSdkVersion 33
 
     new File(System.getenv('NDK') + '/source.properties').eachLine { line ->
         def matcher = line =~ /Pkg.Revision = (.*)/
@@ -34,7 +34,7 @@ android {
 
     defaultConfig {
         minSdkVersion 16
-        targetSdkVersion 32
+        targetSdkVersion 33
         new File('../constants.h').eachLine { line ->
             def matcher = line =~ /VERSION "(.*)"/
             if (matcher) {
@@ -69,6 +69,6 @@ allprojects {
 dependencies {
     implementation 'com.bugsnag:bugsnag-android:4.7.0'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
-    implementation 'androidx.appcompat:appcompat:1.4.2'
-    implementation 'com.google.android.gms:play-services-nearby:18.2.0'
+    implementation 'androidx.appcompat:appcompat:1.5.0'
+    implementation 'com.google.android.gms:play-services-nearby:18.3.0'
 }

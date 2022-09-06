@@ -46,8 +46,13 @@ public class PermissionActivity extends Activity {
         super.onCreate(savedInstanceState);
         Log.e(TAG, "onCreate permission activity starting");
         List<String> permissions = new ArrayList<String>();
-        permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
-        permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        if (Build.VERSION.SDK_INT >= 33) {
+            permissions.add(Manifest.permission.NEARBY_WIFI_DEVICES);
+        }
+        if (Build.VERSION.SDK_INT < 32) {
+            permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
         if (Build.VERSION.SDK_INT >= 31) {
             permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE);
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
