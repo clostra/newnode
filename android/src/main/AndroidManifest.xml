@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.clostra.newnode">
-    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.BLUETOOTH" android:required="false" android:maxSdkVersion="30"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:required="false" android:maxSdkVersion="30"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" android:required="false"/>
@@ -9,7 +9,7 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" android:required="false"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:required="false" android:maxSdkVersion="32"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:required="false" android:maxSdkVersion="32"/>
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" android:required="false" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" android:required="false"/>
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation"/>
     <application>
         <activity android:name=".internal.PermissionActivity" android:theme="@android:style/Theme.Translucent.NoTitleBar">
