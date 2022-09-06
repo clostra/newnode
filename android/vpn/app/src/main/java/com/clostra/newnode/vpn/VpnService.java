@@ -124,7 +124,6 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
     }
 
     private void disconnect() {
-        /*
         if (mTun2SocksThread != null) {
             try {
                 terminateTun2Socks();
@@ -134,7 +133,6 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
             }
             mTun2SocksThread = null;
         }
-        */
         mHandler.sendEmptyMessage(R.string.disconnected);
         stopForeground(true);
     }
