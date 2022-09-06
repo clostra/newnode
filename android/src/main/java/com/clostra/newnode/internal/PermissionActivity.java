@@ -44,14 +44,14 @@ public class PermissionActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        Log.e(TAG, "onCreate permission activity starting");
+        Log.e(TAG, "onCreate permission activity starting api level:" + Build.VERSION.SDK_INT);
         List<String> permissions = new ArrayList<String>();
         if (Build.VERSION.SDK_INT >= 33) {
             permissions.add(Manifest.permission.NEARBY_WIFI_DEVICES);
-        }
-        if (Build.VERSION.SDK_INT < 32) {
-            permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        } else if (Build.VERSION.SDK_INT >= 29) {
             permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        } else {
+            permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
         }
         if (Build.VERSION.SDK_INT >= 31) {
             permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE);
