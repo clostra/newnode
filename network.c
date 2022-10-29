@@ -245,7 +245,7 @@ bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa
 {
     ddebug("udp_received(%zu, %s)\n", len, sockaddr_str(sa));
     if (network_process_udp_cb != NULL) {
-        if (network_process_udp_cb(n, buf, len, sa, salen)) {
+        if (network_process_udp_cb(buf, len, sa, salen)) {
             return true;
         }
     }

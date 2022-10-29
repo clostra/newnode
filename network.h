@@ -170,7 +170,7 @@ void network_set_sockaddr_callback(network *n, sockaddr_callback cb);
 void network_free(network *n);
 #define network_sendto(n, ...) udp_sendto(n->fd, __VA_ARGS__)
 void network_recreate_sockets_cb(network *n) __attribute__((weak));
-bool network_process_udp_cb(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) __attribute__((weak));
+bool network_process_udp_cb(const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) __attribute__((weak));
 void network_ifchange(network *n) __attribute__((weak));
 
 ssize_t udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
