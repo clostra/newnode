@@ -237,7 +237,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_httpCallback(JN
           http_status_code, flags);
 
     if (result.body_length > 0 && http_status_code == 200) {
-        result.body = malloc(result.body_length);
+        result.body = calloc(1, result.body_length);
         (*env)->GetByteArrayRegion(env, body, 0, result.body_length, (jbyte*)result.body);
     }
 
