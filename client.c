@@ -210,8 +210,7 @@ typedef struct {
 hash_table *tryfirst_per_origin_server;
 
 
-char g_ip[46];                          // note: max length of text of ipv6 address == 45
-                                        //       (assuming IPv4-mapped notation is used)
+char g_ip[INET6_ADDRSTRLEN];
 char g_country[3];                      // 2-letter ISO country code + '\0'
 int g_asn = -1;                         // autonomous system number (if returned by ipinfo)
 time_t g_ipinfo_timestamp = 0;          // timestamp of last ipinfo request
@@ -3917,63 +3916,59 @@ void query_ipinfo(network *n)
         uint64_t xfer_time_us = us_clock() - req_time;
         debug("GET https://ipinfo.io success:%d, response_length:%zu, https_error:%d duration:%f s\n",
               success, result->body_length, result->https_error, xfer_time_us / 1000000.0);
-        if (success &&
-            (result->flags & HTTPS_RESULT_TRUNCATED) == 0 &&
-            (result->body_length > 0) &&
-            (result->body_length <= IPINFO_RESPONSE_SIZE)) {
-            // make a copy of response body so we can safely
-            // append a 0 byte (because the response_body is
-            // allocated by the caller and might not be longer
-            // than needed)
-            auto_free char *response_body_copy = calloc(1, result->body_length + 1);
-            memcpy(response_body_copy, result->body, result->body_length);
-
-            // XXX: TODO: json_auto_free
-            JSON_Value *v = json_parse_string(response_body_copy);
-            if (json_value_get_type(v) != JSONObject) {
-                json_value_free(v);
-                return;
-            }
-
-            JSON_Object *jo = json_value_get_object(v);
-            time_t t = time(NULL);
-
-            const char *ip = json_string(json_object_get_value(jo, "ip"));
-            const char *country = json_string(json_object_get_value(jo, "country"));
-            const char *org = json_string(json_object_get_value(jo, "org"));
-            int asn = -1;
-            if (org != NULL) {
-                // try to parse AS number embedded in org
-                if (strlen(org) > 3 && org[0] == 'A' && org[1] == 'S' && isdigit(org[2])) {
-                    asn = atoi(org + 2);
-                }
-            }
-            debug("IP:%s CC:%s ASN:%d time:%s", ip, country, asn, ctime(&t));
-
-            // now write the result to stats server if they've changed
-            if (ip && ip[0] && country && country[0] && asn > 0 &&
-                (strcmp (ip, g_ip) != 0 || strcmp(country, g_country) != 0 || asn != g_asn)) {
-                // save new values iff they fit (don't truncate them)
-                if (strlen(ip) < sizeof(g_ip)) {
-                    strcpy(g_ip, ip);
-                } else {
-                    *g_ip = '\0';
-                }
-                if (strlen(country) < sizeof(g_country)) {
-                    strcpy(g_country, country);
-                } else {
-                    *g_country = '\0';
-                }
-                g_asn = asn;
-                g_ipinfo_timestamp = req_time;
-                maybe_update_ipinfo(n);
-            }
-
-            json_value_free(v);
-        } else {
+        if (!success || result->flags & HTTPS_RESULT_TRUNCATED || result->body_length == IPINFO_RESPONSE_SIZE) {
             debug("https://ipinfo.io => success:%d response_length:%zu https_error:%d\n",
                   success, result->body_length, result->https_error);
+            return;
         }
+
+        result->body[result->body_length] = '\0';
+
+        // TODO: json_auto_free
+        JSON_Value *v = json_parse_string(result->body);
+        if (json_value_get_type(v) != JSONObject) {
+            json_value_free(v);
+            return;
+        }
+
+        JSON_Object *jo = json_value_get_object(v);
+
+        const char *ip = json_string(json_object_get_value(jo, "ip"));
+        const char *country = json_string(json_object_get_value(jo, "country"));
+        const char *org = json_string(json_object_get_value(jo, "org"));
+
+        // try to parse AS number embedded in org
+        if (!org || strlen(org) < 3 || org[0] != 'A' || org[1] != 'S' || !isdigit(org[2])) {
+            json_value_free(v);
+            return;
+        }
+        int asn = atoi(&org[2]);
+        time_t t = time(NULL);
+        debug("IP:%s CC:%s ASN:%d time:%s", ip, country, asn, ctime(&t));
+
+        if (!ip || !country || asn == 0) {
+            json_value_free(v);
+            return;
+        }
+
+        if (streq(g_ip, ip) && streq(g_country, country) && g_asn == asn) {
+            json_value_free(v);
+            return;
+        }
+
+        // save new values if they fit (don't truncate them)
+        if (strlen(ip) >= sizeof(g_ip) || strlen(country) >= sizeof(g_country)) {
+            json_value_free(v);
+            return;
+        }
+
+        strcpy(g_ip, ip);
+        strcpy(g_country, country);
+        g_asn = asn;
+        g_ipinfo_timestamp = req_time;
+        maybe_update_ipinfo(n);
+
+        json_value_free(v);
     });
 }
 
