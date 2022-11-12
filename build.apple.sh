@@ -4,6 +4,8 @@ set -euo pipefail
 
 function build_apple {
 
+    PARSON_CFLAGS=-Iparson
+
     cd libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
@@ -41,13 +43,6 @@ function build_apple {
     cp $LIBBUGSNAG $LIBBUGSNAG.tmp
     mv $LIBBUGSNAG.tmp $LIBBUGSNAG
 
-    cd parson
-    if [ ! -f $TRIPLE/libparson.a ]; then
-        mkdir -p $TRIPLE
-        clang $CFLAGS -c parson.c -o parson.o && ar -r $TRIPLE/libparson.a parson.o
-    fi
-    PARSON="parson/$TRIPLE/libparson.a"
-    cd ..
 
     FLAGS="$CFLAGS -g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks \
@@ -58,15 +53,16 @@ function build_apple {
         FLAGS="$FLAGS -DDEBUG=1"
     fi
 
-    CFLAGS="$FLAGS -std=gnu17 -Iparson"
+    CFLAGS="$FLAGS -std=gnu17"
 
     rm -rf $TRIPLE || true
     rm *.o || true
     clang $CFLAGS -c dht/dht.c -o dht_dht.o
     for file in bev_splice.c backtrace.c base64.c client.c dht.c d2d.c dns_prefetch.c dns_prefetch_macos.c http.c log.c lsd.c \
                 icmp_handler.c hash_table.c merkle_tree.c network.c \
-                obfoo.c sha1.c timer.c thread.c bufferevent_utp.c; do
-        clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBUGSNAG_CFLAGS -c $file
+                obfoo.c sha1.c timer.c thread.c bufferevent_utp.c \
+                parson/parson.c; do
+        clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBUGSNAG_CFLAGS $PARSON_CFLAGS -c $file
     done
     clang -fobjc-arc -fobjc-weak -fmodules $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBUGSNAG_CFLAGS -I ios -c ios/NetService.m ios/Bluetooth.m ios/HTTPSRequest.m ios/Framework/NewNode.m
     mkdir -p $TRIPLE/objects
@@ -85,7 +81,6 @@ function build_apple {
     arx $TRIPLE/objects/libevent libevent/$TRIPLE/lib/libevent_pthreads.a
     arx $TRIPLE/objects/libbugsnag $LIBBUGSNAG
     arx $TRIPLE/objects/libsodium libsodium.a
-    arx $TRIPLE/objects/libparson parson/$TRIPLE/libparson.a
 
     clang++ $CFLAGS -dynamiclib \
         -install_name @rpath/NewNode.framework/NewNode \
@@ -97,10 +92,10 @@ function build_apple {
         -Xlinker -no_deduplicate \
         -Xlinker -objc_abi_version -Xlinker 2 \
         -framework Foundation \
-        $TRIPLE/objects/*.o $TRIPLE/objects/libutp/*.o $TRIPLE/objects/libevent/*.o $TRIPLE/objects/libbugsnag/*.o $TRIPLE/objects/libsodium/*.o $TRIPLE/objects/libparson/*.o \
+        $TRIPLE/objects/*.o $TRIPLE/objects/libutp/*.o $TRIPLE/objects/libevent/*.o $TRIPLE/objects/libbugsnag/*.o $TRIPLE/objects/libsodium/*.o \
         -o $TRIPLE/libnewnode.dylib
 
-    ar rcs $TRIPLE/libnewnode.a $TRIPLE/objects/*.o $TRIPLE/objects/libutp/*.o $TRIPLE/objects/libevent/*.o $TRIPLE/objects/libbugsnag/*.o $TRIPLE/objects/libsodium/*.o $TRIPLE/objects/libparson/*.o
+    ar rcs $TRIPLE/libnewnode.a $TRIPLE/objects/*.o $TRIPLE/objects/libutp/*.o $TRIPLE/objects/libevent/*.o $TRIPLE/objects/libbugsnag/*.o $TRIPLE/objects/libsodium/*.o
 }
 
 cd libsodium
