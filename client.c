@@ -3968,6 +3968,8 @@ void query_ipinfo(network *n)
                 g_ipinfo_timestamp = req_time;
                 maybe_update_ipinfo(n);
             }
+
+            json_value_free(v);
         } else {
             debug("https://ipinfo.io => success:%d response_length:%zu https_error:%d\n",
                   success, result->body_length, result->https_error);
