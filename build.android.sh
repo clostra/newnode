@@ -76,7 +76,7 @@ function build_android {
     LIBUNWIND="libunwind-ndk/$TRIPLE/libunwind.a libunwind-ndk/$TRIPLE/lzma/liblzma.a"
 
 
-    CFLAGS="-g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
+    CFLAGS="-g -Werror -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
       $CFLAGS \
       -std=gnu17 -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -DANDROID"
@@ -89,6 +89,7 @@ function build_android {
 
     rm *.o || true
     $CC $CFLAGS -c dht/dht.c -o dht_dht.o
+    $CC $CFLAGS -Wno-deprecated-declarations -c parson/parson.c -o parson.o
     for file in android.c bev_splice.c base64.c client.c d2d.c dht.c http.c log.c lsd.c \
                 icmp_handler.c hash_table.c merkle_tree.c network.c obfoo.c sha1.c thread.c timer.c bufferevent_utp.c \
                 backtrace.c stall_detector.c \
@@ -97,8 +98,7 @@ function build_android {
                 bugsnag/bugsnag_ndk_report.c \
                 bugsnag/bugsnag_unwind.c \
                 bugsnag/deps/bugsnag/report.c \
-                bugsnag/deps/bugsnag/serialize.c \
-                parson/parson.c; do
+                bugsnag/deps/bugsnag/serialize.c; do
         $CC $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBLOCKSRUNTIME_CFLAGS $LIBUNWIND_CFLAGS $PARSON_CFLAGS -c $file
     done
     #$CC $CFLAGS -shared -Wl,--version-script=android_export_list -o libnewnode.so *.o -lm -llog $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME $LIBUNWIND

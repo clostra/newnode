@@ -44,7 +44,7 @@ function build_apple {
     mv $LIBBUGSNAG.tmp $LIBBUGSNAG
 
 
-    FLAGS="$CFLAGS -g -Werror -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
+    FLAGS="$CFLAGS -g -Werror -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -fPIC -fblocks \
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
       -fvisibility-inlines-hidden \
@@ -58,10 +58,10 @@ function build_apple {
     rm -rf $TRIPLE || true
     rm *.o || true
     clang $CFLAGS -c dht/dht.c -o dht_dht.o
+    clang $CFLAGS -Wdeprecated-declarations -c parson/parson.c -o parson.o
     for file in bev_splice.c backtrace.c base64.c client.c dht.c d2d.c dns_prefetch.c dns_prefetch_macos.c http.c log.c lsd.c \
                 icmp_handler.c hash_table.c merkle_tree.c network.c \
-                obfoo.c sha1.c timer.c thread.c bufferevent_utp.c \
-                parson/parson.c; do
+                obfoo.c sha1.c timer.c thread.c bufferevent_utp.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBUGSNAG_CFLAGS $PARSON_CFLAGS -c $file
     done
     clang -fobjc-arc -fobjc-weak -fmodules $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBUGSNAG_CFLAGS -I ios -c ios/NetService.m ios/Bluetooth.m ios/HTTPSRequest.m ios/Framework/NewNode.m
