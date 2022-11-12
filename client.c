@@ -1801,7 +1801,7 @@ void heartbeat_send(network *n)
 {
     char url[2048];
     char asn[512] = "";
-    if (*g_country && g_asn > 0) {
+    if (*g_country && g_asn != -1) {
         snprintf(asn, sizeof(asn),
                  "&geoid=%s" \
                  "&el=ASN&ev=%d",
@@ -3879,7 +3879,7 @@ void network_recreate_sockets_cb(network *n)
 
 void maybe_update_ipinfo(network *n)
 {
-    if (g_ip[0] == '\0' || g_country[0] == '\0' || g_asn == 0) {
+    if (g_ip[0] == '\0' || g_country[0] == '\0' || g_asn == -1) {
         return;
     }
     if (g_ipinfo_timestamp <= g_ipinfo_logged_timestamp) {
