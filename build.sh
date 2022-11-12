@@ -82,7 +82,7 @@ CLIBS="$LRT $LM $LIBUTP $LIBEVENT $LIBSODIUM $LIBBLOCKSRUNTIME -lpthread"
 
 rm -f *.o || true
 clang $CFLAGS -c dht/dht.c -o dht_dht.o
-clang $CFLAGS -c parson/parson.c -o parson.o
+clang $CFLAGS -Wno-deprecated-declarations -c parson/parson.c -o parson.o
 for file in backtrace.c d2d.c dht.c bev_splice.c base64.c http.c log.c lsd.c icmp_handler.c hash_table.c \
             merkle_tree.c network.c obfoo.c sha1.c stall_detector.c timer.c thread.c bufferevent_utp.c; do
     clang $CFLAGS $CDEPS -c $file
