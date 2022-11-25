@@ -137,6 +137,7 @@ struct network {
     timer *dht_timer;
     evhttp *http;
     sockaddr_callback sockaddr_cb;
+    pthread_t thread;
     bool request_discovery_permission:1;
 };
 
@@ -163,6 +164,7 @@ bool bufferevent_is_localhost(const bufferevent *bev);
 
 network* network_setup(char *address, port_t port);
 void network_async(network *n, timer_callback cb);
+void network_sync(network *n, timer_callback cb);
 int network_loop(network *n);
 
 void network_set_log_level(int level);

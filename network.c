@@ -15,6 +15,8 @@
 #include <poll.h>
 #include <netdb.h>
 #include <signal.h>
+#include <netdb.h>
+#include <pthread.h>
 
 #include <sodium.h>
 
@@ -780,6 +782,24 @@ void network_async(network *n, timer_callback cb)
     timer_start(n, 0, cb);
 }
 
+void network_sync(network *n, timer_callback cb)
+{
+    if (pthread_equal(pthread_self(), n->thread)) {
+        cb();
+        return;
+    }
+    pthread_mutex_t *m = alloc(pthread_mutex_t);
+    pthread_mutex_init(m, NULL);
+    pthread_mutex_lock(m);
+    network_async(n, ^{
+        cb();
+        pthread_mutex_unlock(m);
+    });
+    pthread_mutex_lock(m);
+    pthread_mutex_destroy(m);
+    free(m);
+}
+
 void sigterm_cb(evutil_socket_t sig, short events, void *ctx)
 {
     event_base_loopexit((event_base*)ctx, NULL);
@@ -787,9 +807,7 @@ void sigterm_cb(evutil_socket_t sig, short events, void *ctx)
 
 int network_loop(network *n)
 {
-    if (!n) {
-        return 1;
-    }
+    n->thread = pthread_self();
 
     event *sigterm = evsignal_new(n->evbase, SIGTERM, sigterm_cb, n->evbase);
     event_add(sigterm, NULL);
