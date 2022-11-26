@@ -809,11 +809,18 @@ void network_locked(network *n, timer_callback cb)
     pthread_mutex_t *m = alloc(pthread_mutex_t);
     pthread_mutex_init(m, NULL);
     pthread_mutex_lock(m);
+    pthread_mutex_t *m2 = alloc(pthread_mutex_t);
+    pthread_mutex_init(m2, NULL);
+    pthread_mutex_lock(m2);
     network_async(n, ^{
         pthread_mutex_unlock(m);
+        pthread_mutex_lock(m2);
+        pthread_mutex_destroy(m2);
+        free(m2);
     });
-    cb();
     pthread_mutex_lock(m);
+    cb();
+    pthread_mutex_unlock(m2);
     pthread_mutex_destroy(m);
     free(m);
 }
