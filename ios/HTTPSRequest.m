@@ -649,6 +649,10 @@ didCompleteWithError:(NSError *)error
     [_tasks removeObjectForKey:task];
     task = nil;
 
+    if (!result.body && request.bufsize > 0) {
+        result.body = calloc(1, request.bufsize);
+    }
+
     network_async(n, ^{
         if (_completion_cb) {
             _completion_cb(success, &result);
