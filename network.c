@@ -24,6 +24,7 @@
 #include <event2/buffer.h>
 #include <event2/event-config.h>
 #include <event2/bufferevent.h>
+#include "libevent/event-internal.h"
 
 #ifdef ANDROID
 #include <sys/system_properties.h>
@@ -784,10 +785,7 @@ void network_async(network *n, timer_callback cb)
 
 void network_sync(network *n, timer_callback cb)
 {
-    if (pthread_equal(pthread_self(), n->thread)) {
-        cb();
-        return;
-    }
+    assert(!EVBASE_IN_THREAD(n->evbase));
     pthread_mutex_t *m = alloc(pthread_mutex_t);
     pthread_mutex_init(m, NULL);
     pthread_mutex_lock(m);
@@ -802,29 +800,24 @@ void network_sync(network *n, timer_callback cb)
 
 void network_locked(network *n, timer_callback cb)
 {
-    if (pthread_equal(pthread_self(), n->thread) || n->locked) {
-        cb();
-        return;
-    }
-    pthread_mutex_t *m = alloc(pthread_mutex_t);
-    pthread_mutex_init(m, NULL);
-    pthread_mutex_lock(m);
-    pthread_mutex_t *m2 = alloc(pthread_mutex_t);
-    pthread_mutex_init(m2, NULL);
-    pthread_mutex_lock(m2);
+    assert(!EVBASE_IN_THREAD(n->evbase));
+    pthread_mutex_t *outer = alloc(pthread_mutex_t);
+    pthread_mutex_init(outer, NULL);
+    pthread_mutex_lock(outer);
+    pthread_mutex_t *inner = alloc(pthread_mutex_t);
+    pthread_mutex_init(inner, NULL);
+    pthread_mutex_lock(inner);
     network_async(n, ^{
-        pthread_mutex_unlock(m);
-        n->locked = true;
-        pthread_mutex_lock(m2);
-        n->locked = false;
-        pthread_mutex_destroy(m2);
-        free(m2);
+        pthread_mutex_unlock(outer);
+        pthread_mutex_lock(inner);
+        pthread_mutex_destroy(inner);
+        free(inner);
     });
-    pthread_mutex_lock(m);
+    pthread_mutex_lock(outer);
     cb();
-    pthread_mutex_unlock(m2);
-    pthread_mutex_destroy(m);
-    free(m);
+    pthread_mutex_unlock(inner);
+    pthread_mutex_destroy(outer);
+    free(outer);
 }
 
 void sigterm_cb(evutil_socket_t sig, short events, void *ctx)
@@ -834,8 +827,6 @@ void sigterm_cb(evutil_socket_t sig, short events, void *ctx)
 
 int network_loop(network *n)
 {
-    n->thread = pthread_self();
-
     event *sigterm = evsignal_new(n->evbase, SIGTERM, sigterm_cb, n->evbase);
     event_add(sigterm, NULL);
 
