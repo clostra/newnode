@@ -165,6 +165,7 @@ network* network_setup(char *address, port_t port);
 void network_async(network *n, timer_callback cb);
 void network_sync(network *n, timer_callback cb);
 void network_locked(network *n, timer_callback cb);
+bool network_in_thread(network *n);
 int network_loop(network *n);
 
 void network_set_log_level(int level);

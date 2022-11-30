@@ -783,9 +783,17 @@ void network_async(network *n, timer_callback cb)
     timer_start(n, 0, cb);
 }
 
+bool network_in_thread(network *n)
+{
+    EVBASE_ACQUIRE_LOCK(n->evbase, th_base_lock);
+    bool in_thread = EVBASE_IN_THREAD(n->evbase);
+    EVBASE_RELEASE_LOCK(n->evbase, th_base_lock);
+    return in_thread;
+}
+
 void network_sync(network *n, timer_callback cb)
 {
-    assert(!EVBASE_IN_THREAD(n->evbase));
+    assert(!network_in_thread(n));
     pthread_mutex_t *m = alloc(pthread_mutex_t);
     pthread_mutex_init(m, NULL);
     pthread_mutex_lock(m);
@@ -800,7 +808,7 @@ void network_sync(network *n, timer_callback cb)
 
 void network_locked(network *n, timer_callback cb)
 {
-    assert(!EVBASE_IN_THREAD(n->evbase));
+    assert(!network_in_thread(n));
     pthread_mutex_t *outer = alloc(pthread_mutex_t);
     pthread_mutex_init(outer, NULL);
     pthread_mutex_lock(outer);
