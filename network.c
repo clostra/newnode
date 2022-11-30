@@ -802,7 +802,7 @@ void network_sync(network *n, timer_callback cb)
 
 void network_locked(network *n, timer_callback cb)
 {
-    if (pthread_equal(pthread_self(), n->thread)) {
+    if (pthread_equal(pthread_self(), n->thread) || n->locked) {
         cb();
         return;
     }
@@ -814,7 +814,9 @@ void network_locked(network *n, timer_callback cb)
     pthread_mutex_lock(m2);
     network_async(n, ^{
         pthread_mutex_unlock(m);
+        n->locked = true;
         pthread_mutex_lock(m2);
+        n->locked = false;
         pthread_mutex_destroy(m2);
         free(m2);
     });

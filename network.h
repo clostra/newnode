@@ -138,6 +138,7 @@ struct network {
     evhttp *http;
     sockaddr_callback sockaddr_cb;
     pthread_t thread;
+    bool locked:1;
     bool request_discovery_permission:1;
 };
 
