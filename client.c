@@ -3868,7 +3868,7 @@ port_t recreate_listener(network *n, port_t port)
     return g_port;
 }
 
-void network_recreate_sockets_cb(network *n)
+void client_recreate_sockets(network *n)
 {
     if (!recreate_listener(n, g_port)) {
         // try again with 0 port
@@ -3972,7 +3972,7 @@ void query_ipinfo(network *n)
     });
 }
 
-void network_ifchange(network *n)
+void client_ifchange(network *n)
 {
     timer_cancel(g_ifchange_timer);
     g_ifchange_timer = timer_start(n, 5 * 1000, ^{
@@ -4057,6 +4057,14 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         add_sockaddr(n, addr, addrlen);
     });
 
+    network_set_ifchange_callback(n, ^{
+        client_ifchange(n);
+    });
+
+    network_set_recreate_sockets_callback(n, ^{
+        client_recreate_sockets(n);
+    });
+
     dht_set_event_cb(n->dht, ^(int event, const unsigned char *info_hash, const void *data, size_t data_len) {
         dht_event(n, event, info_hash, data, data_len);
     });
@@ -4102,7 +4110,7 @@ network* client_init(const char *app_name, const char *app_id, port_t *port, htt
         timer_repeating(n, 25 * 60 * 1000, cb);
         // random intervals between 6-12 hours
         timer_repeating(n, 1000 * (6 + randombytes_uniform(6)) * 60 * 60, ^{ heartbeat_send(n); });
-        network_ifchange(n);
+        client_ifchange(n);
     });
 
     return n;

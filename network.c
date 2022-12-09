@@ -239,8 +239,8 @@ void network_recreate_sockets(network *n)
     event_del(&n->udp_event);
     evutil_closesocket(n->fd);
     network_make_socket(n);
-    if (network_recreate_sockets_cb != NULL) {
-        network_recreate_sockets_cb(n);
+    if (n->recreate_sockets_cb) {
+        n->recreate_sockets_cb();
     }
 }
 
@@ -654,6 +654,18 @@ void network_set_sockaddr_callback(network *n, sockaddr_callback cb)
 {
     Block_release(n->sockaddr_cb);
     n->sockaddr_cb = Block_copy(cb);
+}
+
+void network_set_ifchange_callback(network *n, ifchange_callback cb)
+{
+    Block_release(n->ifchange_cb);
+    n->ifchange_cb = Block_copy(cb);
+}
+
+void network_set_recreate_sockets_callback(network *n, recreate_sockets_callback cb)
+{
+    Block_release(n->recreate_sockets_cb);
+    n->recreate_sockets_cb = Block_copy(cb);
 }
 
 void network_free(network *n)

@@ -123,6 +123,8 @@ DEFINE_TRIVIAL_CLEANUP_FUNC(evbuffer*, evbuffer_free)
 
 
 typedef void (^sockaddr_callback)(const sockaddr *addr, socklen_t addrlen);
+typedef void (^ifchange_callback)(void);
+typedef void (^recreate_sockets_callback)(void);
 
 struct network {
     event_base *evbase;
@@ -137,6 +139,8 @@ struct network {
     timer *dht_timer;
     evhttp *http;
     sockaddr_callback sockaddr_cb;
+    ifchange_callback ifchange_cb;
+    recreate_sockets_callback recreate_sockets_cb;
     bool request_discovery_permission:1;
 };
 
@@ -170,11 +174,11 @@ int network_loop(network *n);
 
 void network_set_log_level(int level);
 void network_set_sockaddr_callback(network *n, sockaddr_callback cb);
+void network_set_ifchange_callback(network *n, ifchange_callback cb);
+void network_set_recreate_sockets_callback(network *n, recreate_sockets_callback cb);
 void network_free(network *n);
 #define network_sendto(n, ...) udp_sendto(n->fd, __VA_ARGS__)
-void network_recreate_sockets_cb(network *n) __attribute__((weak));
 bool network_process_udp_cb(const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) __attribute__((weak));
-void network_ifchange(network *n) __attribute__((weak));
 
 ssize_t udp_sendto(int fd, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
 bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
