@@ -650,7 +650,7 @@ didCompleteWithError:(NSError *)error
     task = nil;
 
     if (!result.body && request.bufsize > 0) {
-        result.body = calloc(1, request.bufsize);
+        result.body = calloc(1, request.body_length + 1);
     }
 
     network_async(n, ^{
