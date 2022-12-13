@@ -717,7 +717,7 @@ didReceiveResponse:(NSURLResponse *)response
         // for now assume that requested bufsize is small enough
         // that we can just malloc the whole thing in one call,
         // rather than realloc()ing as needed.
-        result.body = calloc(1, request.bufsize);
+        result.body = calloc(1, request.bufsize + 1);
         if (!result.body) {
             result.https_error = HTTPS_RESOURCE_EXHAUSTED;
             debug("%s malloc failed, cancelling dataTask\n", __func__);
