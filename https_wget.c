@@ -449,7 +449,7 @@ static void child_exit_event_cb(evutil_socket_t fd, short events, void *arg)
                         if (fd >= 0) {
                             off_t filesize = fdsize(fd);
                             off_t body_length = MIN(filesize, (off_t) request->bufsize);
-                            result->body = calloc(1, request->body_length + 1);
+                            result->body = calloc(1, result->body_length + 1);
 
                             result->body_length = 0;
                             if (result->body) {
