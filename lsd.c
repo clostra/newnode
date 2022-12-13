@@ -87,7 +87,7 @@ void lsd_send(network *n, bool reply)
                 errno == ENOBUFS) {
                 return;
             }
-            fprintf(stderr, "lsd error %d %s\n", errno, strerror(errno));
+            log_errno("lsd sendto\n");
             return;
         }
     }
@@ -103,11 +103,10 @@ void lsd_read_cb(evutil_socket_t fd, short events, void *arg)
         ev_socklen_t addrlen = sizeof(addr);
         ssize_t r = recvfrom(fd, (void*)packet, sizeof(packet), 0, (sockaddr*)&addr, &addrlen);
         if (r < 0) {
-            int err = evutil_socket_geterror(fd);
-            if (err == EAGAIN) {
+            if (errno == EAGAIN) {
                 break;
             }
-            fprintf(stderr, "recvfrom %d (%s)\n", err, evutil_socket_error_to_string(err));
+            log_errno("lsd recvfrom\n");
             return;
         }
         // XXX: TODO: remove SEARCH/REPLY once we have bidirectional peer connections
@@ -197,7 +196,7 @@ void lsd_setup(network *n)
 #endif
     };
     if (bind(lsd_fd, (sockaddr*)&addr, sizeof(addr))) {
-        fprintf(stderr, "lsd bind %d %s\n", errno, strerror(errno));
+        log_errno("lsd bind");
     }
 
     // http://www.iana.org/assignments/multicast-addresses
@@ -206,23 +205,23 @@ void lsd_setup(network *n)
         .imr_interface.s_addr = inet_addr("0.0.0.0")
     };
     if (setsockopt(lsd_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const void *)&mreqv4, sizeof(mreqv4))) {
-        fprintf(stderr, "lsd IP_ADD_MEMBERSHIP %d %s\n", errno, strerror(errno));
+        log_errno("lsd IP_ADD_MEMBERSHIP");
     }
     in_addr mc_addr = {0};
     if (setsockopt(lsd_fd, IPPROTO_IP, IP_MULTICAST_IF, (const void *)&mc_addr, sizeof(mc_addr))) {
-        fprintf(stderr, "lsd IP_MULTICAST_IF %d %s\n", errno, strerror(errno));
+        log_error("lsd IP_MULTICAST_IF");
     }
     int option = 0;
     if (setsockopt(lsd_fd, IPPROTO_IP, IP_MULTICAST_LOOP, (const void *)&option, sizeof(option))) {
-        fprintf(stderr, "lsd IP_MULTICAST_LOOP %d %s\n", errno, strerror(errno));
+        log_error("lsd IP_MULTICAST_LOOP");
     }
     option = 255;
     if (setsockopt(lsd_fd, IPPROTO_IP, IP_TTL, (const void *)&option, sizeof(option))) {
-        fprintf(stderr, "lsd IP_TTL %d %s\n", errno, strerror(errno));
+        log_error("lsd IP_TTL");
     }
     option = 255;
     if (setsockopt(lsd_fd, IPPROTO_IP, IP_MULTICAST_TTL, (const void *)&option, sizeof(option))) {
-        fprintf(stderr, "lsd IP_MULTICAST_TTL %d %s\n", errno, strerror(errno));
+        log_error("lsd IP_MULTICAST_TTL");
     }
 
     evutil_make_socket_closeonexec(lsd_fd);
