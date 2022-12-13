@@ -52,9 +52,9 @@ void obfoo_write_intro(obfoo *o, evbuffer *out)
     evbuffer_add(buf, o->pk, sizeof(o->pk));
     evbuffer_add(buf, o->tx_nonce, sizeof(o->tx_nonce));
     uint16_t pad_len = (uint16_t)randombytes_uniform(INTRO_PAD_MAX);
-    uint8_t pad[pad_len];
-    randombytes_buf(pad, sizeof(pad));
-    evbuffer_add(buf, pad, sizeof(pad));
+    uint8_t pad[1 + pad_len];
+    randombytes_buf(pad, pad_len);
+    evbuffer_add(buf, pad, pad_len);
     evbuffer_add_buffer(out, buf);
 }
 
