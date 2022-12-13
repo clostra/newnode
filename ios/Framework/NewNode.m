@@ -9,6 +9,10 @@
 #define BSG_LOG_LEVEL BSG_LOGLEVEL_DEBUG
 #import <BugsnagStatic/Bugsnag.h>
 
+#if TARGET_OS_IOS
+@import UIKit;
+#endif
+
 
 NetService *ns;
 Bluetooth *bt;
@@ -50,6 +54,17 @@ bool request_discovery_permission = true;
     NewNodeExperimental.requestBluetoothPermission = request_bluetooth_permission;
     NewNodeExperimental.requestDiscoveryPermission = request_discovery_permission;
     newnode_thread(g_n);
+
+    [NSNotificationCenter.defaultCenter addObserver:self
+                                           selector:@selector(applicationWillEnterForeground:)
+                                               name:UIApplicationWillEnterForegroundNotification
+                                             object:nil];
+}
+
++ (void)applicationWillEnterForeground:(NSNotification*)notification
+{
+    [ns restart];
+    [bt restart];
 }
 
 + (NSDictionary*)connectionProxyDictionary

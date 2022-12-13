@@ -590,6 +590,7 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
                 bluetooth.bluetoothOn();
             }
         }
+        ifChange();
     }
 
     static class BugsnagObserver implements Observer {

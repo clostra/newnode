@@ -539,6 +539,13 @@ ssize_t d2d_sendto(const uint8_t* buf, size_t len, const sockaddr_in6 *sin6)
     return r;
 }
 
+JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_ifChange(JNIEnv* env, jobject thiz)
+{
+    network_async(g_n, ^{
+        network_ifchange(g_n);
+    });
+}
+
 void ui_display_stats(const char *type, uint64_t direct, uint64_t peers)
 {
     JNIEnv *env = get_env();

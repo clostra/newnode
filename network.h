@@ -175,6 +175,7 @@ int network_loop(network *n);
 void network_set_log_level(int level);
 void network_set_sockaddr_callback(network *n, sockaddr_callback cb);
 void network_set_ifchange_callback(network *n, ifchange_callback cb);
+void network_ifchange(network *n);
 void network_set_recreate_sockets_callback(network *n, recreate_sockets_callback cb);
 void network_free(network *n);
 #define network_sendto(n, ...) udp_sendto(n->fd, __VA_ARGS__)

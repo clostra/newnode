@@ -662,6 +662,14 @@ void network_set_ifchange_callback(network *n, ifchange_callback cb)
     n->ifchange_cb = Block_copy(cb);
 }
 
+void network_ifchange(network *n)
+{
+    lsd_setup(n);
+    if (n->ifchange_cb) {
+        n->ifchange_cb();
+    }
+}
+
 void network_set_recreate_sockets_callback(network *n, recreate_sockets_callback cb)
 {
     Block_release(n->recreate_sockets_cb);

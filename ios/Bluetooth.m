@@ -77,7 +77,7 @@ static Bluetooth *gBluetooth = nil;
     }
 }
 
-- (void)restartPeerDiscovery
+- (void)restart
 {
     [self restartCentral];
     [self restartPeripheral];

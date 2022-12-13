@@ -5,8 +5,6 @@
 @interface Bluetooth : NSObject
 
 - (instancetype)initWithNetwork:(network*)n;
-- (void)initPeerDiscovery;
-- (void)restartPeerDiscovery;
-- (void)stop;
+- (void)restart;
 
 @end

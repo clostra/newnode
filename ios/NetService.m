@@ -43,10 +43,7 @@
         _browser.includesPeerToPeer = YES;
         _browser.delegate = self;
 
-        if (!self.batteryLow) {
-            [_service publishWithOptions:0];
-            [_browser searchForServicesOfType:ServiceType inDomain:@"local"];
-        }
+        [self restart];
     }
     return self;
 }
@@ -56,6 +53,16 @@
     // XXX: work around a 10.12 bug where delegates aren't actually weak references http://www.openradar.me/28943305
     _service.delegate = nil;
     _browser.delegate = nil;
+}
+
+- (void)restart
+{
+    [_service stop];
+    [_browser stop];
+    if (!self.batteryLow) {
+        [_service publishWithOptions:0];
+        [_browser searchForServicesOfType:ServiceType inDomain:@"local"];
+    }
 }
 
 - (bool)batteryLow
@@ -69,13 +76,7 @@
 
 - (void)batteryLevelChanged
 {
-    if (self.batteryLow) {
-        [_service stop];
-        [_browser stop];
-    } else {
-        [_service publishWithOptions:0];
-        [_browser searchForServicesOfType:ServiceType inDomain:@"local"];
-    }
+    [self restart];
 }
 
 - (void)gotAddresses:(NSNetService *)service
