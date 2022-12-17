@@ -98,15 +98,17 @@ void dht_restore(dht *d)
         fseek(f, 0, SEEK_END);
         long fsize = ftell(f);
         fseek(f, 0, SEEK_SET);
-        sockaddr_in sin[2048];
-        size_t num = MIN(lenof(sin), fsize / sizeof(sockaddr_in));
-        num = fread(sin, sizeof(sockaddr_in), num, f);
-        fclose(f);
-        for (uint i = 0; i < num; i++) {
-            dht_ping_node((const sockaddr *)&sin[i], sizeof(sockaddr_in));
+        uint num = 0;
+        for (; num < 2048; num++) {
+            sockaddr_in sin;
+            if (fread(&sin, sizeof(sin), 1, f) != 1) {
+                break;
+            }
+            dht_ping_node((const sockaddr *)&sin, sizeof(sin));
         }
+        fclose(f);
         if (num) {
-            debug("dht loaded num:%zu\n", num);
+            debug("dht loaded num:%u\n", num);
         }
     }
 
@@ -115,15 +117,17 @@ void dht_restore(dht *d)
         fseek(f, 0, SEEK_END);
         long fsize = ftell(f);
         fseek(f, 0, SEEK_SET);
-        sockaddr_in6 sin6[2048];
-        size_t num6 = MIN(lenof(sin6), fsize / sizeof(sockaddr_in6));
-        num6 = fread(sin6, sizeof(sockaddr_in6), num6, f);
-        fclose(f);
-        for (uint i = 0; i < num6; i++) {
-            dht_ping_node((const sockaddr *)&sin6[i], sizeof(sockaddr_in6));
+        uint num = 0;
+        for (; num < 2048; num++) {
+            sockaddr_in6 sin6;
+            if (fread(&sin6, sizeof(sin6), 1, f) != 1) {
+                break;
+            }
+            dht_ping_node((const sockaddr *)&sin6, sizeof(sin6));
         }
-        if (num6) {
-            debug("dht loaded num6:%zu\n", num6);
+        fclose(f);
+        if (num) {
+            debug("dht loaded num6:%u\n", num);
         }
     }
 
