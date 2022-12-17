@@ -345,28 +345,7 @@ void evbuffer_hash_update(evbuffer *buf, crypto_generichash_state *content_state
 
 bool evbuffer_write_to_file(evbuffer *buf, int fd)
 {
-    uint vecs_len = 0;
-    iovec vecs[16384];
-    ssize_t byte_total = 0;
-    evbuffer_ptr ptr;
-    evbuffer_ptr_set(buf, &ptr, 0, EVBUFFER_PTR_SET);
-    evbuffer_iovec v;
-    while (evbuffer_peek(buf, -1, &ptr, &v, 1) > 0) {
-        vecs[vecs_len].iov_base = v.iov_base;
-        vecs[vecs_len].iov_len = v.iov_len;
-        vecs_len++;
-        assert(vecs_len < lenof(vecs));
-        byte_total += v.iov_len;
-        if (evbuffer_ptr_set(buf, &ptr, v.iov_len, EVBUFFER_PTR_ADD) < 0) {
-            break;
-        }
-    }
-    ssize_t w = writev(fd, vecs, vecs_len);
-    if (w != byte_total) {
-        fprintf(stderr, "fd:%d write failed %d (%s)\n", fd, errno, strerror(errno));
-        return false;
-    }
-    return true;
+    return evbuffer_write(buf, fd) != -1;
 }
 
 int evbuffer_copy(evbuffer *out, evbuffer *in)
