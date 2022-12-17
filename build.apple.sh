@@ -45,6 +45,7 @@ function build_apple {
 
 
     FLAGS="$CFLAGS -g -Werror -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
+      -Wstack-exhausted -Wstack-protector -Wframe-larger-than=131072 \
       -fPIC -fblocks \
       -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
       -fvisibility-inlines-hidden \

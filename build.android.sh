@@ -77,6 +77,7 @@ function build_android {
 
 
     CFLAGS="-g -Werror -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
+      -Wstack-exhausted -Wstack-protector -Wframe-larger-than=131072 \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
       $CFLAGS \
       -std=gnu17 -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -DANDROID"
