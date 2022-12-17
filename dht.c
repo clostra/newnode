@@ -93,41 +93,57 @@ dht* dht_setup(network *n)
 
 void dht_restore(dht *d)
 {
-    FILE *f = fopen("dht.dat", "rb");
-    if (f) {
-        fseek(f, 0, SEEK_END);
-        long fsize = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        uint num = 0;
-        for (; num < 2048; num++) {
-            sockaddr_in sin;
-            if (fread(&sin, sizeof(sin), 1, f) != 1) {
-                break;
-            }
-            dht_ping_node((const sockaddr *)&sin, sizeof(sin));
-        }
-        fclose(f);
-        if (num) {
-            debug("dht loaded num:%u\n", num);
+    {
+        FILE *f = fopen("dht.dat", "rb");
+        if (f) {
+            __block uint num = 0;
+            __block timer_callback iter = Block_copy(^{
+                for (int i = 0; num < 2048; i++, num++) {
+                    sockaddr_in sin;
+                    if (fread(&sin, sizeof(sin), 1, f) != 1) {
+                        break;
+                    }
+                    debug("%s:%d dht_ping_node %s\n", __func__, __LINE__, sockaddr_str((const sockaddr *)&sin));
+                    dht_ping_node((const sockaddr *)&sin, sizeof(sin));
+                    if (i == 8) {
+                        timer_start(d->n, 50 + randombytes_uniform(50 * num), iter);
+                        return;
+                    }
+                }
+                fclose(f);
+                if (num) {
+                    debug("dht loaded num:%u\n", num);
+                }
+                Block_release(iter);
+            });
+            iter();
         }
     }
 
-    f = fopen("dht6.dat", "rb");
-    if (f) {
-        fseek(f, 0, SEEK_END);
-        long fsize = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        uint num = 0;
-        for (; num < 2048; num++) {
-            sockaddr_in6 sin6;
-            if (fread(&sin6, sizeof(sin6), 1, f) != 1) {
-                break;
-            }
-            dht_ping_node((const sockaddr *)&sin6, sizeof(sin6));
-        }
-        fclose(f);
-        if (num) {
-            debug("dht loaded num6:%u\n", num);
+    {
+        FILE *f = fopen("dht6.dat", "rb");
+        if (f) {
+            __block uint num = 0;
+            __block timer_callback iter = Block_copy(^{
+                for (int i = 0; num < 2048; i++, num++) {
+                    sockaddr_in6 sin6;
+                    if (fread(&sin6, sizeof(sin6), 1, f) != 1) {
+                        break;
+                    }
+                    debug("%s:%d dht_ping_node %s\n", __func__, __LINE__, sockaddr_str((const sockaddr *)&sin6));
+                    dht_ping_node((const sockaddr *)&sin6, sizeof(sin6));
+                    if (i == 8) {
+                        timer_start(d->n, 50 + randombytes_uniform(50 * num), iter);
+                        return;
+                    }
+                }
+                fclose(f);
+                if (num) {
+                    debug("dht loaded num6:%u\n", num);
+                }
+                Block_release(iter);
+            });
+            iter();
         }
     }
 
@@ -143,10 +159,10 @@ void dht_save(dht *d)
     }
     d->save_time = time(NULL);
 
-    sockaddr_in sin[2048];
-    int num = lenof(sin);
-    sockaddr_in6 sin6[2048];
-    int num6 = lenof(sin6);
+    int num = 2048;
+    auto_free sockaddr_in *sin = calloc(num, sizeof(sockaddr_in));
+    int num6 = 2048;
+    auto_free sockaddr_in6 *sin6 = calloc(num6, sizeof(sockaddr_in6));
     dht_get_nodes(sin, &num, sin6, &num6);
 
     // to avoid frequent writes, we compare the hash. the dht could instead indicate changes.
@@ -158,16 +174,15 @@ void dht_save(dht *d)
     memcpy(d->save_hash, hash, sizeof(hash));
 
     ddebug("dht saving num:%d num6:%d\n", num, num6);
-    FILE *f;
     if (num) {
-        f = fopen("dht.dat", "wb");
+        FILE *f = fopen("dht.dat", "wb");
         if (f) {
             fwrite(sin, sizeof(sockaddr_in), num, f);
             fclose(f);
         }
     }
     if (num6) {
-        f = fopen("dht6.dat", "wb");
+        FILE *f = fopen("dht6.dat", "wb");
         if (f) {
             fwrite(sin6, sizeof(sockaddr_in6), num6, f);
             fclose(f);
