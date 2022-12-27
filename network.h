@@ -180,6 +180,9 @@ void network_set_ifchange_callback(network *n, ifchange_callback cb);
 void network_ifchange(network *n);
 void network_set_recreate_sockets_callback(network *n, recreate_sockets_callback cb);
 void network_set_d2d_received_callback(network *n, d2d_received_callback cb);
+#ifdef ANDROID
+bool network_d2d_received_cb(const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) __attribute__((weak));
+#endif
 void network_free(network *n);
 #define network_sendto(n, ...) udp_sendto(n->fd, __VA_ARGS__)
 

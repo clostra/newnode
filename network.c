@@ -265,6 +265,13 @@ bool d2d_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa
             return true;
         }
     }
+#ifdef ANDROID
+    if (network_d2d_received_cb != NULL) {
+        if (network_d2d_received_cb(buf, len, sa, salen)) {
+            return true;
+        }
+    }
+#endif
     return udp_received(n, buf, len, sa, salen);
 }
 
