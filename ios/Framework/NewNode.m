@@ -120,6 +120,13 @@ bool request_discovery_permission = true;
     }
 }
 
++ (void)setD2dReceivedCallback:(d2d_received_callback)cb
+{
+    network_async(g_n, ^{
+        network_set_d2d_received_callback(g_n, cb);
+    });
+}
+
 @end
 
 

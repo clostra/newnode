@@ -499,7 +499,7 @@ JNIEXPORT void JNICALL Java_com_clostra_newnode_internal_NewNode_packetReceived(
 #pragma clang diagnostic pop
         jbyte *buf = (*env)->GetByteArrayElements(env, arrayref, NULL);
         jsize len = (*env)->GetArrayLength(env, arrayref);
-        udp_received(g_n, (const uint8_t*)buf, len, (const sockaddr *)&sin6, sizeof(sin6));
+        d2d_received(g_n, (const uint8_t*)buf, len, (const sockaddr *)&sin6, sizeof(sin6));
         (*env)->ReleaseByteArrayElements(env, arrayref, buf, JNI_ABORT);
         (*env)->DeleteGlobalRef(env, arrayref);
 

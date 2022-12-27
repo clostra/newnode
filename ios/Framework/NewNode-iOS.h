@@ -11,5 +11,6 @@
 
 + (void)setRequestBluetoothPermission:(bool)enabled;
 + (void)setRequestDiscoveryPermission:(bool)enabled;
++ (void)setD2dReceivedCallback:(d2d_received_callback)cb;
 
 @end

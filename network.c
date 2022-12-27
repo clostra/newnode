@@ -246,12 +246,7 @@ void network_recreate_sockets(network *n)
 
 bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
 {
-    ddebug("udp_received(%zu, %s)\n", len, sockaddr_str(sa));
-    if (network_process_udp_cb != NULL) {
-        if (network_process_udp_cb(buf, len, sa, salen)) {
-            return true;
-        }
-    }
+    ddebug("%s(%zu, %s)\n", __func__, len, sockaddr_str(sa));
     if (utp_process_udp(n->utp, buf, len, sa, salen)) {
         return true;
     }
@@ -260,6 +255,17 @@ bool udp_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa
     bool r = dht_process_udp(n->dht, buf, len, sa, salen, &tosleep);
     dht_schedule(n, tosleep);
     return r;
+}
+
+bool d2d_received(network *n, const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen)
+{
+    ddebug("%s(%zu, %s)\n", __func__, len, sockaddr_str(sa));
+    if (n->d2d_received_cb != NULL) {
+        if (n->d2d_received_cb(buf, len, sa, salen)) {
+            return true;
+        }
+    }
+    return udp_received(n, buf, len, sa, salen);
 }
 
 void udp_read(evutil_socket_t fd, short events, void *arg)
@@ -653,6 +659,12 @@ void network_set_recreate_sockets_callback(network *n, recreate_sockets_callback
 {
     Block_release(n->recreate_sockets_cb);
     n->recreate_sockets_cb = Block_copy(cb);
+}
+
+void network_set_d2d_received_callback(network *n, d2d_received_callback cb)
+{
+    Block_release(n->d2d_received_cb);
+    n->d2d_received_cb = Block_copy(cb);
 }
 
 void network_free(network *n)

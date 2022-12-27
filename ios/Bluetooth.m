@@ -430,7 +430,7 @@ static Bluetooth *gBluetooth = nil;
         [_inputBuffer replaceBytesInRange:NSMakeRange(0, len) withBytes:nil length:0];
         _hasLengthPrefix = false;
         network_async(n, ^{
-            udp_received(n, b, len, (const sockaddr *)&sin6, sizeof(sin6));
+            d2d_received(n, b, len, (const sockaddr *)&sin6, sizeof(sin6));
             free(b);
         });
     }
