@@ -125,7 +125,7 @@ DEFINE_TRIVIAL_CLEANUP_FUNC(evbuffer*, evbuffer_free)
 typedef void (^sockaddr_callback)(const sockaddr *addr, socklen_t addrlen);
 typedef void (^ifchange_callback)(void);
 typedef void (^recreate_sockets_callback)(void);
-typedef bool (^d2d_received_callback)(const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
+typedef bool (^udp_received_callback)(const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen);
 
 struct network {
     event_base *evbase;
@@ -142,7 +142,8 @@ struct network {
     sockaddr_callback sockaddr_cb;
     ifchange_callback ifchange_cb;
     recreate_sockets_callback recreate_sockets_cb;
-    d2d_received_callback d2d_received_cb;
+    udp_received_callback udp_received_cb;
+    udp_received_callback d2d_received_cb;
     bool request_discovery_permission:1;
 };
 
@@ -179,7 +180,8 @@ void network_set_sockaddr_callback(network *n, sockaddr_callback cb);
 void network_set_ifchange_callback(network *n, ifchange_callback cb);
 void network_ifchange(network *n);
 void network_set_recreate_sockets_callback(network *n, recreate_sockets_callback cb);
-void network_set_d2d_received_callback(network *n, d2d_received_callback cb);
+void network_set_udp_received_callback(network *n, udp_received_callback cb);
+void network_set_d2d_received_callback(network *n, udp_received_callback cb);
 #ifdef ANDROID
 bool network_d2d_received_cb(const uint8_t *buf, size_t len, const sockaddr *sa, socklen_t salen) __attribute__((weak));
 #endif
