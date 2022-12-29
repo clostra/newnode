@@ -103,7 +103,7 @@ void dht_restore(dht *d)
                     if (fread(&sin, sizeof(sin), 1, f) != 1) {
                         break;
                     }
-                    debug("%s:%d dht_ping_node %s\n", __func__, __LINE__, sockaddr_str((const sockaddr *)&sin));
+                    ddebug("%s:%d dht_ping_node %s\n", __func__, __LINE__, sockaddr_str((const sockaddr *)&sin));
                     dht_ping_node((const sockaddr *)&sin, sizeof(sin));
                     if (i == 8) {
                         timer_start(d->n, 50 + randombytes_uniform(50 * num), iter);
