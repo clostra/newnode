@@ -224,9 +224,9 @@ class ViewController: UIViewController {
             }
             
             self.updateLayout(animated: false)
-            self.statusLabel.text = statusAsText(status)
+            self.statusLabel.text = NSLocalizedString(status.description, comment: "")
             
-            if isTransitionalStatus(status) {
+            if status.isTransitional {
                 self.spinner.startAnimating()
             } else {
                 self.spinner.stopAnimating()
@@ -236,18 +236,13 @@ class ViewController: UIViewController {
 }
 
 
-func isTransitionalStatus(_ status: NEVPNStatus) -> Bool {
-    switch status {
-    case .connecting, .reasserting, .disconnecting:
-        return true
-    default:
-        return false
+private extension NEVPNStatus {
+    var isTransitional: Bool {
+        [.connecting, .reasserting, .disconnecting].contains(self)
     }
-}
-
-func statusAsText(_ status: NEVPNStatus) -> String {
-    let resource_title: String = {
-        switch status {
+    
+    var description: String {
+        switch self {
         case .invalid: return "invalid"
         case .disconnected: return "disconnected"
         case .connecting: return "connecting"
@@ -256,6 +251,5 @@ func statusAsText(_ status: NEVPNStatus) -> String {
         case .disconnecting: return "disconnecting"
         @unknown default: return ""
         }
-    }()
-    return NSLocalizedString(resource_title, comment: "")
+    }
 }
