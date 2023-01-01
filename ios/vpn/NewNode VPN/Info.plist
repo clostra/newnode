@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Connect with nearby devices running NewNode.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Connect with nearby devices running NewNode.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_newnode._udp.</string>
