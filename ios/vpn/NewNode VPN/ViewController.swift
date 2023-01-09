@@ -57,8 +57,9 @@ class ViewController: UIViewController {
         monitor.start(queue: .main)
 
         wormhole.listenForMessage(withIdentifier: "DisplayStats", listener: { (message) -> Void in
-            let o = message as! NSDictionary?
-            self.updateStatistics(direct: o?["direct_bytes"] as! UInt64, peer: o?["peers_bytes"] as! UInt64)
+            if let o = message as? NSDictionary, let direct = o["direct_bytes"] as? UInt64, let peer = o["peers_bytes"] as? UInt64 {
+                self.updateStatistics(direct: direct, peer: peer)
+            }
         })
 
         NotificationCenter.default.addObserver(self, selector:#selector(foreground), name:
@@ -223,9 +224,9 @@ class ViewController: UIViewController {
             }
             
             self.updateLayout(animated: false)
-            self.statusLabel.text = statusAsText(status)
+            self.statusLabel.text = NSLocalizedString(status.description, comment: "")
             
-            if isTransitionalStatus(status) {
+            if status.isTransitional {
                 self.spinner.startAnimating()
             } else {
                 self.spinner.stopAnimating()
@@ -235,18 +236,13 @@ class ViewController: UIViewController {
 }
 
 
-func isTransitionalStatus(_ status: NEVPNStatus) -> Bool {
-    switch status {
-    case .connecting, .reasserting, .disconnecting:
-        return true
-    default:
-        return false
+private extension NEVPNStatus {
+    var isTransitional: Bool {
+        [.connecting, .reasserting, .disconnecting].contains(self)
     }
-}
-
-func statusAsText(_ status: NEVPNStatus) -> String {
-    let resource_title: String = {
-        switch status {
+    
+    var description: String {
+        switch self {
         case .invalid: return "invalid"
         case .disconnected: return "disconnected"
         case .connecting: return "connecting"
@@ -255,6 +251,5 @@ func statusAsText(_ status: NEVPNStatus) -> String {
         case .disconnecting: return "disconnecting"
         @unknown default: return ""
         }
-    }()
-    return NSLocalizedString(resource_title, comment: "")
+    }
 }
