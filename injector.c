@@ -607,7 +607,7 @@ void http_request_cb(evhttp_request *req, void *arg)
     debug("con:%p %s:%u request received %s %s\n", req->evcon, e_host, e_port,
         evhttp_method(req->type), evhttp_request_get_uri(req));
 
-    addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_STREAM, .ai_protocol = IPPROTO_UDP};
+    addrinfo hints = {.ai_family = PF_UNSPEC, .ai_socktype = SOCK_DGRAM, .ai_protocol = IPPROTO_UDP};
     addrinfo *res;
     char port_s[6];
     snprintf(port_s, sizeof(port_s), "%u", e_port);
