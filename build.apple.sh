@@ -136,7 +136,7 @@ BASEDIR="${XCODEDIR}/Platforms/iPhoneOS.platform/Developer"
 SDK="${BASEDIR}/SDKs/iPhoneOS.sdk"
 IOS_VERSION_MIN=11
 ARCH=arm64
-CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -mios-version-min=${IOS_VERSION_MIN} -fembed-bitcode"
+CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -mios-version-min=${IOS_VERSION_MIN}"
 LDFLAGS="-arch $ARCH"
 TRIPLE=arm-apple-darwin
 build_apple
@@ -146,7 +146,7 @@ LIBSODIUM=$LIBSODIUM_XCF/ios-arm64_x86_64-maccatalyst/libsodium.a
 BASEDIR="${XCODEDIR}/Platforms/MacOSX.platform/Developer"
 SDK="${BASEDIR}/SDKs/MacOSX.sdk"
 ARCH=x86_64
-CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -target $ARCH-apple-ios-macabi -fembed-bitcode -iframework $SDK/System/iOSSupport/System/Library/Frameworks"
+CFLAGS="-O3 -arch $ARCH -isysroot ${SDK} -target $ARCH-apple-ios-macabi -iframework $SDK/System/iOSSupport/System/Library/Frameworks"
 LDFLAGS="-arch $ARCH  -target $ARCH-apple-ios-macabi"
 TRIPLE=x86_64-apple-ios
 build_apple
