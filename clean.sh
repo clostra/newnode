@@ -24,14 +24,14 @@ rm -rf libunwind-ndk/*linux-android*
 rm *.o || true
 cd android
 rm -rf build
-gradle wrapper
+#gradle wrapper
 ./gradlew clean
 cd examples/WebViewSample
 rm -rf build
-gradle wrapper
+#gradle wrapper
 ./gradlew clean
 cd ../..
 cd vpn
 rm -rf build
-gradle wrapper
+#gradle wrapper
 ./gradlew clean
