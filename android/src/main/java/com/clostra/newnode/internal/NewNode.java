@@ -642,6 +642,7 @@ public class NewNode implements NewNodeInternal, Runnable, Application.ActivityL
     public void onActivityPaused(Activity activity) {}
 
     static native void setCacheDir(String cacheDir);
+    static native void ifChange();
     static native void addEndpoint(byte[] endpoint);
     static native void removeEndpoint(byte[] endpoint);
     static native void packetReceived(byte[] packet, byte[] endpoint);

@@ -57,6 +57,7 @@ android {
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.5.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.multidex:multidex:2.0.1'
 
     // include AAR directly (must include dependencies)
     releaseImplementation files('../../build/outputs/aar/newnode-release.aar')
