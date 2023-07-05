@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 52;
+	objectVersion = 53;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -21,7 +21,7 @@
 		3C50125922D4AF5000F8487C /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 3C50125722D4AF5000F8487C /* Main.storyboard */; };
 		3C50125B22D4AF5100F8487C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3C50125A22D4AF5100F8487C /* Assets.xcassets */; };
 		3C50125E22D4AF5100F8487C /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 3C50125C22D4AF5100F8487C /* LaunchScreen.storyboard */; };
-		3C50127122D4B10000F8487C /* Tunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 3C50126922D4B10000F8487C /* Tunnel.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		3C50127122D4B10000F8487C /* Tunnel.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3C50126922D4B10000F8487C /* Tunnel.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		3C5012C222D5316F00F8487C /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C50126B22D4B10000F8487C /* PacketTunnelProvider.swift */; };
 		3CA15F1B2692D91B00924A2F /* MMWormholeFileTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F0C2692D91B00924A2F /* MMWormholeFileTransiting.m */; };
 		3CA15F1C2692D91B00924A2F /* MMWormholeFileTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F0C2692D91B00924A2F /* MMWormholeFileTransiting.m */; };
@@ -60,15 +60,15 @@
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		3C50127522D4B10000F8487C /* Embed App Extensions */ = {
+		3C50127522D4B10000F8487C /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				3C50127122D4B10000F8487C /* Tunnel.appex in Embed App Extensions */,
+				3C50127122D4B10000F8487C /* Tunnel.appex in Embed Foundation Extensions */,
 			);
-			name = "Embed App Extensions";
+			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -227,7 +227,7 @@
 				3C50124C22D4AF5000F8487C /* Sources */,
 				3C50124D22D4AF5000F8487C /* Frameworks */,
 				3C50124E22D4AF5000F8487C /* Resources */,
-				3C50127522D4B10000F8487C /* Embed App Extensions */,
+				3C50127522D4B10000F8487C /* Embed Foundation Extensions */,
 				3C3D5B6624E3A45A00F17659 /* Embed Frameworks */,
 			);
 			buildRules = (
@@ -263,8 +263,9 @@
 		3C50124822D4AF5000F8487C /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
+				BuildIndependentTargetsInParallel = YES;
 				LastSwiftUpdateCheck = 1020;
-				LastUpgradeCheck = 1200;
+				LastUpgradeCheck = 1430;
 				ORGANIZATIONNAME = Clostra;
 				TargetAttributes = {
 					3C50124F22D4AF5000F8487C = {
