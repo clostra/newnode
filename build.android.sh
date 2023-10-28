@@ -29,7 +29,7 @@ function build_android {
     cd libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
-        CFLAGS="$CFLAGS" ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --with-pic $LIBEVENT_CONFIG --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
+        CFLAGS="$CFLAGS" ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --with-pic --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
         make clean
         make -j`nproc`
         make install
@@ -141,7 +141,6 @@ NDK_CLANG_TRIPLE=armv7a-linux-androideabi$NDK_API
 SODIUM_SCRIPT=$CPU_ARCH
 SODIUM_CPU_ARCH=$CPU_ARCH
 build_android
-LIBEVENT_CONFIG=
 
 NDK_API=21
 ARCH=arm64
