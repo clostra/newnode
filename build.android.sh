@@ -132,7 +132,7 @@ export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
 export STRIP=$TOOLCHAIN/bin/llvm-strip
 
 
-NDK_API=19
+NDK_API=21
 ARCH=arm
 ABI=armeabi-v7a
 CPU_ARCH=armv7-a
@@ -140,9 +140,6 @@ NDK_TRIPLE=arm-linux-androideabi
 NDK_CLANG_TRIPLE=armv7a-linux-androideabi$NDK_API
 SODIUM_SCRIPT=$CPU_ARCH
 SODIUM_CPU_ARCH=$CPU_ARCH
-# large file support doesn't work for sendfile until API 21
-# https://github.com/android-ndk/ndk/issues/536#issuecomment-333197557
-LIBEVENT_CONFIG=--disable-largefile
 build_android
 LIBEVENT_CONFIG=
 
@@ -156,7 +153,7 @@ SODIUM_SCRIPT=$CPU_ARCH
 SODIUM_CPU_ARCH=$CPU_ARCH+crypto
 build_android
 
-NDK_API=19
+NDK_API=21
 ARCH=x86
 ABI=x86
 CPU_ARCH=i686
