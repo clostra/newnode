@@ -233,7 +233,7 @@ uint64 utp_on_accept(utp_callback_arguments *a)
     // https://github.com/libevent/libevent/issues/1268
     assert(!n->accepting_utp);
     n->accepting_utp = a->socket;
-    evhttp_connection *evcon = evhttp_get_request(n->http, EVUTIL_INVALID_SOCKET, (sockaddr *)&addr, addrlen);
+    evhttp_connection *evcon = evhttp_get_request(n->http, EVUTIL_INVALID_SOCKET, (sockaddr *)&addr, addrlen, NULL);
     if (!evcon) {
         debug("%s evhttp_get_request failed\n", __func__);
         assert(evcon);

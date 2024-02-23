@@ -3816,7 +3816,7 @@ void accept_read_rb(evutil_socket_t fd, short what, void *arg)
         return;
     }
     //debug("%s fd:%d type:http\n", __func__, fd);
-    evhttp_get_request(n->http, fd, (sockaddr *)&ss, len);
+    evhttp_get_request(n->http, fd, (sockaddr *)&ss, len, NULL);
 }
 
 void accept_cb(evconnlistener *listener, evutil_socket_t nfd, sockaddr *peer_sa, int peer_socklen, void *arg)
