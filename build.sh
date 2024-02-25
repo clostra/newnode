@@ -11,7 +11,7 @@ PARSON_CFLAGS="-Iparson"
 cd libevent
 if [ ! -d native ]; then
     ./autogen.sh
-    CFLAGS="-fPIC" ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --prefix=$(pwd)/native
+    CFLAGS="-fPIC" ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-mbedtls --disable-samples --disable-libevent-regress --prefix=$(pwd)/native
     make clean
     make -j`nproc`
     make install

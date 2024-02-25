@@ -29,7 +29,7 @@ function build_android {
     cd libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
-        CFLAGS="$CFLAGS" ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --with-pic --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
+        CFLAGS="$CFLAGS" ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-mbedtls --disable-samples --disable-libevent-regress --with-pic --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
         make clean
         make -j`nproc`
         make install

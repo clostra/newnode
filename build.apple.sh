@@ -9,7 +9,7 @@ function build_apple {
     cd libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
-        ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-samples --disable-libevent-regress --host=$TRIPLE --prefix=$(pwd)/$TRIPLE CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS"
+        ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-mbedtls --disable-samples --disable-libevent-regress --host=$TRIPLE --prefix=$(pwd)/$TRIPLE CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS"
         echo "#define HAVE_WORKING_KQUEUE 1" >> $(pwd)/config.h
         make clean
         make -j`nproc`
