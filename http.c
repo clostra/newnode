@@ -229,29 +229,14 @@ uint64 utp_on_accept(utp_callback_arguments *a)
         debug("utp_getpeername failed\n");
     }
     //debug("%s %p %s\n", __func__, a->socket, sockaddr_str((const sockaddr*)&addr));
-    // XXX: hack around evhttp_get_request() only taking fds
-    // https://github.com/libevent/libevent/issues/1268
-    assert(!n->accepting_utp);
-    n->accepting_utp = a->socket;
-    evhttp_connection *evcon = evhttp_get_request(n->http, EVUTIL_INVALID_SOCKET, (sockaddr *)&addr, addrlen, NULL);
+    bufferevent *bev = bufferevent_utp_new(n->evbase, n->utp, a->socket, BEV_OPT_CLOSE_ON_FREE);
+    evhttp_connection *evcon = evhttp_get_request(n->http, EVUTIL_INVALID_SOCKET, (sockaddr *)&addr, addrlen, bev);
     if (!evcon) {
         debug("%s evhttp_get_request failed\n", __func__);
-        assert(evcon);
+        bufferevent_free(bev);
         return 0;
     }
-    assert(!n->accepting_utp);
     return 1;
-}
-
-bufferevent* create_bev(event_base *base, void *userdata)
-{
-    network *n = (network*)userdata;
-    if (n->accepting_utp) {
-        utp_socket *s = n->accepting_utp;
-        n->accepting_utp = NULL;
-        return bufferevent_utp_new(base, n->utp, s, BEV_OPT_CLOSE_ON_FREE);
-    }
-    return bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 }
 
 bool http_setup(network *n)
@@ -263,7 +248,6 @@ bool http_setup(network *n)
     }
     // don't add any content type automatically
     evhttp_set_default_content_type(n->http, NULL);
-    evhttp_set_bevcb(n->http, create_bev, n);
     evhttp_set_timeout(n->http, 50);
     utp_set_callback(n->utp, UTP_ON_ACCEPT, &utp_on_accept);
     return true;

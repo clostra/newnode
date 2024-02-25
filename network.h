@@ -135,7 +135,6 @@ struct network {
     int fd;
     event udp_event;
     utp_context *utp;
-    utp_socket *accepting_utp;
     dht *dht;
     timer *dht_timer;
     evhttp *http;
