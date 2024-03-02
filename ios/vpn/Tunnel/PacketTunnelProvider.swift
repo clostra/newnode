@@ -9,17 +9,25 @@
 import NetworkExtension
 import os.log
 
-enum NewNodeError: Error {
+private enum NewNodeError: Error {
     case initializationError
 }
 
-class PacketTunnelProvider: NEPacketTunnelProvider {
+private extension String {
+    static let applicationGroupIdentifier = "group.com.newnode.vpn"
+    static let wormholeStatisticMessageIdentifier = "DisplayStats"
+}
+
+private extension Notification.Name {
+    static let displayStatistic = Notification.Name("DisplayStats")
+}
+
+final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func startTunnel(options: [String : NSObject]?, completionHandler: @escaping (Error?) -> Void) {
         super.startTunnel(options: options, completionHandler: completionHandler)
 
-        NotificationCenter.default.addObserver(self, selector:#selector(displayStats), name:
-                                                Notification.Name("DisplayStats"), object: nil)
+        NotificationCenter.default.addObserver(self, selector:#selector(displayStats), name: .displayStatistic, object: nil)
 
         let cachesPath = NSSearchPathForDirectoriesInDomains(.cachesDirectory, .userDomainMask, true).last!
         chdir(cachesPath)
@@ -65,8 +73,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     @objc func displayStats(notification: NSNotification) {
         let o = notification.userInfo
-        let wormhole = MMWormhole(applicationGroupIdentifier: "group.com.newnode.vpn", optionalDirectory: nil)
-        wormhole.passMessageObject(o as NSDictionary?, identifier: "DisplayStats")
+        let wormhole = MMWormhole(applicationGroupIdentifier: .applicationGroupIdentifier, optionalDirectory: nil)
+        wormhole.passMessageObject(o as NSDictionary?, identifier: .wormholeStatisticMessageIdentifier)
     }
 
     override func stopTunnel(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {

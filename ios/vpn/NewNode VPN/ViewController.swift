@@ -12,7 +12,16 @@ import Network
 import NetworkExtension
 
 
-class ViewController: UIViewController {
+private extension String {
+    static let applicationGroupIdentifier = "group.com.newnode.vpn"
+    static let wormholeStatisticMessageIdentifier = "DisplayStats"
+    
+    static let tunnelBundleIdentifier = "com.newnode.vpn.tunnel"
+    static let tunnelServerAddress = "NewNode"
+    static let tunnelLocalizedDescription = "NewNode"
+}
+
+final class ViewController: UIViewController {
     
     @IBOutlet var gradient: GradientView!
     @IBOutlet weak var powerButton: UIButton!
@@ -26,7 +35,7 @@ class ViewController: UIViewController {
     @IBOutlet weak var logo: UIImageView!
     @IBOutlet var statTexts: [UILabel]!
     let monitor = NWPathMonitor()
-    let wormhole = MMWormhole(applicationGroupIdentifier: "group.com.newnode.vpn", optionalDirectory: nil)
+    let wormhole = MMWormhole(applicationGroupIdentifier: .applicationGroupIdentifier, optionalDirectory: nil)
     
     var toggleState: Bool {
         get {
@@ -56,7 +65,7 @@ class ViewController: UIViewController {
         }
         monitor.start(queue: .main)
 
-        wormhole.listenForMessage(withIdentifier: "DisplayStats", listener: { (message) -> Void in
+        wormhole.listenForMessage(withIdentifier: .wormholeStatisticMessageIdentifier, listener: { (message) -> Void in
             if let o = message as? NSDictionary, let direct = o["direct_bytes"] as? UInt64, let peer = o["peers_bytes"] as? UInt64 {
                 self.updateStatistics(direct: direct, peer: peer)
             }
@@ -178,11 +187,11 @@ class ViewController: UIViewController {
             if managers.count == 0 {
                 let manager = NETunnelProviderManager()
                 let providerProtocol = NETunnelProviderProtocol()
-                providerProtocol.providerBundleIdentifier = "com.newnode.vpn.tunnel"
-                providerProtocol.serverAddress = "NewNode"
+                providerProtocol.providerBundleIdentifier = .tunnelBundleIdentifier
+                providerProtocol.serverAddress = .tunnelServerAddress
                 manager.protocolConfiguration = providerProtocol
                 manager.isEnabled = true
-                manager.localizedDescription = "NewNode"
+                manager.localizedDescription = .tunnelLocalizedDescription
                 
                 manager.saveToPreferences(completionHandler: { (error: Error?) in
                     os_log("saveToPreferences %@", error?.localizedDescription ?? "")
