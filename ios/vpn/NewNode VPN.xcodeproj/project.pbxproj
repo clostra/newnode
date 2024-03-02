@@ -37,6 +37,8 @@
 		3CA15F262692D91B00924A2F /* MMWormholeSession.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F172692D91B00924A2F /* MMWormholeSession.m */; };
 		3CA15F272692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F192692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.m */; };
 		3CA15F282692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.m in Sources */ = {isa = PBXBuildFile; fileRef = 3CA15F192692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.m */; };
+		883006382963526F008D495F /* NetworkExtension+NewNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 883006362963526F008D495F /* NetworkExtension+NewNode.swift */; };
+		883006392963526F008D495F /* TunnelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 883006372963526F008D495F /* TunnelManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -111,6 +113,8 @@
 		3CA15F182692D91B00924A2F /* MMWormholeFileTransiting.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MMWormholeFileTransiting.h; path = MMWormhole/Source/MMWormholeFileTransiting.h; sourceTree = "<group>"; };
 		3CA15F192692D91B00924A2F /* MMWormholeCoordinatedFileTransiting.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MMWormholeCoordinatedFileTransiting.m; path = MMWormhole/Source/MMWormholeCoordinatedFileTransiting.m; sourceTree = "<group>"; };
 		3CA15F1A2692D91B00924A2F /* MMWormholeSessionContextTransiting.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MMWormholeSessionContextTransiting.h; path = MMWormhole/Source/MMWormholeSessionContextTransiting.h; sourceTree = "<group>"; };
+		883006362963526F008D495F /* NetworkExtension+NewNode.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "NetworkExtension+NewNode.swift"; sourceTree = "<group>"; };
+		883006372963526F008D495F /* TunnelManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TunnelManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -167,6 +171,8 @@
 				3C50125F22D4AF5100F8487C /* Info.plist */,
 				3C50125322D4AF5000F8487C /* AppDelegate.swift */,
 				3C50125522D4AF5000F8487C /* ViewController.swift */,
+				883006362963526F008D495F /* NetworkExtension+NewNode.swift */,
+				883006372963526F008D495F /* TunnelManager.swift */,
 				0F5C8ABB2664FB8800D013D7 /* InfoViewController.swift */,
 				0FBB0AF92661789F00D89502 /* GradientView.swift */,
 				0F0A7FF22667C9F20093B85D /* FontUpdater.swift */,
@@ -328,11 +334,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				883006392963526F008D495F /* TunnelManager.swift in Sources */,
 				3C50125622D4AF5000F8487C /* ViewController.swift in Sources */,
 				3C50125422D4AF5000F8487C /* AppDelegate.swift in Sources */,
 				3CA15F212692D91B00924A2F /* MMWormholeSessionContextTransiting.m in Sources */,
 				3CA15F1D2692D91B00924A2F /* MMWormholeSessionMessageTransiting.m in Sources */,
 				3CA15F1B2692D91B00924A2F /* MMWormholeFileTransiting.m in Sources */,
+				883006382963526F008D495F /* NetworkExtension+NewNode.swift in Sources */,
 				3CA15F252692D91B00924A2F /* MMWormholeSession.m in Sources */,
 				0F5C8ABC2664FB8800D013D7 /* InfoViewController.swift in Sources */,
 				3CA15F232692D91B00924A2F /* MMWormholeSessionFileTransiting.m in Sources */,

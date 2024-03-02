@@ -8,9 +8,12 @@
 
 import os.log
 import UIKit
-import Network
-import NetworkExtension
 
+extension ViewController: TunnelManagerDelegate {
+    func tunnelDidChangeState(_ state: TunnelManagerState) {
+        update(for: state)
+    }
+}
 
 class ViewController: UIViewController {
     
@@ -25,8 +28,9 @@ class ViewController: UIViewController {
     @IBOutlet weak var usageLabel: UILabel!
     @IBOutlet weak var logo: UIImageView!
     @IBOutlet var statTexts: [UILabel]!
-    let monitor = NWPathMonitor()
     let wormhole = MMWormhole(applicationGroupIdentifier: "group.com.newnode.vpn", optionalDirectory: nil)
+    
+    private lazy var tunnelManager = TunnelManagerImpl(delegate: self)
     
     var toggleState: Bool {
         get {
@@ -49,13 +53,8 @@ class ViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        updateLayout(animated: false)
+        updateLayout(on: toggleState, animated: false)
         
-        monitor.pathUpdateHandler = { path in
-            self.update()
-        }
-        monitor.start(queue: .main)
-
         wormhole.listenForMessage(withIdentifier: "DisplayStats", listener: { (message) -> Void in
             if let o = message as? NSDictionary, let direct = o["direct_bytes"] as? UInt64, let peer = o["peers_bytes"] as? UInt64 {
                 self.updateStatistics(direct: direct, peer: peer)
@@ -65,14 +64,13 @@ class ViewController: UIViewController {
         NotificationCenter.default.addObserver(self, selector:#selector(foreground), name:
                                                 UIApplication.willEnterForegroundNotification, object: nil)
 
-        update()
+        update(for: .disconnected)
         if toggleState {
             stateChanged()
         }
     }
 
-    func updateLayout(animated: Bool) {
-        let on = toggleState
+    func updateLayout(on: Bool, animated: Bool) {
         spinner.alpha = 0.3
         let buttonImage = on ? UIImage(named: "power_button_on") : UIImage(named: "power_button_off")
         self.powerButton.setImage(buttonImage, for: .normal)
@@ -138,64 +136,11 @@ class ViewController: UIViewController {
         NotificationCenter.default.removeObserver(self)
     }
     
-    func waitForStop(_ manager: NETunnelProviderManager) {
-        manager.loadFromPreferences(completionHandler: { (error: Error?) in
-            self.update()
-            if manager.connection.status == .disconnected {
-                return
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.waitForStop(manager)
-            }
-        })
-    }
-    
-    func enforceState(_ manager: NETunnelProviderManager) {
-        os_log("manager.connection.status:%@ toggle:%@",
-               String(manager.connection.status.rawValue), String(toggleState))
-        if toggleState {
-            do {
-                os_log("starting...")
-                try manager.connection.startVPNTunnel()
-            } catch {
-                os_log("Unexpected error %@", error.localizedDescription)
-                manager.connection.stopVPNTunnel()
-                self.waitForStop(manager)
-            }
-        } else {
-            os_log("stopping...")
-            manager.connection.stopVPNTunnel()
-            self.waitForStop(manager)
-        }
-    }
-    
     func stateChanged() {
-        NETunnelProviderManager.loadAllFromPreferences { (managers: [NETunnelProviderManager]?, error: Error?) in
-            guard let managers = managers else {
-                os_log("loadAllFromPreferences %@", error?.localizedDescription ?? "")
-                return
-            }
-            if managers.count == 0 {
-                let manager = NETunnelProviderManager()
-                let providerProtocol = NETunnelProviderProtocol()
-                providerProtocol.providerBundleIdentifier = "com.newnode.vpn.tunnel"
-                providerProtocol.serverAddress = "NewNode"
-                manager.protocolConfiguration = providerProtocol
-                manager.isEnabled = true
-                manager.localizedDescription = "NewNode"
-                
-                manager.saveToPreferences(completionHandler: { (error: Error?) in
-                    os_log("saveToPreferences %@", error?.localizedDescription ?? "")
-                    manager.loadFromPreferences(completionHandler: { (error: Error?) in
-                        os_log("loadFromPreferences %@", error?.localizedDescription ?? "")
-                        self.enforceState(manager)
-                    })
-                })
-            } else if managers.count > 0 {
-                let manager = managers.first!
-                self.enforceState(manager)
-            }
-            self.update()
+        if toggleState {
+            tunnelManager.connect()
+        } else {
+            tunnelManager.disconnect()
         }
     }
     
@@ -204,52 +149,21 @@ class ViewController: UIViewController {
         os_log("didTapSwitch %@ -> %@", String(oldToggleState), String(!oldToggleState))
         toggleState = !oldToggleState
         stateChanged()
-        updateLayout(animated: true)
+        updateLayout(on: toggleState, animated: true)
     }
 
     @objc func foreground() {
         stateChanged()
     }
     
-    func update() {
-        NETunnelProviderManager.loadAllFromPreferences { (managers: [NETunnelProviderManager]?, error: Error?) in
-            guard let managers = managers else {
-                os_log("loadAllFromPreferences %@", error?.localizedDescription ?? "")
-                return
-            }
-            var status: NEVPNStatus = .disconnected
-            if managers.count > 0 {
-                let manager = managers.first!
-                status = manager.connection.status
-            }
-            
-            self.updateLayout(animated: false)
-            self.statusLabel.text = NSLocalizedString(status.description, comment: "")
-            
-            if status.isTransitional {
-                self.spinner.startAnimating()
-            } else {
-                self.spinner.stopAnimating()
-            }
-        }
-    }
-}
-
-
-private extension NEVPNStatus {
-    var isTransitional: Bool {
-        [.connecting, .reasserting, .disconnecting].contains(self)
-    }
-    
-    var description: String {
-        switch self {
-        case .invalid: return "invalid"
-        case .disconnected: return "disconnected"
-        case .connecting: return "connecting"
-        case .connected: return "connected"
-        case .reasserting: return "reconnecting"
-        case .disconnecting: return "disconnecting"
-        @unknown default: return ""
+    func update(for state: TunnelManagerState) {
+        updateLayout(on: toggleState, animated: false)
+        statusLabel.text = NSLocalizedString(state.rawValue, comment: "")
+        
+        if [.connecting, .disconnecting, .reasserting].contains(state) {
+            spinner.startAnimating()
+        } else {
+            spinner.stopAnimating()
         }
     }
 }
