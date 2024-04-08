@@ -72,10 +72,10 @@ jobject create_double(JNIEnv *env, double dbl) {
 /**
  * Creates a java Boolean object using the given bool value
  */
-jobject create_boolean(JNIEnv *env, int bool) {
+jobject create_boolean(JNIEnv *env, int boolean) {
     jclass boolean_class = (*env)->FindClass(env, "java/lang/Boolean");
     jmethodID boolean_constructor = (*env)->GetMethodID(env, boolean_class, "<init>", "(Z)V");
-    return (*env)->NewObject(env, boolean_class, boolean_constructor, (jboolean)bool);
+    return (*env)->NewObject(env, boolean_class, boolean_constructor, (jboolean)boolean);
 }
 
 /**
