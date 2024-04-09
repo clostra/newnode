@@ -80,7 +80,7 @@ function build_android {
       -Wstack-exhausted -Wstack-protector -Wframe-larger-than=131072 \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
       $CFLAGS \
-      -std=gnu17 -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -DANDROID"
+      -std=gnu2x -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -DANDROID"
     #-fvisibility=hidden -fvisibility-inlines-hidden -flto \
     if [ ! -z ${DEBUG+x} ]; then
         CFLAGS="$CFLAGS -O0 -DDEBUG=1"
