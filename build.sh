@@ -6,7 +6,7 @@ export CC=clang
 export CXX=clang++
 
 
-CFLAGS="-fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all"
+CFLAGS="${CFLAGS:-} -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all"
 
 
 PARSON_CFLAGS="-Iparson"
@@ -14,7 +14,7 @@ PARSON_CFLAGS="-Iparson"
 cd libevent
 if [ ! -d native ]; then
     ./autogen.sh
-    CFLAGS="-fPIC" ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-mbedtls --disable-samples --disable-libevent-regress --prefix=$(pwd)/native
+    ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-mbedtls --disable-samples --disable-libevent-regress --prefix=$(pwd)/native CFLAGS="-fPIC"
     make clean
     make -j`nproc`
     make install
@@ -59,21 +59,20 @@ if ! echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -f
     LIBBLOCKSRUNTIME=blocksruntime/native/libBlocksRuntime.a
 fi
 
-CFLAGS="-g -Werror -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-error=shadow -Wfatal-errors \
+CFLAGS+=" -g -Werror -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-error=shadow -Wfatal-errors \
   -Wstack-exhausted -Wstack-protector -Wframe-larger-than=131072 \
   -fPIC -fblocks -fdata-sections -ffunction-sections \
-  $CFLAGS \
   -fno-rtti -fno-exceptions \
   -std=gnu2x -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE"
 # -fvisibility=hidden -fvisibility-inlines-hidden -flto=thin \
 if [ ! -z ${DEBUG+x} ]; then
-    CFLAGS="$CFLAGS -O0 -DDEBUG=1 -fsanitize=address -fsanitize=undefined --coverage"
+    CFLAGS+=" -O0 -DDEBUG=1 -fsanitize=address -fsanitize=undefined --coverage"
 else
-    CFLAGS="$CFLAGS -O0 -fsanitize=address -fsanitize=undefined"
+    CFLAGS+=" -O0 -fsanitize=address -fsanitize=undefined"
 fi
 
 if uname|grep -i Darwin >/dev/null; then
-    CFLAGS="$CFLAGS -fobjc-arc -fmodules"
+    CFLAGS+=" -fobjc-arc -fmodules"
 fi
 
 LRT=
