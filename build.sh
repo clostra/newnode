@@ -6,12 +6,15 @@ export CC=clang
 export CXX=clang++
 
 
+CFLAGS="${CFLAGS:-} -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all"
+
+
 PARSON_CFLAGS="-Iparson"
 
 cd libevent
 if [ ! -d native ]; then
     ./autogen.sh
-    CFLAGS="-fPIC" ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-mbedtls --disable-samples --disable-libevent-regress --prefix=$(pwd)/native
+    ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-mbedtls --disable-samples --disable-libevent-regress --prefix=$(pwd)/native CFLAGS="-fPIC"
     make clean
     make -j`nproc`
     make install
@@ -36,7 +39,7 @@ LIBSODIUM=libsodium/native/lib/libsodium.a
 
 
 cd libutp
-test -f libutp.a || (make clean && OPT=-O2 CPPFLAGS="-fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all" make -j`nproc` libutp.a)
+test -f libutp.a || (make clean && OPT=-O2 CPPFLAGS="$CFLAGS -fno-exceptions" make -j`nproc` libutp.a)
 cd ..
 LIBUTP_CFLAGS=-Ilibutp
 LIBUTP=libutp/libutp.a
@@ -56,21 +59,20 @@ if ! echo -e "#include <Block.h>\nint main() { Block_copy(^{}); }"|clang -x c -f
     LIBBLOCKSRUNTIME=blocksruntime/native/libBlocksRuntime.a
 fi
 
-FLAGS="-g -Werror -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-error=shadow -Wfatal-errors \
+CFLAGS+=" -g -Werror -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Wno-error=shadow -Wfatal-errors \
   -Wstack-exhausted -Wstack-protector -Wframe-larger-than=131072 \
   -fPIC -fblocks -fdata-sections -ffunction-sections \
-  -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
-  -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE"
+  -fno-rtti -fno-exceptions \
+  -std=gnu2x -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE"
 # -fvisibility=hidden -fvisibility-inlines-hidden -flto=thin \
 if [ ! -z ${DEBUG+x} ]; then
-    FLAGS="$FLAGS -O0 -DDEBUG=1 -fsanitize=address -fsanitize=undefined --coverage"
+    CFLAGS+=" -O0 -DDEBUG=1 -fsanitize=address -fsanitize=undefined --coverage"
 else
-    FLAGS="$FLAGS -O0 -fsanitize=address -fsanitize=undefined"
+    CFLAGS+=" -O0 -fsanitize=address -fsanitize=undefined"
 fi
 
-CFLAGS="$FLAGS -std=gnu17"
 if uname|grep -i Darwin >/dev/null; then
-    CFLAGS="$CFLAGS -fobjc-arc -fmodules"
+    CFLAGS+=" -fobjc-arc -fmodules"
 fi
 
 LRT=

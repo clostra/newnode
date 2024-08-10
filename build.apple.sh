@@ -4,7 +4,11 @@ set -euo pipefail
 
 function build_apple {
 
+    local CFLAGS="${CFLAGS:-} -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all"
+
+
     PARSON_CFLAGS=-Iparson
+
 
     cd libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
@@ -44,17 +48,14 @@ function build_apple {
     mv $LIBBUGSNAG.tmp $LIBBUGSNAG
 
 
-    FLAGS="$CFLAGS -g -Werror -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
+    CFLAGS+=" -g -Werror -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -Wstack-exhausted -Wstack-protector -Wframe-larger-than=131072 \
       -fPIC -fblocks \
-      -fno-rtti -fno-exceptions -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all \
-      -fvisibility-inlines-hidden \
-      -I."
+      -fno-rtti -fno-exceptions -fvisibility-inlines-hidden \
+      -std=gnu2x"
     if [ ! -z ${DEBUG+x} ]; then
-        FLAGS="$FLAGS -DDEBUG=1"
+        CFLAGS+=" -DDEBUG=1"
     fi
-
-    CFLAGS="$FLAGS -std=gnu17"
 
     rm -rf $TRIPLE || true
     rm *.o || true
@@ -65,7 +66,7 @@ function build_apple {
                 obfoo.c sha1.c timer.c thread.c bufferevent_utp.c; do
         clang $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBUGSNAG_CFLAGS $PARSON_CFLAGS -c $file
     done
-    clang -fobjc-arc -fobjc-weak -fmodules $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBUGSNAG_CFLAGS -I ios -c ios/NetService.m ios/Bluetooth.m ios/HTTPSRequest.m ios/Framework/NewNode.m
+    clang -fobjc-arc -fobjc-weak -fmodules $CFLAGS $LIBUTP_CFLAGS $LIBEVENT_CFLAGS $LIBSODIUM_CFLAGS $LIBBUGSNAG_CFLAGS -I . -I ios -c ios/NetService.m ios/Bluetooth.m ios/HTTPSRequest.m ios/Framework/NewNode.m
     mkdir -p $TRIPLE/objects
     mv *.o $TRIPLE/objects
 

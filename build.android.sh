@@ -9,7 +9,7 @@ function build_android {
     export CXX=$TOOLCHAIN/bin/$NDK_CLANG_TRIPLE-clang++
 
 
-    CFLAGS="-fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all"
+    local CFLAGS="${CFLAGS:-} -fno-common -fno-inline -fno-optimize-sibling-calls -funwind-tables -fno-omit-frame-pointer -fstack-protector-all"
 
 
     PARSON_CFLAGS=-Iparson
@@ -29,7 +29,7 @@ function build_android {
     cd libevent
     if [ ! -f $TRIPLE/lib/libevent.a ]; then
         ./autogen.sh
-        CFLAGS="$CFLAGS" ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-mbedtls --disable-samples --disable-libevent-regress --with-pic --host=$TRIPLE --prefix=$(pwd)/$TRIPLE
+        ./configure --disable-debug-mode --disable-shared --disable-openssl --disable-mbedtls --disable-samples --disable-libevent-regress --with-pic --host=$TRIPLE --prefix=$(pwd)/$TRIPLE CFLAGS="$CFLAGS"
         make clean
         make -j`nproc`
         make install
@@ -76,16 +76,15 @@ function build_android {
     LIBUNWIND="libunwind-ndk/$TRIPLE/libunwind.a libunwind-ndk/$TRIPLE/lzma/liblzma.a"
 
 
-    CFLAGS="-g -Werror -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
+    CFLAGS+=" -g -Werror -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable -Werror=shadow -Wfatal-errors \
       -Wstack-exhausted -Wstack-protector -Wframe-larger-than=131072 \
       -fPIC -fblocks -fdata-sections -ffunction-sections \
-      $CFLAGS \
-      -std=gnu17 -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -DANDROID"
+      -std=gnu2x -D__FAVOR_BSD -D_BSD_SOURCE -D_DEFAULT_SOURCE -DANDROID"
     #-fvisibility=hidden -fvisibility-inlines-hidden -flto \
     if [ ! -z ${DEBUG+x} ]; then
-        CFLAGS="$CFLAGS -O0 -DDEBUG=1"
+        CFLAGS+=" -O0 -DDEBUG=1"
     else
-        CFLAGS="$CFLAGS -O0"
+        CFLAGS+=" -O0"
     fi
 
     rm *.o || true
